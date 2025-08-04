@@ -1,0 +1,49 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+### Dependencies ###
+**/node_modules/
+**/.pnpm-store/  # If using pnpm
+.pnpm/  # pnpm v6+ 
+
+### Build outputs ###
+.next/
+out/
+dist/  # If using other build tools
+build/
+
+### Cache & Temp Files ###
+.cache/
+.temp/
+*.tmp
+
+### Logs ###
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+### Environment ###
+.env
+!.env.example  # Keep example env (optional)
+### IDE & Editor ###
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+### Vercel ###
+.vercel/
+
+### TypeScript ###
+*.tsbuildinfo
+next-env.d.ts
+
+### Testing ###
+coverage/
+.nyc_output/
+
+### Misc ###
+*.log
+*.bak
+*.backup
