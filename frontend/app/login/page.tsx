@@ -45,9 +45,10 @@ export default function LoginPage() {
 
       // Store the token (you might want to use secure cookies instead)
       localStorage.setItem('token', data.token)
+      localStorage.setItem('userData', JSON.stringify(data))
 
       // Redirect to dashboard
-      router.push('/dashboard')
+      data.user.role === 'admin' ? router.push('/admin/companies') : router.push('/dashboard')
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message)
