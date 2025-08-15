@@ -1,0 +1,111 @@
+const mongoose = require('mongoose');
+
+const CallSessionSchema = new mongoose.Schema({
+  customerId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Customer', 
+    required: true 
+  },
+  twilioCallSid: { 
+    type: String, 
+    required: true, 
+    unique: true 
+  },
+  conferenceSid: {
+    type: String,
+    sparse: true
+  },
+  status: { 
+    type: String, 
+    enum: ['initiated', 'ai-responding', 'transferring', 'human-connected', 'completed', 'failed'],
+    default: 'initiated'
+  },
+  startTime: { 
+    type: Date, 
+    default: Date.now 
+  },
+  endTime: Date,
+  assignedAgent: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User' 
+  },
+  transcript: [{
+    timestamp: { 
+      type: Date, 
+      default: Date.now 
+    },
+    speaker: { 
+      type: String, 
+      enum: ['ai', 'customer', 'agent'] 
+    },
+    message: String,
+    confidence: Number
+  }],
+  handoffTime: Date,
+  handoffReason: String,
+  callResult: {
+    type: String,
+    enum: ['成功', '不在', '拒否', '要フォロー', '失敗']
+  },
+  notes: String,
+  duration: Number,
+  recordingUrl: String,
+  aiConfiguration: {
+    companyName: String,
+    serviceName: String,
+    representativeName: String,
+    targetDepartment: String
+  }
+}, { 
+  timestamps: true 
+});
+
+// インデックスの追加
+CallSessionSchema.index({ customerId: 1, createdAt: -1 });
+CallSessionSchema.index({ assignedAgent: 1, createdAt: -1 });
+CallSessionSchema.index({ status: 1 });
+CallSessionSchema.index({ twilioCallSid: 1 });
+
+// 通話時間を計算するメソッド
+CallSessionSchema.methods.calculateDuration = function() {
+  if (this.endTime && this.startTime) {
+    this.duration = Math.floor((this.endTime - this.startTime) / 1000); // 秒単位
+  }
+  return this.duration;
+};
+
+// アクティブな通話を取得するスタティックメソッド
+CallSessionSchema.statics.getActiveCalls = function() {
+  return this.find({
+    status: { $in: ['initiated', 'ai-responding', 'transferring', 'human-connected'] }
+  }).populate('customerId assignedAgent');
+};
+
+// 通話結果の統計を取得するスタティックメソッド
+CallSessionSchema.statics.getCallStatistics = async function(agentId, dateRange) {
+  const query = {};
+  if (agentId) {
+    query.assignedAgent = agentId;
+  }
+  if (dateRange) {
+    query.createdAt = {
+      $gte: dateRange.start,
+      $lte: dateRange.end
+    };
+  }
+
+  const stats = await this.aggregate([
+    { $match: query },
+    {
+      $group: {
+        _id: '$callResult',
+        count: { $sum: 1 },
+        avgDuration: { $avg: '$duration' }
+      }
+    }
+  ]);
+
+  return stats;
+};
+
+module.exports = mongoose.model('CallSession', CallSessionSchema);

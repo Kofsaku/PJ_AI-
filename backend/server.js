@@ -14,6 +14,9 @@ connectDB();
 // Route files
 const authRoutes = require('./routes/authRoutes');
 const customerRoutes = require('./routes/customers');
+const agentRoutes = require('./routes/agentRoutes');
+const callRoutes = require('./routes/callRoutes');
+const twilioRoutes = require('./routes/twilioRoutes');
 
 const app = express();
 
@@ -34,6 +37,9 @@ if (process.env.NODE_ENV === 'development') {
 // Mount routers
 app.use('/api/auth', authRoutes);
 app.use('/api/customers', customerRoutes);
+app.use('/api/agents', agentRoutes);
+app.use('/api/calls', callRoutes);
+app.use('/api/twilio', twilioRoutes);
 
 // Error handler
 app.use(require('./middlewares/errorHandler'));
@@ -44,6 +50,10 @@ const server = app.listen(
   PORT,
   console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`)
 );
+
+// Initialize WebSocket service
+const webSocketService = require('./services/websocket');
+webSocketService.initialize(server);
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err, promise) => {
