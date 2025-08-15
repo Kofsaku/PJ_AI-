@@ -21,19 +21,17 @@ export default function CallMonitorPage() {
   });
 
   useEffect(() => {
-    // WebSocket接続を初期化
-    const token = localStorage.getItem('token');
-    if (token) {
-      initializeSocket(token);
-      
-      // 統計情報の購読
-      const socket = getSocket();
-      if (socket) {
-        socket.on('statistics-update', (data) => {
-          setStatistics(prev => ({ ...prev, ...data }));
-        });
-        socket.emit('request-statistics');
-      }
+    // WebSocket接続を初期化 (開発環境では認証不要)
+    const token = localStorage.getItem('token') || '';
+    initializeSocket(token);
+    
+    // 統計情報の購読
+    const socket = getSocket();
+    if (socket) {
+      socket.on('statistics-update', (data) => {
+        setStatistics(prev => ({ ...prev, ...data }));
+      });
+      socket.emit('request-statistics');
     }
 
     // 統計情報を取得

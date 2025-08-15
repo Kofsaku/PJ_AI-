@@ -23,10 +23,18 @@ class WebSocketService {
     // グローバルに io インスタンスを設定
     global.io = this.io;
 
-    // 認証ミドルウェア
+    // 認証ミドルウェア (開発環境ではオプショナル)
     this.io.use(async (socket, next) => {
       try {
         const token = socket.handshake.auth.token;
+        
+        // 開発環境では認証をスキップ
+        if (process.env.NODE_ENV === 'development' && !token) {
+          socket.userId = 'dev-user-' + Math.random().toString(36).substr(2, 9);
+          socket.user = { _id: socket.userId, role: 'admin' };
+          return next();
+        }
+
         if (!token) {
           return next(new Error('Authentication error'));
         }
@@ -42,6 +50,12 @@ class WebSocketService {
         socket.user = user;
         next();
       } catch (error) {
+        // 開発環境ではエラーでも接続を許可
+        if (process.env.NODE_ENV === 'development') {
+          socket.userId = 'dev-user-' + Math.random().toString(36).substr(2, 9);
+          socket.user = { _id: socket.userId, role: 'admin' };
+          return next();
+        }
         next(new Error('Authentication error'));
       }
     });

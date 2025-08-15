@@ -17,14 +17,6 @@ import { Search, ChevronLeft, ChevronRight, Upload, FileUp, X, Phone } from "luc
 import Link from "next/link";
 import { Sidebar } from "@/components/sidebar";
 import { useToast } from "@/components/ui/use-toast";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { parseCSV, formatCustomerForImport } from "@/lib/csvParser";
 
 // Define customer type
@@ -62,11 +54,8 @@ export default function DashboardPage() {
   const [selectedPrefecture, setSelectedPrefecture] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [csvPreviewData, setCsvPreviewData] = useState<any[]>([]);
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
   const { toast } = useToast();
@@ -104,10 +93,10 @@ export default function DashboardPage() {
       return;
     }
 
-    setSelectedFile(file);
+    setIsImporting(true);
     
     try {
-      // Read and preview CSV data
+      // Read and parse CSV data
       const text = await file.text();
       const parsedData = parseCSV(text);
       
@@ -117,19 +106,43 @@ export default function DashboardPage() {
           description: "CSVファイルが空です",
           variant: "destructive",
         });
-        setSelectedFile(null);
+        setIsImporting(false);
         return;
       }
       
-      setCsvPreviewData(parsedData.slice(0, 5)); // Preview first 5 rows
-      setIsDialogOpen(true);
+      // Format data for import
+      const formattedData = parsedData.map(formatCustomerForImport);
+      
+      // Send to API directly without showing dialog
+      const response = await fetch("/api/customers/import", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ customers: formattedData }),
+      });
+
+      if (!response.ok) throw new Error("Import failed");
+
+      const result = await response.json();
+      toast({
+        title: "成功",
+        description: `${formattedData.length}件のデータをインポートしました`,
+      });
+
+      // Refresh customer list
+      const refreshResponse = await fetch("/api/customers");
+      const data = await refreshResponse.json();
+      setCustomers(data);
+      
     } catch (error) {
       toast({
         title: "エラー",
-        description: "CSVファイルの読み込みに失敗しました",
+        description: "CSVファイルのインポートに失敗しました",
         variant: "destructive",
       });
-      setSelectedFile(null);
+    } finally {
+      setIsImporting(false);
     }
   }, [toast]);
 
@@ -185,58 +198,7 @@ export default function DashboardPage() {
     }
   }, [handleFileSelection, toast]);
 
-  const handleImport = async () => {
-    if (!selectedFile) return;
-
-    setIsImporting(true);
-    
-    try {
-      // Read CSV file
-      const text = await selectedFile.text();
-      const parsedData = parseCSV(text);
-      
-      // Format data for import
-      const formattedData = parsedData.map(formatCustomerForImport);
-      
-      // Send to API
-      const response = await fetch("/api/customers/import", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ customers: formattedData }),
-      });
-
-      if (!response.ok) throw new Error("Import failed");
-
-      const result = await response.json();
-      toast({
-        title: "Success",
-        description: `Imported ${formattedData.length} customers`,
-      });
-
-      // Refresh customer list
-      const refreshResponse = await fetch("/api/customers");
-      const data = await refreshResponse.json();
-      setCustomers(data);
-      
-      // Close dialog and reset completely
-      setIsDialogOpen(false);
-      setSelectedFile(null);
-      setCsvPreviewData([]);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to import customers",
-        variant: "destructive",
-      });
-      // Reset on error but keep dialog open for retry
-      setSelectedFile(null);
-      setCsvPreviewData([]);
-    } finally {
-      setIsImporting(false);
-    }
-  };
+  // Removed old handleImport function - now handled directly in handleFileSelection
 
   // Delete selected customers
   const deleteSelectedCustomers = async (ids: number[]) => {
@@ -432,128 +394,24 @@ export default function DashboardPage() {
                 一斉コール ({selectedCustomers.size}件)
               </Button>
             )}
-            <Button
-              variant="outline"
-              className="border-orange-500 text-orange-500 bg-transparent"
-              onClick={() => setIsDialogOpen(true)}
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              インポート
-            </Button>
-            
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogContent className="max-w-3xl">
-                <DialogHeader>
-                  <DialogTitle>CSVインポート</DialogTitle>
-                  <DialogDescription>
-                    CSVファイルをドラッグ&ドロップまたは選択してインポートしてください
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  {!selectedFile ? (
-                    <div 
-                      className="border-2 border-dashed rounded-lg p-8 text-center transition-colors border-gray-300 hover:border-gray-400"
-                      onDragEnter={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        e.dataTransfer.dropEffect = 'copy';
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const files = e.dataTransfer.files;
-                        if (files && files.length > 0) {
-                          const file = files[0];
-                          if (file.name.toLowerCase().endsWith('.csv')) {
-                            handleFileSelection(file);
-                          } else {
-                            toast({
-                              title: "エラー",
-                              description: "CSVファイルのみアップロード可能です",
-                              variant: "destructive",
-                            });
-                          }
-                        }
-                      }}
-                    >
-                      <FileUp className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                      <p className="text-lg mb-2">CSVファイルをドラッグ&ドロップ</p>
-                      <p className="text-sm text-gray-500 mb-4">または</p>
-                      <label htmlFor="csv-upload" className="cursor-pointer">
-                        <Input
-                          type="file"
-                          accept=".csv"
-                          onChange={handleFileChange}
-                          className="hidden"
-                          id="csv-upload"
-                        />
-                        <div className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
-                          ファイルを選択
-                        </div>
-                      </label>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                        <span className="text-sm font-medium">{selectedFile.name}</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedFile(null);
-                            setCsvPreviewData([]);
-                          }}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      
-                      {csvPreviewData.length > 0 && (
-                        <div>
-                          <p className="text-sm font-medium mb-2">プレビュー (最初の5行):</p>
-                          <div className="border rounded overflow-x-auto">
-                            <table className="text-sm w-full">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  {Object.keys(csvPreviewData[0]).map((key) => (
-                                    <th key={key} className="p-2 text-left border-b">
-                                      {key}
-                                    </th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {csvPreviewData.map((row, index) => (
-                                  <tr key={index} className="border-b">
-                                    {Object.values(row).map((value: any, i) => (
-                                      <td key={i} className="p-2">
-                                        {value || '-'}
-                                      </td>
-                                    ))}
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
-                      
-                      <Button
-                        onClick={handleImport}
-                        disabled={isImporting}
-                        className="w-full bg-orange-500 hover:bg-orange-600"
-                      >
-                        {isImporting ? "インポート中..." : `${csvPreviewData.length}件のデータをインポート`}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
+            <label htmlFor="csv-import-btn" className="cursor-pointer">
+              <Input
+                type="file"
+                accept=".csv"
+                onChange={handleFileChange}
+                className="hidden"
+                id="csv-import-btn"
+                disabled={isImporting}
+              />
+              <Button
+                variant="outline"
+                className="border-orange-500 text-orange-500 bg-transparent pointer-events-none"
+                disabled={isImporting}
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                {isImporting ? "インポート中..." : "インポート"}
+              </Button>
+            </label>
 
             <Link href="/customer/new">
               <Button className="bg-orange-500 hover:bg-orange-600">

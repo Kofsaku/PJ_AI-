@@ -28,11 +28,12 @@ function voiceResponse() {
     }, "お世話になります。わたくしＡＩコールシステムの安達といいますが、")
 
     // 2. ユーザーの入力を待つ
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'
     response.gather({
       input: ["speech"],
       language: "ja-JP",
       speechTimeout: "auto",
-      action: `${process.env.NGROK_URL}/api/twilio/voice/response?state=initial`,
+      action: `${baseUrl}/api/twilio/voice/response?state=initial`,
       method: "POST",
       timeout: 5
     })

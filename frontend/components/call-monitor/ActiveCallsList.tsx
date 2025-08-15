@@ -40,6 +40,20 @@ export function ActiveCallsList({ onSelectCall, selectedCallId }: ActiveCallsLis
     fetchActiveCalls();
 
     // WebSocketイベントの購読
+    const socket = getSocket();
+    if (socket) {
+      // Listen for bulk calls and active calls updates
+      socket.on('bulk-calls-started', (data) => {
+        console.log('Bulk calls started:', data);
+        fetchActiveCalls();
+      });
+      
+      socket.on('active-calls', (calls) => {
+        console.log('Active calls update:', calls);
+        setActiveCalls(Array.isArray(calls) ? calls : []);
+      });
+    }
+
     subscribeToCallEvents({
       onCallStarted: (data) => {
         fetchActiveCalls();
@@ -70,9 +84,13 @@ export function ActiveCallsList({ onSelectCall, selectedCallId }: ActiveCallsLis
   const fetchActiveCalls = async () => {
     try {
       const response = await callAPI.getActiveCalls();
-      setActiveCalls(response.data.data);
+      // Handle both data formats
+      const calls = response.data?.data || response.data || [];
+      setActiveCalls(Array.isArray(calls) ? calls : []);
     } catch (error) {
       console.error('Failed to fetch active calls:', error);
+      // Set empty array on error to prevent UI issues
+      setActiveCalls([]);
     } finally {
       setLoading(false);
     }

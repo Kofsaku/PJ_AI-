@@ -1,6 +1,7 @@
 const twilioService = require('../services/twilioService');
 const CallSession = require('../models/CallSession');
 const Customer = require('../models/Customer');
+const webSocketService = require('../services/websocket');
 
 // Initiate bulk calls to selected customers
 exports.initiateBulkCalls = async (req, res) => {
@@ -50,6 +51,20 @@ exports.initiateBulkCalls = async (req, res) => {
 
     // Wait for all calls to be initiated
     await Promise.all(callPromises);
+
+    // Broadcast new calls via WebSocket
+    webSocketService.broadcastCallEvent('bulk-calls-started', {
+      sessions: callSessions.map(s => ({
+        id: s._id,
+        phoneNumber: s.phoneNumber,
+        status: s.status,
+        twilioCallSid: s.twilioCallSid
+      }))
+    });
+
+    // Send active calls update
+    const activeCalls = await CallSession.getActiveCalls();
+    webSocketService.broadcastCallEvent('active-calls', activeCalls);
 
     res.status(200).json({
       message: `Initiated ${phoneNumbers.length} calls`,

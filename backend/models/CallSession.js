@@ -4,12 +4,17 @@ const CallSessionSchema = new mongoose.Schema({
   customerId: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'Customer', 
-    required: true 
+    required: false  // Make optional for bulk calls
+  },
+  phoneNumber: {
+    type: String,
+    required: false  // Store phone number directly
   },
   twilioCallSid: { 
     type: String, 
-    required: true, 
-    unique: true 
+    required: false,  // Make optional until Twilio call is created
+    unique: true,
+    sparse: true  // Allow multiple null values
   },
   conferenceSid: {
     type: String,
@@ -17,8 +22,12 @@ const CallSessionSchema = new mongoose.Schema({
   },
   status: { 
     type: String, 
-    enum: ['initiated', 'ai-responding', 'transferring', 'human-connected', 'completed', 'failed'],
-    default: 'initiated'
+    enum: ['initiating', 'calling', 'initiated', 'ai-responding', 'transferring', 'human-connected', 'completed', 'failed', 'cancelled', 'in-progress'],
+    default: 'initiating'
+  },
+  error: {
+    type: String,
+    required: false
   },
   startTime: { 
     type: Date, 
@@ -77,7 +86,7 @@ CallSessionSchema.methods.calculateDuration = function() {
 // アクティブな通話を取得するスタティックメソッド
 CallSessionSchema.statics.getActiveCalls = function() {
   return this.find({
-    status: { $in: ['initiated', 'ai-responding', 'transferring', 'human-connected'] }
+    status: { $in: ['initiating', 'calling', 'initiated', 'ai-responding', 'transferring', 'human-connected', 'in-progress'] }
   }).populate('customerId assignedAgent');
 };
 
