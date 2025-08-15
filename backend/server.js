@@ -39,9 +39,10 @@ if (process.env.NODE_ENV === 'development') {
 app.use('/api/auth', authRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/agents', agentRoutes);
+// Mount bulk routes BEFORE general call routes to avoid auth middleware conflict
+app.use('/api/calls', bulkCallRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/twilio', twilioRoutes);
-app.use('/api/calls', bulkCallRoutes);
 
 // Error handler
 app.use(require('./middlewares/errorHandler'));

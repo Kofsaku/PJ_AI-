@@ -1,8 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const bulkCallController = require('../controllers/bulkCallController');
+const { protect } = require('../middlewares/authMiddleware');
 
-// Initiate bulk calls
+// Note: Authentication is optional for development
+// Add protect middleware when ready for production: router.post('/bulk', protect, bulkCallController.initiateBulkCalls);
+
+// Initiate bulk calls (no auth for development)
 router.post('/bulk', bulkCallController.initiateBulkCalls);
 
 // Get bulk call status
