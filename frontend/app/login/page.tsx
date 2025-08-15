@@ -44,11 +44,20 @@ export default function LoginPage() {
       }
 
       // Store the token (you might want to use secure cookies instead)
-      localStorage.setItem('token', data.token)
+      if (data.token) {
+        localStorage.setItem('token', data.token)
+      }
       localStorage.setItem('userData', JSON.stringify(data))
 
-      // Redirect to dashboard
-      data.user.role === 'admin' ? router.push('/admin/companies') : router.push('/dashboard')
+      // Redirect to dashboard based on role
+      // Check different possible response structures
+      const role = data.user?.role || data.data?.role || data.role
+      
+      if (role === 'admin') {
+        router.push('/admin/companies')
+      } else {
+        router.push('/dashboard')
+      }
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message)

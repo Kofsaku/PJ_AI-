@@ -18,13 +18,22 @@ export function Sidebar() {
   useEffect(() => {
     const userData = localStorage.getItem('userData')
     if (userData) {
-      const user = JSON.parse(userData)
-      setRole(user.data.role)
-      console.log("user", user.data.role)
+      try {
+        const user = JSON.parse(userData)
+        // Check different possible response structures
+        const userRole = user.user?.role || user.data?.role || user.role
+        setRole(userRole)
+        console.log("user role:", userRole)
+      } catch (error) {
+        console.error("Error parsing user data:", error)
+        setRole(null)
+      }
     }
   }, [])
 
   const handleLogout = () => {
+    localStorage.removeItem('token')
+    localStorage.removeItem('userData')
     router.push("/login")
   }
 
