@@ -62,14 +62,24 @@ function voiceResponse() {
 
     // 2. ユーザーの入力を待つ
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'
-    response.gather({
+    console.log('Base URL for gather action:', baseUrl)
+    console.log('Environment NEXT_PUBLIC_APP_URL:', process.env.NEXT_PUBLIC_APP_URL)
+    
+    const gather = response.gather({
       input: ["speech"],
       language: "ja-JP",
       speechTimeout: "auto",
       action: `${baseUrl}/api/twilio/voice/response?state=initial`,
       method: "POST",
-      timeout: 5
+      timeout: 30,  // タイムアウトを30秒に延長
+      finishOnKey: "#"  // #キーで入力を終了できるように設定
     })
+    
+    // タイムアウト時のメッセージ
+    gather.say({
+      voice: "Polly.Mizuki",
+      language: "ja-JP"
+    }, "お返事をお待ちしております。")
 
     const twiml = response.toString()
     console.log("Generated TwiML:", twiml)

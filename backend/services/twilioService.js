@@ -31,11 +31,15 @@ exports.makeCall = async (phoneNumber, sessionId) => {
   }
 
   try {
+    // Ensure we have a valid base URL
+    const baseUrl = process.env.FRONTEND_URL || process.env.NGROK_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app';
+    console.log('Using base URL for Twilio webhook:', baseUrl);
+    
     const call = await twilioClient.calls.create({
       to: phoneNumber,
       from: twilioPhoneNumber,
-      url: `${process.env.NGROK_URL || process.env.FRONTEND_URL}/api/twilio/voice`,
-      statusCallback: `${process.env.NGROK_URL || process.env.FRONTEND_URL}/api/twilio/call/status`,
+      url: `${baseUrl}/api/twilio/voice`,
+      statusCallback: `${baseUrl}/api/twilio/call/status`,
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
       statusCallbackMethod: 'POST',
       record: true

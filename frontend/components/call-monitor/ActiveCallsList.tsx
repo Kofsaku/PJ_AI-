@@ -183,19 +183,21 @@ export function ActiveCallsList({ onSelectCall, selectedCallId }: ActiveCallsLis
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     {getCallIcon(call.status)}
-                    <span className="font-medium">{call.customerId.name}</span>
+                    <span className="font-medium">
+                      {call.customerId?.name || '不明な顧客'}
+                    </span>
                     {getStatusBadge(call.status)}
                   </div>
                   
                   <div className="text-sm text-muted-foreground space-y-1">
-                    <div>{call.customerId.company}</div>
-                    <div>{call.customerId.phone}</div>
+                    <div>{call.customerId?.company || '-'}</div>
+                    <div>{call.customerId?.phone || call.phoneNumber || '-'}</div>
                     
                     {call.assignedAgent && (
                       <div className="flex items-center gap-1">
                         <User className="h-3 w-3" />
                         <span>
-                          {call.assignedAgent.lastName} {call.assignedAgent.firstName}
+                          {call.assignedAgent?.lastName || ''} {call.assignedAgent?.firstName || ''}
                         </span>
                       </div>
                     )}
