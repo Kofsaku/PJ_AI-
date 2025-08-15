@@ -9,11 +9,44 @@ const VoiceResponse = twilio.twiml.VoiceResponse
  * → TWiML (XML) を返す
  */
 export async function GET() {
+  console.log('GET request received from Twilio')
   return voiceResponse()
 }
 
 export async function POST(request: Request) {
+  console.log('POST request received from Twilio')
+  
+  // Log request headers for debugging
+  const headers = Object.fromEntries(request.headers.entries())
+  console.log('Request headers:', headers)
+  
+  // Log request body
+  try {
+    const body = await request.text()
+    console.log('Request body:', body)
+    // Reset the request for further processing if needed
+    request = new Request(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: body
+    })
+  } catch (error) {
+    console.error('Error reading request body:', error)
+  }
+  
   return voiceResponse()
+}
+
+// Handle OPTIONS request for CORS
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "*"
+    }
+  })
 }
 
 // 実際の処理をまとめる
@@ -42,11 +75,15 @@ function voiceResponse() {
     console.log("Generated TwiML:", twiml)
 
     return new NextResponse(twiml, {
+      status: 200,
       headers: {
         "Content-Type": "text/xml; charset=utf-8",
         "Cache-Control": "no-cache, no-store, must-revalidate",
         "Pragma": "no-cache",
-        "Expires": "0"
+        "Expires": "0",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "*"
       },
     })
   } catch (error) {
