@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ChevronDown, ChevronRight } from "lucide-react"
@@ -11,17 +11,22 @@ import { cn } from "@/lib/utils"
 
 export function Sidebar() {
   const [isManagementOpen, setIsManagementOpen] = useState(false)
+  const [role, setRole] = useState<string | null>(null)
   const router = useRouter()
   const pathname = usePathname()
+
+  useEffect(() => {
+    const userData = localStorage.getItem('userData')
+    if (userData) {
+      const user = JSON.parse(userData)
+      setRole(user.data.role)
+      console.log("user", user.data.role)
+    }
+  }, [])
 
   const handleLogout = () => {
     router.push("/login")
   }
-
-const userData = localStorage.getItem('userData')
-const user = userData ? JSON.parse(userData) : null
-const role=user.data.role
-console.log("user", user.data.role)
 
 
   const isActive = (path: string) => pathname === path
