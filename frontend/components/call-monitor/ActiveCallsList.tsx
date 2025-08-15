@@ -88,12 +88,16 @@ export function ActiveCallsList({ onSelectCall, selectedCallId }: ActiveCallsLis
 
   const fetchActiveCalls = async () => {
     try {
+      // Try to fetch from API
       const response = await callAPI.getActiveCalls();
       // Handle both data formats
       const calls = response.data?.data || response.data || [];
       setActiveCalls(Array.isArray(calls) ? calls : []);
-    } catch (error) {
-      console.error('Failed to fetch active calls:', error);
+    } catch (error: any) {
+      // Log error but don't crash the app
+      if (error?.response?.status !== 404) {
+        console.error('Failed to fetch active calls:', error);
+      }
       // Set empty array on error to prevent UI issues
       setActiveCalls([]);
     } finally {
