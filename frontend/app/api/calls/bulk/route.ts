@@ -1,27 +1,96 @@
 import { NextResponse, NextRequest } from 'next/server'
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5000'
+const accountSid = process.env.TWILIO_ACCOUNT_SID
+const authToken = process.env.TWILIO_AUTH_TOKEN
+const fromNumber = process.env.TWILIO_PHONE_NUMBER
+
+// Twilio client initialization
+const getTwilioClient = () => {
+  const twilio = require('twilio')
+  return twilio(accountSid, authToken)
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
+    const { phoneNumbers, customerIds } = await request.json()
     
-    const response = await fetch(`${BACKEND_URL}/api/calls/bulk`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('Backend error:', errorText)
-      throw new Error(`Backend responded with status: ${response.status}`)
+    if (!phoneNumbers || phoneNumbers.length === 0) {
+      return NextResponse.json(
+        { error: 'No phone numbers provided' },
+        { status: 400 }
+      )
     }
 
-    const data = await response.json()
-    return NextResponse.json(data)
+    const client = getTwilioClient()
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'
+    
+    // Create calls for each phone number with delay between calls
+    const results = []
+    
+    for (let i = 0; i < phoneNumbers.length; i++) {
+      const phoneNumber = phoneNumbers[i]
+      const customerId = customerIds?.[i]
+      
+      try {
+        // Format phone number for international dialing
+        let formattedNumber = phoneNumber.replace(/[^\d+]/g, '')
+        
+        // Add country code if not present (assuming Japan)
+        if (!formattedNumber.startsWith('+')) {
+          if (formattedNumber.startsWith('0')) {
+            // Remove leading 0 and add Japan country code
+            formattedNumber = '+81' + formattedNumber.substring(1)
+          } else if (!formattedNumber.startsWith('81')) {
+            formattedNumber = '+81' + formattedNumber
+          } else {
+            formattedNumber = '+' + formattedNumber
+          }
+        }
+
+        const call = await client.calls.create({
+          url: `${baseUrl}/api/twilio/voice`,
+          to: formattedNumber,
+          from: fromNumber,
+          statusCallback: `${baseUrl}/api/twilio/status`,
+          statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+          statusCallbackMethod: 'POST',
+          timeout: 30,
+          record: false
+        })
+
+        results.push({
+          success: true,
+          customerId,
+          phoneNumber: formattedNumber,
+          callSid: call.sid,
+          status: call.status
+        })
+        
+        // Add delay between calls (2 seconds)
+        if (i < phoneNumbers.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 2000))
+        }
+      } catch (error) {
+        console.error(`Failed to call ${phoneNumber}:`, error)
+        results.push({
+          success: false,
+          customerId,
+          phoneNumber,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        })
+      }
+    }
+    
+    // Count successful and failed calls
+    const successful = results.filter(r => r.success).length
+    const failed = results.filter(r => !r.success).length
+
+    return NextResponse.json({
+      message: `Initiated ${successful} calls successfully`,
+      successful,
+      failed,
+      results
+    })
   } catch (error) {
     console.error('Bulk call error:', error)
     return NextResponse.json(

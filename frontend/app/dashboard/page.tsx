@@ -13,11 +13,19 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, ChevronLeft, ChevronRight, Upload, FileUp, X, Phone } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Upload, FileUp, X, Phone, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Sidebar } from "@/components/sidebar";
 import { useToast } from "@/components/ui/use-toast";
 import { parseCSV, formatCustomerForImport } from "@/lib/csvParser";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 
 // Define customer type
 type Customer = {
@@ -58,6 +66,10 @@ export default function DashboardPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
+  const [isCallDialogOpen, setIsCallDialogOpen] = useState(false);
+  const [callProgress, setCallProgress] = useState(0);
+  const [callResults, setCallResults] = useState<any[]>([]);
+  const [isCalling, setIsCalling] = useState(false);
   const { toast } = useToast();
 
   // Fetch customers from API
@@ -276,6 +288,12 @@ export default function DashboardPage() {
       return;
     }
 
+    // Open progress dialog
+    setIsCallDialogOpen(true);
+    setIsCalling(true);
+    setCallProgress(0);
+    setCallResults([]);
+
     try {
       const response = await fetch('/api/calls/bulk', {
         method: 'POST',
@@ -292,9 +310,14 @@ export default function DashboardPage() {
 
       const result = await response.json();
       
+      // Update progress and results
+      setCallProgress(100);
+      setCallResults(result.results || []);
+      setIsCalling(false);
+      
       toast({
-        title: "一斉コール開始",
-        description: `${phoneNumbers.length}件の顧客に電話をかけています...`,
+        title: "一斉コール完了",
+        description: `成功: ${result.successful}件, 失敗: ${result.failed}件`,
       });
       
       // Clear selection after starting calls
@@ -305,6 +328,7 @@ export default function DashboardPage() {
       router.push('/call-monitor');
       
     } catch (error) {
+      setIsCalling(false);
       toast({
         title: "エラー",
         description: "一斉コールの開始に失敗しました",
@@ -594,6 +618,64 @@ export default function DashboardPage() {
           </div>
         </div>
       </main>
+
+      {/* Call Progress Dialog */}
+      <Dialog open={isCallDialogOpen} onOpenChange={setIsCallDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>一斉コール実行中</DialogTitle>
+            <DialogDescription>
+              選択された顧客に順番に電話をかけています...
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {isCalling && (
+              <div className="flex items-center space-x-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>通話を開始しています...</span>
+              </div>
+            )}
+            
+            {callResults.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">コール結果:</p>
+                <div className="max-h-60 overflow-y-auto space-y-1">
+                  {callResults.map((result, index) => (
+                    <div key={index} className="flex items-center justify-between text-sm">
+                      <span className="truncate">{result.phoneNumber}</span>
+                      <Badge 
+                        className={result.success ? "bg-green-500" : "bg-red-500"}
+                      >
+                        {result.success ? "成功" : "失敗"}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {!isCalling && callResults.length > 0 && (
+              <div className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsCallDialogOpen(false)}
+                >
+                  閉じる
+                </Button>
+                <Button
+                  onClick={() => {
+                    setIsCallDialogOpen(false);
+                    router.push('/call-monitor');
+                  }}
+                >
+                  コール状況を確認
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

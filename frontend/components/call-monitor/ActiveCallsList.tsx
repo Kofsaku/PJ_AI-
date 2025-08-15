@@ -8,7 +8,7 @@ import { Phone, PhoneOff, PhoneForwarded, Clock, User } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { callAPI } from '@/lib/api';
-import { subscribeToCallEvents, unsubscribeFromCallEvents } from '@/lib/socket';
+import { getSocket, subscribeToCallEvents, unsubscribeFromCallEvents } from '@/lib/socket';
 
 interface ActiveCall {
   _id: string;
@@ -76,6 +76,11 @@ export function ActiveCallsList({ onSelectCall, selectedCallId }: ActiveCallsLis
     const interval = setInterval(fetchActiveCalls, 30000);
 
     return () => {
+      // WebSocketイベントのクリーンアップ
+      if (socket) {
+        socket.off('bulk-calls-started');
+        socket.off('active-calls');
+      }
       unsubscribeFromCallEvents();
       clearInterval(interval);
     };
