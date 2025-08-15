@@ -1,14 +1,12 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5000'
-const API_BASE_URL = `${BACKEND_URL}/api/customers/import`
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     
-    // Forward the JSON data to your MERN backend
-    const response = await fetch(API_BASE_URL, {
+    const response = await fetch(`${BACKEND_URL}/api/calls/bulk/cancel`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -19,15 +17,15 @@ export async function POST(request: Request) {
     if (!response.ok) {
       const errorText = await response.text()
       console.error('Backend error:', errorText)
-      throw new Error(`HTTP error! status: ${response.status}`)
+      throw new Error(`Backend responded with status: ${response.status}`)
     }
 
     const data = await response.json()
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Import error:', error)
+    console.error('Cancel bulk calls error:', error)
     return NextResponse.json(
-      { error: 'Failed to import customers' },
+      { error: 'Failed to cancel calls' },
       { status: 500 }
     )
   }

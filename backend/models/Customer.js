@@ -24,6 +24,22 @@ const customerSchema = new mongoose.Schema({
   notes: {
     type: String,
     required: false
+  },
+  address: {
+    type: String,
+    required: false
+  },
+  phone: {
+    type: String,
+    required: false
+  },
+  email: {
+    type: String,
+    required: false
+  },
+  company: {
+    type: String,
+    required: false
   }
 }, {
   timestamps: true

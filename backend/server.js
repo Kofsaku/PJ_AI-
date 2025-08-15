@@ -17,6 +17,7 @@ const customerRoutes = require('./routes/customers');
 const agentRoutes = require('./routes/agentRoutes');
 const callRoutes = require('./routes/callRoutes');
 const twilioRoutes = require('./routes/twilioRoutes');
+const bulkCallRoutes = require('./routes/bulkCallRoutes');
 
 const app = express();
 
@@ -40,6 +41,7 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/agents', agentRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/twilio', twilioRoutes);
+app.use('/api/calls', bulkCallRoutes);
 
 // Error handler
 app.use(require('./middlewares/errorHandler'));

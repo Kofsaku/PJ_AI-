@@ -1,9 +1,8 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
+import { useRouter, useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,8 +11,60 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sidebar } from "@/components/sidebar"
 import { useToast } from "@/components/ui/use-toast"
+import { ArrowLeft } from "lucide-react"
 
-export default function NewCustomerPage() {
+// Prefecture mapping
+const prefectureMap: { [key: string]: string } = {
+  "北海道": "hokkaido",
+  "青森県": "aomori",
+  "岩手県": "iwate",
+  "宮城県": "miyagi",
+  "秋田県": "akita",
+  "山形県": "yamagata",
+  "福島県": "fukushima",
+  "茨城県": "ibaraki",
+  "栃木県": "tochigi",
+  "群馬県": "gunma",
+  "埼玉県": "saitama",
+  "千葉県": "chiba",
+  "東京都": "tokyo",
+  "神奈川県": "kanagawa",
+  "新潟県": "niigata",
+  "富山県": "toyama",
+  "石川県": "ishikawa",
+  "福井県": "fukui",
+  "山梨県": "yamanashi",
+  "長野県": "nagano",
+  "岐阜県": "gifu",
+  "静岡県": "shizuoka",
+  "愛知県": "aichi",
+  "三重県": "mie",
+  "滋賀県": "shiga",
+  "京都府": "kyoto",
+  "大阪府": "osaka",
+  "兵庫県": "hyogo",
+  "奈良県": "nara",
+  "和歌山県": "wakayama",
+  "鳥取県": "tottori",
+  "島根県": "shimane",
+  "岡山県": "okayama",
+  "広島県": "hiroshima",
+  "山口県": "yamaguchi",
+  "徳島県": "tokushima",
+  "香川県": "kagawa",
+  "愛媛県": "ehime",
+  "高知県": "kochi",
+  "福岡県": "fukuoka",
+  "佐賀県": "saga",
+  "長崎県": "nagasaki",
+  "熊本県": "kumamoto",
+  "大分県": "oita",
+  "宮崎県": "miyazaki",
+  "鹿児島県": "kagoshima",
+  "沖縄県": "okinawa"
+}
+
+export default function CustomerDetailPage() {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -27,32 +78,102 @@ export default function NewCustomerPage() {
     notes: "",
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isEditing, setIsEditing] = useState(false)
   const router = useRouter()
+  const params = useParams()
   const { toast } = useToast()
+  const customerId = params.id as string
+
+  // Fetch customer data
+  useEffect(() => {
+    const fetchCustomer = async () => {
+      try {
+        const response = await fetch(`/api/customers/${customerId}`)
+        if (!response.ok) throw new Error("Failed to fetch customer")
+        
+        const data = await response.json()
+        
+        // Parse address to extract prefecture and city
+        let prefecture = ""
+        let city = ""
+        let address = ""
+        
+        if (data.address) {
+          // Try to extract prefecture from address
+          for (const [prefName, prefValue] of Object.entries(prefectureMap)) {
+            if (data.address.includes(prefName)) {
+              prefecture = prefValue
+              const addressParts = data.address.replace(prefName, "").trim().split(" ")
+              if (addressParts.length > 0) {
+                city = addressParts[0]
+                address = addressParts.slice(1).join(" ")
+              }
+              break
+            }
+          }
+          
+          // If no prefecture found, use the full address
+          if (!prefecture) {
+            address = data.address
+          }
+        }
+        
+        setFormData({
+          name: data.customer || "",
+          email: data.email || "",
+          phone: data.phone || "",
+          address: address,
+          prefecture: prefecture,
+          city: city,
+          zipCode: data.zipCode || "",
+          company: data.company || "",
+          position: data.position || "",
+          notes: data.notes || "",
+        })
+      } catch (error) {
+        toast({
+          title: "エラー",
+          description: "顧客情報の取得に失敗しました",
+          variant: "destructive",
+        })
+        router.push("/dashboard")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    if (customerId) {
+      fetchCustomer()
+    }
+  }, [customerId, toast, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
 
     try {
+      // Get prefecture name from value
+      const prefectureName = Object.keys(prefectureMap).find(
+        key => prefectureMap[key] === formData.prefecture
+      ) || formData.prefecture
+
       // Prepare customer data for API
       const customerData = {
         customer: formData.name,
-        address: `${formData.prefecture} ${formData.city} ${formData.address}`,
-        date: new Date().toLocaleDateString('ja-JP'),
-        time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
-        duration: "0:00",
-        result: "未実施",
-        notes: formData.notes,
+        address: prefectureName ? 
+          `${prefectureName} ${formData.city} ${formData.address}` : 
+          `${formData.city} ${formData.address}`.trim(),
         email: formData.email,
         phone: formData.phone,
         company: formData.company,
         position: formData.position,
-        zipCode: formData.zipCode
+        zipCode: formData.zipCode,
+        notes: formData.notes
       }
 
-      const response = await fetch('/api/customers', {
-        method: 'POST',
+      const response = await fetch(`/api/customers/${customerId}`, {
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -60,20 +181,19 @@ export default function NewCustomerPage() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to create customer')
+        throw new Error('Failed to update customer')
       }
 
       toast({
         title: "成功",
-        description: "顧客を登録しました",
+        description: "顧客情報を更新しました",
       })
 
-      // Redirect to dashboard after successful creation
-      router.push("/dashboard")
+      setIsEditing(false)
     } catch (error) {
       toast({
         title: "エラー",
-        description: "顧客の登録に失敗しました",
+        description: "顧客情報の更新に失敗しました",
         variant: "destructive",
       })
     } finally {
@@ -85,17 +205,93 @@ export default function NewCustomerPage() {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
+  const handleDelete = async () => {
+    if (!confirm("この顧客を削除してもよろしいですか？")) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/customers/${customerId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete customer')
+      }
+
+      toast({
+        title: "成功",
+        description: "顧客を削除しました",
+      })
+
+      router.push("/dashboard")
+    } catch (error) {
+      toast({
+        title: "エラー",
+        description: "顧客の削除に失敗しました",
+        variant: "destructive",
+      })
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar />
+        <main className="flex-1 p-6 flex items-center justify-center">
+          <div>読み込み中...</div>
+        </main>
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
 
       <main className="flex-1 p-6">
         <div className="max-w-2xl">
-          <h1 className="text-2xl font-bold mb-6">新規登録</h1>
+          <div className="flex items-center gap-4 mb-6">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => router.push("/dashboard")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <h1 className="text-2xl font-bold">顧客詳細</h1>
+          </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>顧客情報</CardTitle>
+              <div className="flex justify-between items-center">
+                <CardTitle>顧客情報</CardTitle>
+                <div className="flex gap-2">
+                  {!isEditing ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsEditing(true)}
+                    >
+                      編集
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsEditing(false)}
+                      disabled={isSubmitting}
+                    >
+                      キャンセル
+                    </Button>
+                  )}
+                  <Button
+                    variant="destructive"
+                    onClick={handleDelete}
+                    disabled={isSubmitting}
+                  >
+                    削除
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -108,6 +304,7 @@ export default function NewCustomerPage() {
                       onChange={(e) => updateFormData("name", e.target.value)}
                       placeholder="田中太郎"
                       required
+                      disabled={!isEditing}
                     />
                   </div>
                   <div className="space-y-2">
@@ -118,6 +315,7 @@ export default function NewCustomerPage() {
                       value={formData.email}
                       onChange={(e) => updateFormData("email", e.target.value)}
                       placeholder="tanaka@example.com"
+                      disabled={!isEditing}
                     />
                   </div>
                 </div>
@@ -130,6 +328,7 @@ export default function NewCustomerPage() {
                       value={formData.phone}
                       onChange={(e) => updateFormData("phone", e.target.value)}
                       placeholder="090-1234-5678"
+                      disabled={!isEditing}
                     />
                   </div>
                   <div className="space-y-2">
@@ -139,6 +338,7 @@ export default function NewCustomerPage() {
                       value={formData.zipCode}
                       onChange={(e) => updateFormData("zipCode", e.target.value)}
                       placeholder="123-4567"
+                      disabled={!isEditing}
                     />
                   </div>
                 </div>
@@ -146,7 +346,11 @@ export default function NewCustomerPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="prefecture">都道府県</Label>
-                    <Select value={formData.prefecture} onValueChange={(value) => updateFormData("prefecture", value)}>
+                    <Select 
+                      value={formData.prefecture} 
+                      onValueChange={(value) => updateFormData("prefecture", value)}
+                      disabled={!isEditing}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="選択してください" />
                       </SelectTrigger>
@@ -208,6 +412,7 @@ export default function NewCustomerPage() {
                       value={formData.city}
                       onChange={(e) => updateFormData("city", e.target.value)}
                       placeholder="渋谷区"
+                      disabled={!isEditing}
                     />
                   </div>
                 </div>
@@ -219,6 +424,7 @@ export default function NewCustomerPage() {
                     value={formData.address}
                     onChange={(e) => updateFormData("address", e.target.value)}
                     placeholder="道玄坂1-2-3"
+                    disabled={!isEditing}
                   />
                 </div>
 
@@ -230,6 +436,7 @@ export default function NewCustomerPage() {
                       value={formData.company}
                       onChange={(e) => updateFormData("company", e.target.value)}
                       placeholder="株式会社サンプル"
+                      disabled={!isEditing}
                     />
                   </div>
                   <div className="space-y-2">
@@ -239,6 +446,7 @@ export default function NewCustomerPage() {
                       value={formData.position}
                       onChange={(e) => updateFormData("position", e.target.value)}
                       placeholder="営業部長"
+                      disabled={!isEditing}
                     />
                   </div>
                 </div>
@@ -251,21 +459,21 @@ export default function NewCustomerPage() {
                     onChange={(e) => updateFormData("notes", e.target.value)}
                     placeholder="その他の情報"
                     rows={3}
+                    disabled={!isEditing}
                   />
                 </div>
 
-                <div className="flex justify-end space-x-2 pt-4">
-                  <Button type="button" variant="outline" onClick={() => router.back()}>
-                    キャンセル
-                  </Button>
-                  <Button 
-                    type="submit" 
-                    className="bg-orange-500 hover:bg-orange-600"
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? "登録中..." : "登録する"}
-                  </Button>
-                </div>
+                {isEditing && (
+                  <div className="flex justify-end space-x-2 pt-4">
+                    <Button 
+                      type="submit" 
+                      className="bg-orange-500 hover:bg-orange-600"
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? "更新中..." : "更新する"}
+                    </Button>
+                  </div>
+                )}
               </form>
             </CardContent>
           </Card>

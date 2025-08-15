@@ -46,7 +46,7 @@ router.get('/:id', async (req, res) => {
 // Update a customer
 router.patch('/:id', async (req, res) => {
   const updates = Object.keys(req.body);
-  const allowedUpdates = ['customer', 'date', 'time', 'duration', 'result', 'notes'];
+  const allowedUpdates = ['customer', 'date', 'time', 'duration', 'result', 'notes', 'address', 'email', 'phone', 'company', 'position', 'zipCode'];
   const isValidOperation = updates.every(update => allowedUpdates.includes(update));
 
   if (!isValidOperation) {
@@ -77,8 +77,8 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// Import customers from CSV
-router.post('/import', upload.single('file'), async (req, res) => {
+// Import customers from CSV (file upload)
+router.post('/import/file', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).send('No file uploaded');
@@ -107,6 +107,42 @@ router.post('/import', upload.single('file'), async (req, res) => {
       });
   } catch (error) {
     res.status(500).send(error);
+  }
+});
+
+// Import customers from JSON (parsed CSV data)
+router.post('/import', async (req, res) => {
+  try {
+    const { customers } = req.body;
+    
+    if (!customers || !Array.isArray(customers)) {
+      return res.status(400).json({ error: 'Invalid data format' });
+    }
+
+    // Validate and format customer data
+    const validatedCustomers = customers.map(customer => ({
+      customer: customer.customer || 'Unknown',
+      date: customer.date || new Date().toISOString().split('T')[0],
+      time: customer.time || '00:00',
+      duration: customer.duration || '0',
+      result: customer.result || '未処理',
+      notes: customer.notes || '',
+      address: customer.address || '',
+      phone: customer.phone || '',
+      email: customer.email || '',
+      company: customer.company || ''
+    }));
+
+    // Insert all records into the database
+    const insertedCustomers = await Customer.insertMany(validatedCustomers);
+    
+    res.status(201).json({ 
+      message: `${insertedCustomers.length} customers imported successfully`,
+      count: insertedCustomers.length
+    });
+  } catch (error) {
+    console.error('Import error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

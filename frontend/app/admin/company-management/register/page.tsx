@@ -133,9 +133,53 @@ export default function CompanyRegister() {
                     <SelectValue placeholder="東京都" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="hokkaido">北海道</SelectItem>
+                    <SelectItem value="aomori">青森県</SelectItem>
+                    <SelectItem value="iwate">岩手県</SelectItem>
+                    <SelectItem value="miyagi">宮城県</SelectItem>
+                    <SelectItem value="akita">秋田県</SelectItem>
+                    <SelectItem value="yamagata">山形県</SelectItem>
+                    <SelectItem value="fukushima">福島県</SelectItem>
+                    <SelectItem value="ibaraki">茨城県</SelectItem>
+                    <SelectItem value="tochigi">栃木県</SelectItem>
+                    <SelectItem value="gunma">群馬県</SelectItem>
+                    <SelectItem value="saitama">埼玉県</SelectItem>
+                    <SelectItem value="chiba">千葉県</SelectItem>
                     <SelectItem value="tokyo">東京都</SelectItem>
-                    <SelectItem value="osaka">大阪府</SelectItem>
+                    <SelectItem value="kanagawa">神奈川県</SelectItem>
+                    <SelectItem value="niigata">新潟県</SelectItem>
+                    <SelectItem value="toyama">富山県</SelectItem>
+                    <SelectItem value="ishikawa">石川県</SelectItem>
+                    <SelectItem value="fukui">福井県</SelectItem>
+                    <SelectItem value="yamanashi">山梨県</SelectItem>
+                    <SelectItem value="nagano">長野県</SelectItem>
+                    <SelectItem value="gifu">岐阜県</SelectItem>
+                    <SelectItem value="shizuoka">静岡県</SelectItem>
+                    <SelectItem value="aichi">愛知県</SelectItem>
+                    <SelectItem value="mie">三重県</SelectItem>
+                    <SelectItem value="shiga">滋賀県</SelectItem>
                     <SelectItem value="kyoto">京都府</SelectItem>
+                    <SelectItem value="osaka">大阪府</SelectItem>
+                    <SelectItem value="hyogo">兵庫県</SelectItem>
+                    <SelectItem value="nara">奈良県</SelectItem>
+                    <SelectItem value="wakayama">和歌山県</SelectItem>
+                    <SelectItem value="tottori">鳥取県</SelectItem>
+                    <SelectItem value="shimane">島根県</SelectItem>
+                    <SelectItem value="okayama">岡山県</SelectItem>
+                    <SelectItem value="hiroshima">広島県</SelectItem>
+                    <SelectItem value="yamaguchi">山口県</SelectItem>
+                    <SelectItem value="tokushima">徳島県</SelectItem>
+                    <SelectItem value="kagawa">香川県</SelectItem>
+                    <SelectItem value="ehime">愛媛県</SelectItem>
+                    <SelectItem value="kochi">高知県</SelectItem>
+                    <SelectItem value="fukuoka">福岡県</SelectItem>
+                    <SelectItem value="saga">佐賀県</SelectItem>
+                    <SelectItem value="nagasaki">長崎県</SelectItem>
+                    <SelectItem value="kumamoto">熊本県</SelectItem>
+                    <SelectItem value="oita">大分県</SelectItem>
+                    <SelectItem value="miyazaki">宮崎県</SelectItem>
+                    <SelectItem value="kagoshima">鹿児島県</SelectItem>
+                    <SelectItem value="okinawa">沖縄県</SelectItem>
                   </SelectContent>
                 </Select>
                 <Input
