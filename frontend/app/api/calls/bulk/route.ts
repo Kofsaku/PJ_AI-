@@ -58,6 +58,18 @@ export async function POST(request: NextRequest) {
           record: false
         })
 
+        // Track this call as active
+        await fetch(`${baseUrl}/api/calls/active`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callSid: call.sid,
+            customerId,
+            phoneNumber: formattedNumber,
+            status: call.status
+          })
+        }).catch(console.error)
+
         results.push({
           success: true,
           customerId,
