@@ -5,10 +5,18 @@ const webSocketService = require('../services/websocket');
 
 // Initiate bulk calls to selected customers
 exports.initiateBulkCalls = async (req, res) => {
+  console.log('=== Bulk Call Request ===');
+  console.log('Request Body:', req.body);
+  console.log('User:', req.user);
+  
   try {
     const { phoneNumbers, customerIds } = req.body;
 
+    console.log('Phone Numbers:', phoneNumbers);
+    console.log('Customer IDs:', customerIds);
+
     if (!phoneNumbers || phoneNumbers.length === 0) {
+      console.log('❌ No phone numbers provided');
       return res.status(400).json({ 
         error: 'No phone numbers provided' 
       });
@@ -33,8 +41,8 @@ exports.initiateBulkCalls = async (req, res) => {
       await session.save();
       callSessions.push(session);
 
-      // Initiate the call via Twilio
-      const callPromise = twilioService.makeCall(phoneNumber, session._id)
+      // Initiate the call via Twilio (pass user ID from request if available)
+      const callPromise = twilioService.makeCall(phoneNumber, session._id, req.user?.id)
         .then(call => {
           session.twilioCallSid = call.sid;
           session.status = 'calling';
@@ -163,6 +171,54 @@ exports.cancelBulkCalls = async (req, res) => {
     console.error('Cancel bulk calls error:', error);
     res.status(500).json({ 
       error: 'Failed to cancel calls',
+      details: error.message 
+    });
+  }
+};
+
+// Clean up old call sessions
+exports.cleanupOldSessions = async (req, res) => {
+  try {
+    console.log('=== Cleanup Old Sessions ===');
+    
+    // Define cutoff date (older than 24 hours)
+    const cutoffDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    console.log('Cutoff date:', cutoffDate);
+    
+    // Find old sessions that are still marked as active
+    const oldSessions = await CallSession.find({
+      startTime: { $lt: cutoffDate },
+      status: { $in: ['initiating', 'calling', 'in-progress', 'ai-responding'] }
+    });
+    
+    console.log(`Found ${oldSessions.length} old sessions to clean up`);
+    
+    // Update status to completed for old sessions
+    const updateResult = await CallSession.updateMany(
+      {
+        startTime: { $lt: cutoffDate },
+        status: { $in: ['initiating', 'calling', 'in-progress', 'ai-responding'] }
+      },
+      {
+        $set: {
+          status: 'completed',
+          endTime: new Date()
+        }
+      }
+    );
+    
+    console.log(`Updated ${updateResult.modifiedCount} sessions`);
+    
+    res.status(200).json({
+      message: `Cleaned up ${updateResult.modifiedCount} old sessions`,
+      cleanedCount: updateResult.modifiedCount,
+      cutoffDate: cutoffDate
+    });
+
+  } catch (error) {
+    console.error('Cleanup sessions error:', error);
+    res.status(500).json({ 
+      error: 'Failed to cleanup sessions',
       details: error.message 
     });
   }

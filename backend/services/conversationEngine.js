@@ -265,74 +265,53 @@ class ConversationEngine {
     const state = this.conversationStates.get(callId);
     if (!state) {
       console.error(`[ConversationEngine] ERROR: No conversation state found for call ${callId}`);
-      return this.getDefaultResponse(intent);
+      // 初期応答を返す
+      return this.getDefaultInitialResponse();
     }
     
     if (!state.agentSettings) {
       console.error(`[ConversationEngine] ERROR: No agent settings in state for call ${callId}`);
-      return this.getDefaultResponse(intent);
+      // 初期応答を返す
+      return this.getDefaultInitialResponse();
     }
     
-    // 初回のメッセージが既に話された場合、繰り返さない
-    if (intent === 'initial' && state.turnCount > 0) {
-      console.log(`[ConversationEngine] Skipping duplicate initial message for call ${callId}`);
-      // 相手が話していない場合は促しのメッセージを返す
-      if (state.continuousSilentCount > 0) {
-        return 'お客様、お聞きになれますか？何かご質問はございますか？';
+    // 最初の顧客の発話（もしもし等）には、通常の挨拶で応答
+    if (state.turnCount === 0 || (state.customerSpokeFirst && state.turnCount === 1)) {
+      console.log(`[ConversationEngine] First customer interaction - providing initial greeting`);
+      const { companyName, serviceName, representativeName, targetDepartment } = state.agentSettings;
+      if (companyName && representativeName && serviceName && targetDepartment) {
+        const initialMessage = `お世話になります。${companyName}の${representativeName}と申します。${serviceName}のご案内でお電話しました。本日、${targetDepartment}のご担当者さまはいらっしゃいますでしょうか？`;
+        return initialMessage;
       }
-      // 既に会話が進行中の場合は何も言わない
-      return '';
+      return this.getDefaultInitialResponse();
+    }
+    
+    // 「不在」「結構です」への適切な応答
+    if (intent === 'absent' || (state.conversationHistory.length > 0 && 
+        state.conversationHistory[state.conversationHistory.length - 1].message?.includes('不在'))) {
+      return this.getDefaultResponse('absent');
+    }
+    
+    if (intent === 'rejection' || (state.conversationHistory.length > 0 && 
+        state.conversationHistory[state.conversationHistory.length - 1].message?.includes('結構'))) {
+      return this.getDefaultResponse('rejection');
     }
 
-    // agentSettingsがオブジェクトの場合はそのまま使用
+    // agentSettingsから直接設定を取得
     let agentSettings = state.agentSettings;
     
-    // processTemplateメソッドがない場合はデフォルト応答を返す
-    if (!agentSettings.processTemplate && !agentSettings._id) {
-      console.log(`[ConversationEngine] Using direct agent settings without DB lookup`);
-      return this.getDefaultResponse(intent);
-    }
-    
-    // processTemplateメソッドが存在しない場合もデフォルト応答
-    if (agentSettings.processTemplate && typeof agentSettings.processTemplate !== 'function') {
-      console.log(`[ConversationEngine] processTemplate is not a function, using default response`);
-      return this.getDefaultResponse(intent);
-    }
-    
-    // _idがある場合はDBから取得
-    if (agentSettings._id) {
-      const dbSettings = await AgentSettings.findById(agentSettings._id);
-      if (!dbSettings) {
-        console.error(`[ConversationEngine] ERROR: Agent settings not found in DB for ID: ${agentSettings._id}`);
-        return this.getDefaultResponse(intent);
+    // 設定から最初の応答を作成
+    if (intent === 'initial' || intent === 'silent') {
+      const { companyName, serviceName, representativeName, targetDepartment } = agentSettings;
+      if (companyName && representativeName && serviceName && targetDepartment) {
+        const initialMessage = `お世話になります。${companyName}の${representativeName}と申します。${serviceName}のご案内でお電話しました。本日、${targetDepartment}のご担当者さまはいらっしゃいますでしょうか？`;
+        console.log(`[ConversationEngine] Generated initial message: ${initialMessage}`);
+        return initialMessage;
       }
-      agentSettings = dbSettings;
     }
     
-    // テンプレートマッピング
-    const templateMap = {
-      'initial': 'initial',
-      'unclear': 'clarification',
-      'company_inquiry': 'company_confirmation',
-      'absent': 'absent',
-      'rejection': 'rejection',
-      'website_redirect': 'website_redirect',
-      'transfer_ready': 'handoff_message',
-      'closing': 'closing',
-      'silent': 'silent',
-      'service_explanation': 'service_explanation',
-      'is_responsible_person': 'service_explanation'
-    };
-
-    const templateName = templateMap[intent] || 'initial';
-    let response;
-    try {
-      response = agentSettings.processTemplate(templateName, customVariables);
-    } catch (templateError) {
-      console.error(`[ConversationEngine] ERROR in processTemplate for intent: ${intent}`, templateError);
-      response = null;
-    }
-    const finalResponse = response || this.getDefaultResponse(intent);
+    // デフォルト応答を使用する（processTemplateは存在しない可能性があるため）
+    const finalResponse = this.getDefaultResponse(intent);
     
     // AI応答を会話履歴に追加
     if (state && finalResponse) {
@@ -344,6 +323,11 @@ class ConversationEngine {
     }
 
     return finalResponse;
+  }
+
+  // デフォルトの初期応答を取得
+  getDefaultInitialResponse() {
+    return 'お世話になります。AIコールシステム株式会社の佐藤と申します。AIアシスタントサービスのご案内でお電話しました。本日、営業部のご担当者さまはいらっしゃいますでしょうか？';
   }
 
   // デフォルト応答を取得（call_logic.mdに基づく）
@@ -382,10 +366,11 @@ class ConversationEngine {
       // その他
       silent: 'お客様、お聞きになれますか？',
       clarification: '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？',
-      is_responsible_person: 'ありがとうございます。それでは、AIアシスタントサービスについて簡単にご説明させていただきます。'
+      is_responsible_person: 'ありがとうございます。それでは、AIアシスタントサービスについて簡単にご説明させていただきます。',
+      unknown: '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？'
     };
 
-    return defaultResponses[intent] || defaultResponses.initial;
+    return defaultResponses[intent] || defaultResponses.clarification;
   }
 
   // 会話フローの次のステップを決定

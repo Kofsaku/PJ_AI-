@@ -1,0 +1,304 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Phone, PhoneOff, UserPlus, Loader2, Volume2, Mic } from "lucide-react";
+import { io, Socket } from "socket.io-client";
+
+interface CallModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  customerName: string;
+  phoneNumber: string;
+  customerId: string;
+}
+
+interface TranscriptEntry {
+  speaker: "AI" | "Customer" | "Operator";
+  text: string;
+  timestamp: Date;
+}
+
+export function CallModal({
+  isOpen,
+  onClose,
+  customerName,
+  phoneNumber,
+  customerId,
+}: CallModalProps) {
+  const [callStatus, setCallStatus] = useState<"connecting" | "connected" | "ended">("connecting");
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [callSid, setCallSid] = useState<string | null>(null);
+  const [isTransferring, setIsTransferring] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && phoneNumber) {
+      // Initialize socket connection
+      const newSocket = io(process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001", {
+        transports: ["websocket"],
+      });
+
+      newSocket.on("connect", () => {
+        console.log("Socket connected");
+        // Start the call
+        initiateCall();
+      });
+
+      newSocket.on("call-status", (data) => {
+        if (data.status === "in-progress") {
+          setCallStatus("connected");
+          setCallSid(data.callSid);
+        } else if (data.status === "completed" || data.status === "failed") {
+          setCallStatus("ended");
+        }
+      });
+
+      newSocket.on("transcript-update", (data) => {
+        const newEntry: TranscriptEntry = {
+          speaker: data.speaker,
+          text: data.text,
+          timestamp: new Date(data.timestamp),
+        };
+        setTranscript((prev) => [...prev, newEntry]);
+      });
+
+      setSocket(newSocket);
+
+      return () => {
+        newSocket.disconnect();
+      };
+    }
+  }, [isOpen, phoneNumber]);
+
+  const initiateCall = async () => {
+    try {
+      const response = await fetch("/api/twilio/call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phoneNumber,
+          customerId,
+          customerName,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to initiate call");
+      }
+
+      const data = await response.json();
+      setCallSid(data.callSid);
+      
+      // Add initial transcript entry
+      setTranscript([
+        {
+          speaker: "AI",
+          text: "電話をかけています...",
+          timestamp: new Date(),
+        },
+      ]);
+    } catch (error) {
+      console.error("Error initiating call:", error);
+      setCallStatus("ended");
+    }
+  };
+
+  const handleEndCall = async () => {
+    if (callSid) {
+      try {
+        await fetch("/api/twilio/call/end", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ callSid }),
+        });
+      } catch (error) {
+        console.error("Error ending call:", error);
+      }
+    }
+    setCallStatus("ended");
+    setTimeout(() => {
+      onClose();
+    }, 2000);
+  };
+
+  const handleTransferToOperator = async () => {
+    if (!callSid) return;
+    
+    setIsTransferring(true);
+    try {
+      const response = await fetch("/api/twilio/transfer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          callSid,
+          operatorNumber: process.env.NEXT_PUBLIC_OPERATOR_PHONE || "+818012345678"
+        }),
+      });
+
+      if (response.ok) {
+        setTranscript((prev) => [
+          ...prev,
+          {
+            speaker: "Operator",
+            text: "オペレーターに接続しました",
+            timestamp: new Date(),
+          },
+        ]);
+      }
+    } catch (error) {
+      console.error("Error transferring call:", error);
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
+  const getStatusColor = () => {
+    switch (callStatus) {
+      case "connecting":
+        return "bg-yellow-500";
+      case "connected":
+        return "bg-green-500";
+      case "ended":
+        return "bg-red-500";
+      default:
+        return "bg-gray-500";
+    }
+  };
+
+  const getStatusText = () => {
+    switch (callStatus) {
+      case "connecting":
+        return "接続中...";
+      case "connected":
+        return "通話中";
+      case "ended":
+        return "通話終了";
+      default:
+        return "不明";
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[80vh]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Phone className="h-5 w-5" />
+              {customerName} - {phoneNumber}
+            </div>
+            <Badge className={`${getStatusColor()} text-white`}>
+              {getStatusText()}
+            </Badge>
+          </DialogTitle>
+          <DialogDescription>
+            AIと顧客の会話内容をリアルタイムで表示しています
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Call Controls */}
+          <div className="flex gap-2 justify-center p-4 bg-gray-50 rounded-lg">
+            {callStatus === "connected" && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTransferToOperator}
+                  disabled={isTransferring}
+                >
+                  {isTransferring ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <UserPlus className="h-4 w-4 mr-2" />
+                  )}
+                  取次
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleEndCall}
+                >
+                  <PhoneOff className="h-4 w-4 mr-2" />
+                  通話終了
+                </Button>
+              </>
+            )}
+            {callStatus === "connecting" && (
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>接続中...</span>
+              </div>
+            )}
+            {callStatus === "ended" && (
+              <Button onClick={onClose}>
+                閉じる
+              </Button>
+            )}
+          </div>
+
+          {/* Transcript Area */}
+          <ScrollArea className="h-[400px] border rounded-lg p-4 bg-white">
+            <div className="space-y-3">
+              {transcript.length === 0 ? (
+                <div className="text-center text-gray-500 py-8">
+                  会話が開始されるまでお待ちください...
+                </div>
+              ) : (
+                transcript.map((entry, index) => (
+                  <div
+                    key={index}
+                    className={`flex ${
+                      entry.speaker === "AI" ? "justify-start" : "justify-end"
+                    }`}
+                  >
+                    <div
+                      className={`max-w-[70%] rounded-lg p-3 ${
+                        entry.speaker === "AI"
+                          ? "bg-blue-100 text-blue-900"
+                          : entry.speaker === "Customer"
+                          ? "bg-gray-100 text-gray-900"
+                          : "bg-green-100 text-green-900"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        {entry.speaker === "AI" && <Volume2 className="h-3 w-3" />}
+                        {entry.speaker === "Customer" && <Mic className="h-3 w-3" />}
+                        {entry.speaker === "Operator" && <UserPlus className="h-3 w-3" />}
+                        <span className="text-xs font-semibold">
+                          {entry.speaker === "AI" && "AI"}
+                          {entry.speaker === "Customer" && "顧客"}
+                          {entry.speaker === "Operator" && "オペレーター"}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {entry.timestamp.toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <p className="text-sm">{entry.text}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </ScrollArea>
+
+          {/* Call Info */}
+          <div className="flex justify-between text-sm text-gray-500 px-2">
+            <span>顧客ID: {customerId}</span>
+            {callSid && <span>通話ID: {callSid.slice(0, 8)}...</span>}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

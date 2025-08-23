@@ -14,6 +14,7 @@ interface TranscriptMessage {
   speaker: 'ai' | 'customer' | 'agent';
   message: string;
   confidence?: number;
+  isPlaying?: boolean; // 音声再生中フラグ
 }
 
 interface CallTranscriptProps {
@@ -39,7 +40,8 @@ export function CallTranscript({ callId, initialTranscript = [] }: CallTranscrip
             timestamp: data.timestamp || new Date().toISOString(),
             speaker: data.speaker,
             message: data.message,
-            confidence: data.confidence
+            confidence: data.confidence,
+            isPlaying: data.isPlaying
           }]);
         }
       });
@@ -104,7 +106,7 @@ export function CallTranscript({ callId, initialTranscript = [] }: CallTranscrip
     <Card className="h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle>会話トランスクリプト</CardTitle>
+          <CardTitle>会話内容</CardTitle>
           <div className="flex items-center gap-2">
             <Badge variant="outline">
               {transcript.length} メッセージ
@@ -122,8 +124,8 @@ export function CallTranscript({ callId, initialTranscript = [] }: CallTranscrip
         </div>
       </CardHeader>
       <CardContent className="flex-1 overflow-hidden">
-        <ScrollArea className="h-[500px] pr-4" ref={scrollAreaRef}>
-          <div className="space-y-4">
+        <ScrollArea className="h-[600px] pr-4" ref={scrollAreaRef}>
+          <div className="space-y-3">
             {transcript.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 会話が開始されるとここに表示されます
@@ -132,27 +134,66 @@ export function CallTranscript({ callId, initialTranscript = [] }: CallTranscrip
               transcript.map((item, index) => (
                 <div
                   key={index}
-                  className={`p-3 rounded-lg border ${getSpeakerColor(item.speaker)}`}
+                  className={`flex ${
+                    item.speaker === 'ai' || item.speaker === 'agent' 
+                      ? 'justify-start' 
+                      : 'justify-end'
+                  }`}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-1">
-                      {getSpeakerIcon(item.speaker)}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium text-sm">
-                          {getSpeakerLabel(item.speaker)}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {format(new Date(item.timestamp), 'HH:mm:ss', { locale: ja })}
-                        </span>
-                        {item.confidence && item.confidence < 0.8 && (
-                          <Badge variant="outline" className="text-xs">
-                            信頼度: {Math.round(item.confidence * 100)}%
-                          </Badge>
-                        )}
+                  <div className={`max-w-[70%] ${
+                    item.speaker === 'ai' || item.speaker === 'agent'
+                      ? 'mr-auto'
+                      : 'ml-auto'
+                  }`}>
+                    <div className={`flex items-start gap-2 ${
+                      item.speaker === 'customer' ? 'flex-row-reverse' : ''
+                    }`}>
+                      <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                        item.speaker === 'ai' ? 'bg-blue-100 text-blue-600' :
+                        item.speaker === 'agent' ? 'bg-green-100 text-green-600' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {getSpeakerIcon(item.speaker)}
                       </div>
-                      <p className="text-sm">{item.message}</p>
+                      <div className="flex-1">
+                        <div className={`flex items-center gap-2 mb-1 ${
+                          item.speaker === 'customer' ? 'justify-end' : ''
+                        }`}>
+                          <span className="font-medium text-xs text-muted-foreground">
+                            {getSpeakerLabel(item.speaker)}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {format(new Date(item.timestamp), 'HH:mm:ss', { locale: ja })}
+                          </span>
+                        </div>
+                        <div className={`rounded-lg px-4 py-2 ${
+                          item.speaker === 'ai' 
+                            ? 'bg-blue-50 text-blue-900 border border-blue-200' 
+                            : item.speaker === 'agent'
+                            ? 'bg-green-50 text-green-900 border border-green-200'
+                            : 'bg-gray-50 text-gray-900 border border-gray-200'
+                        }`}>
+                          {item.isPlaying && item.speaker === 'ai' ? (
+                            <div className="flex items-center gap-2 text-blue-600">
+                              <div className="flex space-x-1">
+                                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
+                              </div>
+                              <span className="italic text-sm">音声再生中...</span>
+                            </div>
+                          ) : (
+                            <p className="text-sm">{item.message}</p>
+                          )}
+                          {item.confidence && item.confidence < 0.8 && (
+                            <div className="mt-1">
+                              <Badge variant="outline" className="text-xs">
+                                信頼度: {Math.round(item.confidence * 100)}%
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

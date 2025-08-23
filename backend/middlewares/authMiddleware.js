@@ -22,7 +22,17 @@ exports.protect = asyncHandler(async (req, res, next) => {
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    req.user = await User.findById(decoded.id).select('-password');
+    const user = await User.findById(decoded.id).select('-password');
+    
+    if (!user) {
+      return next(new ErrorResponse('User not found', 404));
+    }
+    
+    // Ensure both _id and id are available
+    req.user = user;
+    if (!req.user.id) {
+      req.user.id = user._id.toString();
+    }
 
     next();
   } catch (err) {

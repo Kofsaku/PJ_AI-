@@ -1,40 +1,48 @@
 // app/api/twilio/voice/route.ts
 import { NextResponse } from "next/server"
-import twilio from "twilio"
-
-const VoiceResponse = twilio.twiml.VoiceResponse
 
 /**
- * Twilioが通話開始時にアクセスしてくるURL
- * → TWiML (XML) を返す
+ * This route is deprecated. Twilio voice handling should go through the backend.
+ * Redirecting to backend ngrok URL.
  */
 export async function GET() {
-  console.log('GET request received from Twilio')
-  return voiceResponse()
+  console.log('GET request received from Twilio - redirecting to backend')
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_NGROK_URL || 'https://21fe5a6abbaf.ngrok-free.app'
+  return NextResponse.redirect(`${backendUrl}/api/twilio/voice`, 302)
 }
 
 export async function POST(request: Request) {
-  console.log('POST request received from Twilio')
+  console.log('POST request received from Twilio - redirecting to backend')
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_NGROK_URL || 'https://21fe5a6abbaf.ngrok-free.app'
   
-  // Log request headers for debugging
-  const headers = Object.fromEntries(request.headers.entries())
-  console.log('Request headers:', headers)
-  
-  // Log request body
+  // Forward the request to backend
   try {
     const body = await request.text()
-    console.log('Request body:', body)
-    // Reset the request for further processing if needed
-    request = new Request(request.url, {
-      method: request.method,
-      headers: request.headers,
+    const response = await fetch(`${backendUrl}/api/twilio/voice`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
       body: body
     })
+    
+    const twiml = await response.text()
+    return new NextResponse(twiml, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/xml; charset=utf-8',
+      },
+    })
   } catch (error) {
-    console.error('Error reading request body:', error)
+    console.error('Error forwarding to backend:', error)
+    // Return empty TwiML on error
+    return new NextResponse('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/xml; charset=utf-8',
+      },
+    })
   }
-  
-  return voiceResponse()
 }
 
 // Handle OPTIONS request for CORS
@@ -47,62 +55,4 @@ export async function OPTIONS() {
       "Access-Control-Allow-Headers": "*"
     }
   })
-}
-
-// 実際の処理をまとめる
-function voiceResponse() {
-  try {
-    const response = new VoiceResponse()
-    
-    // 1. アプリが初めの挨拶をする
-    response.say({
-      voice: "Polly.Mizuki",
-      language: "ja-JP"
-    }, "お世話になります。わたくしＡＩコールシステムの安達といいますが、")
-
-    // 2. ユーザーの入力を待つ
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'
-    console.log('Base URL for gather action:', baseUrl)
-    console.log('Environment NEXT_PUBLIC_APP_URL:', process.env.NEXT_PUBLIC_APP_URL)
-    
-    const gather = response.gather({
-      input: ["speech"],
-      language: "ja-JP",
-      speechTimeout: "auto",
-      action: `${baseUrl}/api/twilio/voice/response?state=initial`,
-      method: "POST",
-      timeout: 30,  // タイムアウトを30秒に延長
-      finishOnKey: "#"  // #キーで入力を終了できるように設定
-    })
-    
-    // タイムアウト時のメッセージ
-    gather.say({
-      voice: "Polly.Mizuki",
-      language: "ja-JP"
-    }, "お返事をお待ちしております。")
-
-    const twiml = response.toString()
-    console.log("Generated TwiML:", twiml)
-
-    return new NextResponse(twiml, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/xml; charset=utf-8",
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "*"
-      },
-    })
-  } catch (error) {
-    console.error("Error generating TwiML:", error)
-    return new NextResponse("", {
-      status: 200,
-      headers: {
-        "Content-Type": "text/xml",
-      },
-    })
-  }
 }

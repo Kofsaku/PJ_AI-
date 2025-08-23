@@ -110,7 +110,7 @@ const AgentSettingsSchema = new mongoose.Schema({
 });
 
 // インデックスの追加
-AgentSettingsSchema.index({ userId: 1 });
+// userIdは既にスキーマレベルでunique: trueが設定されているため、追加のインデックスは不要
 AgentSettingsSchema.index({ isAvailable: 1, priority: -1 });
 
 // テンプレートの変数を置換するメソッド

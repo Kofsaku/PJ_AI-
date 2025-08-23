@@ -13,8 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { PhoneForwarded, Loader2 } from 'lucide-react';
-import { callAPI } from '@/lib/api';
-import { requestHandoff } from '@/lib/socket';
+// Removed unused imports
 import { toast } from 'sonner';
 
 interface HandoffButtonProps {
@@ -32,13 +31,28 @@ export function HandoffButton({ callId, disabled = false, onHandoffComplete }: H
     setIsHandingOff(true);
     
     try {
-      // API経由で引き継ぎリクエスト
-      await callAPI.handoffCall(callId, undefined, reason || 'Manual handoff requested');
+      const token = localStorage.getItem('token');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      const response = await fetch(`${apiUrl}/api/calls/${callId}/handoff`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || '取次に失敗しました');
+      }
+
+      const data = await response.json();
       
-      // WebSocket経由でも通知
-      requestHandoff(callId, reason);
+      toast.success('担当者に電話をかけています...', {
+        description: `電話番号: ${data.data.agentPhoneNumber}`,
+        duration: 5000
+      });
       
-      toast.success('引き継ぎを開始しました');
       setIsOpen(false);
       setReason('');
       
@@ -47,9 +61,20 @@ export function HandoffButton({ callId, disabled = false, onHandoffComplete }: H
       }
     } catch (error: any) {
       console.error('Handoff error:', error);
-      toast.error(
-        error.response?.data?.message || '引き継ぎに失敗しました'
-      );
+      
+      if (error.message && error.message.includes('phone number configured')) {
+        toast.error('電話番号が設定されていません', {
+          description: '設定画面から取次用の電話番号を登録してください',
+          action: {
+            label: '設定へ',
+            onClick: () => window.location.href = '/settings/handoff'
+          }
+        });
+      } else {
+        toast.error('取次に失敗しました', {
+          description: error.message
+        });
+      }
     } finally {
       setIsHandingOff(false);
     }
@@ -78,9 +103,9 @@ export function HandoffButton({ callId, disabled = false, onHandoffComplete }: H
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>通話を引き継ぎますか？</DialogTitle>
+          <DialogTitle>担当者に取り次ぎますか？</DialogTitle>
           <DialogDescription>
-            AIから人間の担当者に通話を転送します。必要に応じて引き継ぎ理由を入力してください。
+            AIから担当者の電話に通話を転送します。お客様は保留状態になり、担当者が応答後に接続されます。
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">

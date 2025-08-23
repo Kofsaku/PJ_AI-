@@ -188,17 +188,21 @@ exports.getAvailableAgents = asyncHandler(async (req, res, next) => {
   const agentsWithStatus = await Promise.all(
     availableAgents.map(async (settings) => {
       const status = await AgentStatus.findOne({ userId: settings.userId._id });
+      const user = settings.userId;
       return {
-        settings,
-        status: status || { status: 'offline' }
+        userId: user._id,
+        name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email,
+        email: user.email,
+        phoneNumber: settings.phoneNumber,
+        status: status?.status || 'offline',
+        totalCallsHandled: status?.totalCallsHandled || 0,
+        isAvailable: settings.isAvailable && status?.status !== 'offline' && status?.status !== 'on-call'
       };
     })
   );
 
   // 利用可能でオフラインでないエージェントのみフィルタリング
-  const activeAgents = agentsWithStatus.filter(
-    agent => agent.status.status !== 'offline' && agent.status.status !== 'on-call'
-  );
+  const activeAgents = agentsWithStatus.filter(agent => agent.isAvailable);
 
   res.status(200).json({
     success: true,

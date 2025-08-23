@@ -18,14 +18,42 @@ const agentRoutes = require('./routes/agentRoutes');
 const callRoutes = require('./routes/callRoutes');
 const twilioRoutes = require('./routes/twilioRoutes');
 const bulkCallRoutes = require('./routes/bulkCallRoutes');
+const conferenceRoutes = require('./routes/conferenceRoutes');
+const companyRoutes = require('./routes/companyRoutes');
+const audioRoutes = require('./routes/audioRoutes');
+const handoffRoutes = require('./routes/handoffRoutes');
+const companyAdminRoutes = require('./routes/companyAdminRoutes');
+const healthRoutes = require('./routes/healthRoutes');
 
 const app = express();
 
 // Body parser
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // For Twilio webhooks
 
-// Enable CORS
-app.use(cors());
+// Enable CORS with specific configuration
+app.use(cors({
+  origin: function(origin, callback) {
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001', 
+      'http://localhost:3002',
+      process.env.FRONTEND_URL
+    ].filter(Boolean);
+    
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, true); // 開発環境では全て許可
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Set security headers
 app.use(helmet());
@@ -37,30 +65,74 @@ if (process.env.NODE_ENV === 'development') {
 
 // Mount routers
 app.use('/api/auth', authRoutes);
+app.use('/api/companies', companyRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/agents', agentRoutes);
 // Mount bulk routes BEFORE general call routes to avoid auth middleware conflict
 app.use('/api/calls', bulkCallRoutes);
+app.use('/api/calls', conferenceRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/twilio', twilioRoutes);
+app.use('/api/audio', audioRoutes);
+app.use('/api', handoffRoutes);
+app.use('/api/company-admin', companyAdminRoutes);
+app.use('/', healthRoutes);
 
 // Error handler
 app.use(require('./middlewares/errorHandler'));
 
 const PORT = process.env.PORT || 5000;
 
-const server = app.listen(
-  PORT,
-  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`)
-);
+// Create server first
+const server = require('http').createServer(app);
 
 // Initialize WebSocket service
 const webSocketService = require('./services/websocket');
 webSocketService.initialize(server);
 
+// Start listening with error handling
+server.listen(PORT, () => {
+  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+});
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use.`);
+    console.log('Attempting to kill existing process and retry...');
+    
+    // Try to kill the process using the port and retry
+    const { exec } = require('child_process');
+    exec(`lsof -ti:${PORT} | xargs kill -9`, (error) => {
+      if (!error) {
+        console.log('Previous process killed. Retrying in 2 seconds...');
+        setTimeout(() => {
+          server.listen(PORT);
+        }, 2000);
+      } else {
+        console.error('Failed to kill existing process. Please manually stop the process using port', PORT);
+        process.exit(1);
+      }
+    });
+  } else {
+    console.error('Server error:', err);
+    process.exit(1);
+  }
+});
+
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err, promise) => {
-  console.log(`Error: ${err.message}`);
-  // Close server & exit process
+  console.error('Unhandled Promise Rejection:');
+  console.error(err);
+  console.error('Stack:', err.stack);
+  // Don't exit immediately to see the error
   server.close(() => process.exit(1));
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:');
+  console.error(err);
+  console.error('Stack:', err.stack);
+  // Exit after logging
+  process.exit(1);
 });

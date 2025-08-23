@@ -21,9 +21,9 @@ export default function CallMonitorPage() {
   });
 
   useEffect(() => {
-    // WebSocket接続を初期化 (開発環境では認証不要)
-    const token = localStorage.getItem('token') || '';
-    initializeSocket(token);
+    // WebSocket接続を初期化 (開発環境では認証オプショナル)
+    const token = localStorage.getItem('token');
+    initializeSocket(token || undefined);
     
     // 統計情報の購読
     const socket = getSocket();

@@ -1,0 +1,211 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
+
+interface PageProps {
+  params: {
+    id: string
+  }
+}
+
+export default function CompanyEdit({ params }: PageProps) {
+  const router = useRouter()
+  const [loading, setLoading] = useState(false)
+  const [fetching, setFetching] = useState(true)
+  const [formData, setFormData] = useState({
+    name: "",
+    address: "",
+    phone: "",
+    email: "",
+    url: "",
+    status: "active"
+  })
+
+  useEffect(() => {
+    const userData = localStorage.getItem('userData');
+    if (!userData) {
+      router.push('/admin/login');
+      return;
+    }
+    const user = JSON.parse(userData);
+    if (user.role !== 'admin') {
+      router.push('/admin/login');
+      return;
+    }
+    fetchCompany();
+  }, [router, params.id])
+
+  const fetchCompany = async () => {
+    try {
+      const response = await fetch(`/api/companies/${params.id}`);
+      const data = await response.json();
+      if (data.success) {
+        setFormData({
+          name: data.data.name || "",
+          address: data.data.address || "",
+          phone: data.data.phone || "",
+          email: data.data.email || "",
+          url: data.data.url || "",
+          status: data.data.status || "active"
+        });
+      } else {
+        toast.error('企業データの取得に失敗しました');
+        router.push('/admin/companies');
+      }
+    } catch (error) {
+      console.error('Error fetching company:', error);
+      toast.error('企業データの取得に失敗しました');
+      router.push('/admin/companies');
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!formData.name || !formData.address || !formData.phone) {
+      toast.error('必須項目を入力してください');
+      return;
+    }
+
+    setLoading(true);
+    
+    try {
+      const response = await fetch(`/api/companies/${params.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success('企業情報を更新しました');
+        router.push('/admin/companies');
+      } else {
+        toast.error(data.error || '更新に失敗しました');
+      }
+    } catch (error) {
+      console.error('Error updating company:', error);
+      toast.error('更新に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (fetching) {
+    return (
+      <div className="p-8">
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-8">
+      <h1 className="text-2xl font-bold mb-6">企業情報編集</h1>
+      
+      <div className="bg-white rounded-lg p-6 max-w-2xl">
+        <p className="mb-6 text-gray-600">企業情報を編集してください。</p>
+        
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <Label htmlFor="name">企業名 *</Label>
+            <Input
+              id="name"
+              placeholder="株式会社○○"
+              value={formData.name}
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
+              required
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="address">住所 *</Label>
+            <Input
+              id="address"
+              placeholder="東京都新宿区..."
+              value={formData.address}
+              onChange={(e) => setFormData({...formData, address: e.target.value})}
+              required
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="phone">電話番号 *</Label>
+            <Input
+              id="phone"
+              placeholder="03-1234-5678"
+              value={formData.phone}
+              onChange={(e) => setFormData({...formData, phone: e.target.value})}
+              required
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="email">メールアドレス</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="info@example.com"
+              value={formData.email}
+              onChange={(e) => setFormData({...formData, email: e.target.value})}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="url">ウェブサイトURL</Label>
+            <Input
+              id="url"
+              type="url"
+              placeholder="https://example.com"
+              value={formData.url}
+              onChange={(e) => setFormData({...formData, url: e.target.value})}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="status">ステータス</Label>
+            <select
+              id="status"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              value={formData.status}
+              onChange={(e) => setFormData({...formData, status: e.target.value})}
+            >
+              <option value="active">アクティブ</option>
+              <option value="inactive">非アクティブ</option>
+            </select>
+          </div>
+
+          <div className="pt-4 flex gap-4">
+            <Button 
+              type="button" 
+              variant="outline"
+              className="flex-1"
+              onClick={() => router.push('/admin/companies')}
+            >
+              キャンセル
+            </Button>
+            <Button 
+              type="submit" 
+              className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+              disabled={loading}
+            >
+              {loading ? "更新中..." : "企業情報を更新する"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}

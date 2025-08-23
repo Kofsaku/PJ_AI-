@@ -62,7 +62,11 @@ class WebSocketService {
 
     // 接続イベント
     this.io.on('connection', (socket) => {
-      console.log(`User ${socket.userId} connected`);
+      console.log('========== New Socket Connection ==========');
+      console.log(`[WebSocket] User ${socket.userId} connected`);
+      console.log(`[WebSocket] Socket ID: ${socket.id}`);
+      console.log('[WebSocket] 総接続ユーザー数:', this.connectedUsers.size + 1);
+      console.log('==========================================');
       this.handleConnection(socket);
 
       // イベントリスナーの設定
@@ -70,7 +74,11 @@ class WebSocketService {
 
       // 切断イベント
       socket.on('disconnect', () => {
-        console.log(`User ${socket.userId} disconnected`);
+        console.log('========== Socket disconnect ==========');
+        console.log(`[WebSocket] User ${socket.userId} disconnected`);
+        console.log(`[WebSocket] Socket ID: ${socket.id}`);
+        console.log('[WebSocket] 残りの接続ユーザー数:', this.connectedUsers.size - 1);
+        console.log('=======================================');
         this.handleDisconnection(socket);
       });
     });
@@ -100,6 +108,33 @@ class WebSocketService {
   }
 
   setupEventListeners(socket) {
+    console.log(`[WebSocket] Setting up event listeners for socket ${socket.id}`);
+    
+    // 通話ルームに参加（CallStatusModalから）
+    socket.on('join-call', (data) => {
+      console.log('========== join-call イベント受信 ==========');
+      console.log('[WebSocket] Socket ID:', socket.id);
+      console.log('[WebSocket] Data:', data);
+      const { phoneNumber } = data;
+      console.log('[WebSocket] 電話番号:', phoneNumber);
+      
+      if (phoneNumber) {
+        const roomName = `call-${phoneNumber}`;
+        socket.join(roomName);
+        console.log(`[WebSocket] Socket ${socket.id} が room '${roomName}' に参加しました`);
+        
+        // 参加確認メッセージを送信
+        socket.emit('joined-call-room', {
+          phoneNumber,
+          roomName,
+          socketId: socket.id
+        });
+      } else {
+        console.error('[WebSocket] ERROR: phoneNumber is missing');
+      }
+      console.log('===========================================');
+    });
+    
     // 通話モニタリング開始
     socket.on('monitor-call', async (callId) => {
       const call = await CallSession.findById(callId);
@@ -156,6 +191,12 @@ class WebSocketService {
   // エージェントのオンラインステータスを更新
   async updateAgentOnlineStatus(userId, isOnline) {
     try {
+      // 開発環境のdev-userはスキップ
+      if (typeof userId === 'string' && userId.startsWith('dev-user-')) {
+        console.log(`[WebSocket] Skipping agent status update for dev user: ${userId}`);
+        return;
+      }
+      
       let agentStatus = await AgentStatus.findOne({ userId });
       if (!agentStatus) {
         agentStatus = await AgentStatus.create({
@@ -255,9 +296,21 @@ class WebSocketService {
 
   // 通話イベントをブロードキャスト
   broadcastCallEvent(event, data) {
+    console.log('========== WebSocket broadcastCallEvent ==========');
+    console.log('[WebSocket] イベント:', event);
+    console.log('[WebSocket] データ:', JSON.stringify(data, null, 2));
+    
     if (this.io) {
+      const connectedSockets = this.io.sockets.sockets.size;
+      console.log('[WebSocket] 接続中のソケット数:', connectedSockets);
+      console.log('[WebSocket] 接続中のユーザー数:', this.connectedUsers.size);
+      
       this.io.emit(event, data);
+      console.log(`[WebSocket] イベント '${event}' を ${connectedSockets} クライアントに送信しました`);
+    } else {
+      console.error('[WebSocket] ERROR: io is not initialized');
     }
+    console.log('==================================================');
   }
 
   // 特定の通話ルームにイベントを送信
@@ -269,8 +322,23 @@ class WebSocketService {
 
   // トランスクリプト更新を送信
   sendTranscriptUpdate(callId, transcriptData) {
+    // 会話内容をログに出力
+    console.log('============================================');
+    console.log('[WebSocket会話ログ] トランスクリプト更新');
+    console.log(`[WebSocket会話ログ] CallId: ${callId}`);
+    console.log(`[WebSocket会話ログ] 話者: ${transcriptData.speaker}`);
+    console.log(`[WebSocket会話ログ] 内容: "${transcriptData.message}"`);
+    console.log(`[WebSocket会話ログ] 電話番号: ${transcriptData.phoneNumber || '不明'}`);
+    console.log(`[WebSocket会話ログ] タイムスタンプ: ${transcriptData.timestamp || new Date().toISOString()}`);
+    console.log('============================================');
+    
     if (this.io) {
-      this.io.to(`transcript-${callId}`).emit('transcript-update', transcriptData);
+      // callIdも含めて送信
+      const dataWithCallId = { ...transcriptData, callId };
+      // 全体に送信（フィルタリングはフロントエンドで行う）
+      this.io.emit('transcript-update', dataWithCallId);
+      // 特定のルームにも送信
+      this.io.to(`transcript-${callId}`).emit('transcript-update', dataWithCallId);
     }
   }
 

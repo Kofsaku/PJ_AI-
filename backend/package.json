@@ -4,7 +4,9 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
+    "dev": "npm run kill-port && nodemon server.js",
+    "dev:force": "npm run kill-port && nodemon server.js",
+    "kill-port": "lsof -ti:${PORT:-5001} | xargs kill -9 2>/dev/null || true",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

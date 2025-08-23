@@ -9,6 +9,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { callAPI } from '@/lib/api';
 import { getSocket, subscribeToCallEvents, unsubscribeFromCallEvents } from '@/lib/socket';
+import HandoffButton from '../calls/HandoffButton';
 
 interface ActiveCall {
   _id: string;
@@ -216,25 +217,29 @@ export function ActiveCallsList({ onSelectCall, selectedCallId }: ActiveCallsLis
 
                 <div className="flex flex-col gap-2">
                   {call.status === 'ai-responding' && (
-                    <Button
-                      size="sm"
-                      variant="default"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // 引き継ぎ処理
-                      }}
-                    >
-                      引き継ぐ
-                    </Button>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <HandoffButton
+                        callId={call._id}
+                        callStatus={call.status}
+                        customerName={call.customerId?.name}
+                        onHandoffSuccess={() => fetchActiveCalls()}
+                        onHandoffError={(error) => console.error('Handoff error:', error)}
+                      />
+                    </div>
                   )}
                   
                   {(call.status === 'human-connected' || call.status === 'transferring') && (
                     <Button
                       size="sm"
                       variant="destructive"
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.stopPropagation();
-                        // 通話終了処理
+                        try {
+                          await callAPI.endCall(call._id, { result: '完了' });
+                          fetchActiveCalls();
+                        } catch (error) {
+                          console.error('Failed to end call:', error);
+                        }
                       }}
                     >
                       終了

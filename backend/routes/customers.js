@@ -46,7 +46,7 @@ router.get('/:id', async (req, res) => {
 // Update a customer
 router.patch('/:id', async (req, res) => {
   const updates = Object.keys(req.body);
-  const allowedUpdates = ['customer', 'date', 'time', 'duration', 'result', 'notes', 'address', 'email', 'phone', 'company', 'position', 'zipCode'];
+  const allowedUpdates = ['customer', 'date', 'time', 'duration', 'result', 'callResult', 'notes', 'address', 'email', 'phone', 'company', 'position', 'zipCode'];
   const isValidOperation = updates.every(update => allowedUpdates.includes(update));
 
   if (!isValidOperation) {

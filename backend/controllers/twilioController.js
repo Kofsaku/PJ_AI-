@@ -291,17 +291,47 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
       // AI応答を生成
       let aiResponse;
       try {
+        console.log(`[Speech Input] Generating AI response for callId: ${callId}, intent: ${classification.intent}`);
         aiResponse = await conversationEngine.generateResponse(callId, classification.intent);
+        
         if (!aiResponse) {
           console.error(`[Speech Input] WARNING: Empty AI response for callId: ${callId}, intent: ${classification.intent}`);
-          aiResponse = '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？';
+          // デフォルトの応答を生成
+          if (isFirst) {
+            // 最初の応答の場合は必ず挨拶を返す
+            const callSession = await CallSession.findById(callId);
+            if (callSession && callSession.aiConfiguration) {
+              const { companyName, serviceName, representativeName, targetDepartment } = callSession.aiConfiguration;
+              aiResponse = `お世話になります。${companyName}の${representativeName}と申します。${serviceName}のご案内でお電話しました。本日、${targetDepartment}のご担当者さまはいらっしゃいますでしょうか？`;
+            } else {
+              aiResponse = 'お世話になります。本日はサービスのご案内でお電話させていただきました。ご担当者様はいらっしゃいますでしょうか？';
+            }
+          } else {
+            aiResponse = '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？';
+          }
         }
       } catch (aiError) {
         console.error(`[Speech Input] ERROR generating AI response:`, aiError);
-        aiResponse = '申し訳ございません。システムエラーが発生しました。';
-        // エラーの場合はハンドオフを検討
-        classification.shouldHandoff = true;
-        classification.nextAction = 'handoff';
+        console.error(`[Speech Input] Error stack:`, aiError.stack);
+        console.error(`[Speech Input] Error details:`, {
+          callId,
+          intent: classification.intent,
+          isFirst,
+          speechResult: SpeechResult
+        });
+        
+        // エラーでも最初の応答は必ず返す
+        if (isFirst) {
+          const callSession = await CallSession.findById(callId);
+          if (callSession && callSession.aiConfiguration) {
+            const { companyName, serviceName, representativeName, targetDepartment } = callSession.aiConfiguration;
+            aiResponse = `お世話になります。${companyName}の${representativeName}と申します。${serviceName}のご案内でお電話しました。本日、${targetDepartment}のご担当者さまはいらっしゃいますでしょうか？`;
+          } else {
+            aiResponse = 'お世話になります。本日はサービスのご案内でお電話させていただきました。ご担当者様はいらっしゃいますでしょうか？';
+          }
+        } else {
+          aiResponse = 'お聞き取りできませんでした。もう一度お願いできますでしょうか？';
+        }
       }
       console.log('============================================');
       console.log('[会話ログ] AIの応答');
@@ -479,6 +509,23 @@ exports.handleConferenceEvents = asyncHandler(async (req, res) => {
         callId,
         status: 'human-connected'
       });
+      
+      // 取次完了をトランスクリプトに通知
+      webSocketService.sendTranscriptUpdate(callId, {
+        speaker: 'system',
+        message: '担当者が接続しました。',
+        timestamp: new Date()
+      });
+    }
+    
+    // Conferenceの終了時
+    if (StatusCallbackEvent === 'end') {
+      // 通話終了をトランスクリプトに通知
+      webSocketService.sendTranscriptUpdate(callId, {
+        speaker: 'system',
+        message: '通話が終了しました。',
+        timestamp: new Date()
+      });
     }
 
     res.status(200).send('OK');
@@ -575,29 +622,94 @@ exports.agentJoinCall = asyncHandler(async (req, res) => {
   const twiml = new VoiceResponse();
 
   try {
-    const callSession = await CallSession.findById(callId);
+    console.log(`[AgentJoin] Agent joining call for callId: ${callId}`);
+    
+    const callSession = await CallSession.findById(callId).populate('customerId');
     if (!callSession) {
-      await coefontService.getTwilioPlayElement(twiml, 'システムエラーが発生しました。');
+      console.error(`[AgentJoin] CallSession not found for ${callId}`);
+      twiml.say('システムエラーが発生しました。', { voice: 'Polly.Mizuki', language: 'ja-JP' });
       twiml.hangup();
       return res.type('text/xml').send(twiml.toString());
     }
 
-    // 担当者に接続メッセージ
-    await coefontService.getTwilioPlayElement(twiml, 'お客様におつなぎします。');
-    
-    // 顧客と担当者を直接接続（3者通話）
-    const dial = twiml.dial({
-      callerId: process.env.TWILIO_PHONE_NUMBER,
-      timeout: 30
+    console.log(`[AgentJoin] CallSession found:`, {
+      id: callSession._id,
+      status: callSession.status,
+      twilioCallSid: callSession.twilioCallSid,
+      customerPhone: callSession.customerId?.phone
     });
-    
-    // 顧客の番号に発信
-    dial.number(callSession.customerId.phone);
 
+    // 担当者に接続メッセージ
+    twiml.say('お客様におつなぎします。', { voice: 'Polly.Mizuki', language: 'ja-JP' });
+    
+    // 顧客の電話にブリッジ接続（シンプルな方法）
+    if (callSession.twilioCallSid) {
+      console.log(`[AgentJoin] Bridging to customer call ${callSession.twilioCallSid}`);
+      
+      // ブリッジ通話を作成
+      const dial = twiml.dial({
+        callerId: process.env.TWILIO_PHONE_NUMBER,
+        timeout: 30
+      });
+      
+      // 顧客のCallSidに直接接続
+      dial.call(callSession.twilioCallSid);
+      
+      // CallSessionのステータスを更新
+      await CallSession.findByIdAndUpdate(callId, {
+        status: 'human-connected',
+        'handoffDetails.connectedAt': new Date()
+      });
+
+      // WebSocketで通知
+      webSocketService.broadcastCallEvent('handoff-connected', {
+        callId,
+        timestamp: new Date()
+      });
+    } else {
+      console.error(`[AgentJoin] No valid Twilio CallSid for customer`);
+      twiml.say('お客様との接続に失敗しました。', { voice: 'Polly.Mizuki', language: 'ja-JP' });
+      twiml.hangup();
+    }
+
+    console.log(`[AgentJoin] TwiML response sent for agent`);
     res.type('text/xml').send(twiml.toString());
   } catch (error) {
-    console.error('Error in agentJoinCall:', error);
-    await coefontService.getTwilioPlayElement(twiml, 'システムエラーが発生しました。');
+    console.error('[AgentJoin] Error:', error);
+    twiml.say('システムエラーが発生しました。', { voice: 'Polly.Mizuki', language: 'ja-JP' });
+    twiml.hangup();
+    res.type('text/xml').send(twiml.toString());
+  }
+});
+
+// @desc    Customer joins conference for handoff
+// @route   POST /api/twilio/voice/customer-join-conference/:callId
+// @access  Public (Twilio webhook)
+exports.customerJoinConference = asyncHandler(async (req, res) => {
+  const { callId } = req.params;
+  const twiml = new VoiceResponse();
+
+  try {
+    console.log(`[CustomerJoin] Customer joining conference for callId: ${callId}`);
+    
+    const conferenceName = `handoff-${callId}`;
+    
+    // 顧客をConferenceに参加させる
+    const dial = twiml.dial();
+    dial.conference({
+      startConferenceOnEnter: false,  // 顧客が参加しても会議を開始しない（担当者を待つ）
+      endConferenceOnExit: false,  // 顧客が退出しても会議を終了しない
+      beep: false,  // ビープ音なし
+      statusCallback: `${process.env.BASE_URL}/api/twilio/conference/customer-status/${callId}`,
+      statusCallbackEvent: 'join leave',
+      statusCallbackMethod: 'POST'
+    }, conferenceName);
+
+    console.log(`[CustomerJoin] TwiML response sent for customer`);
+    res.type('text/xml').send(twiml.toString());
+  } catch (error) {
+    console.error('[CustomerJoin] Error:', error);
+    twiml.say('システムエラーが発生しました。', { voice: 'Polly.Mizuki', language: 'ja-JP' });
     twiml.hangup();
     res.type('text/xml').send(twiml.toString());
   }

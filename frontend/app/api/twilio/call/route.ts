@@ -42,7 +42,7 @@ export async function POST() {
 
     const to = "+818070239355";
     const from = process.env.TWILIO_PHONE_NUMBER;
-    const baseUrl = process.env.NGROK_URL || "http://localhost:3000";
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app";
     const url = `${baseUrl}/api/twilio/voice`;
     const statusCallback = `${baseUrl}/api/twilio/status`;
 

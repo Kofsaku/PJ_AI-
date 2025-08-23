@@ -37,7 +37,7 @@ const AgentStatusSchema = new mongoose.Schema({
 });
 
 // インデックスの追加
-AgentStatusSchema.index({ userId: 1 });
+// userIdは既にスキーマレベルでunique: trueが設定されているため、追加のインデックスは不要
 AgentStatusSchema.index({ status: 1 });
 
 // ステータス更新メソッド

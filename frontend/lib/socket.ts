@@ -2,21 +2,23 @@ import { io, Socket } from 'socket.io-client';
 
 let socket: Socket | null = null;
 
-export const initializeSocket = (token: string): Socket => {
+export const initializeSocket = (token?: string): Socket => {
   if (socket) {
     return socket;
   }
 
-  const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5000';
+  const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:5001';
+
+  // 開発環境では認証をオプショナルに
+  const authConfig = token ? { auth: { token } } : {};
 
   socket = io(SOCKET_URL, {
-    auth: {
-      token
-    },
+    ...authConfig,
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
-    reconnectionAttempts: 5
+    reconnectionAttempts: 5,
+    transports: ['websocket', 'polling'] // 明示的にトランスポートを指定
   });
 
   socket.on('connect', () => {
@@ -27,8 +29,15 @@ export const initializeSocket = (token: string): Socket => {
     console.log('Disconnected from WebSocket server');
   });
 
-  socket.on('connect_error', (error) => {
-    console.error('Connection error:', error.message);
+  socket.on('connect_error', (error: any) => {
+    console.error('Connection error:', error.message || error);
+    
+    // Retry with development mode authentication if initial connection fails
+    if (error.type === 'TransportError' || error.message?.includes('xhr poll error')) {
+      console.log('Retrying connection without authentication...');
+      socket.auth = {};
+      socket.connect();
+    }
   });
 
   return socket;

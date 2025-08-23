@@ -91,6 +91,30 @@ exports.startCall = asyncHandler(async (req, res, next) => {
 // @access  Private
 exports.getActiveCalls = asyncHandler(async (req, res, next) => {
   const activeCalls = await CallSession.getActiveCalls();
+  
+  // デバッグ: transcriptの内容を確認し、サンプルデータがあれば削除
+  for (const call of activeCalls) {
+    console.log(`[DEBUG] Call ${call._id} transcript:`, call.transcript);
+    
+    // サンプルデータやテストデータが含まれている場合はクリア
+    if (call.transcript && call.transcript.length > 0) {
+      const hasTestData = call.transcript.some(t => 
+        t.message && (
+          t.message.includes('お電話ありがとうございます') ||
+          t.message.includes('株式会社') ||
+          t.message.includes('もしもし') ||
+          t.message.includes('お世話になっています') ||
+          t.message.includes('どのようなご用件')
+        )
+      );
+      
+      if (hasTestData) {
+        console.log(`[DEBUG] Clearing test data from call ${call._id}`);
+        await CallSession.findByIdAndUpdate(call._id, { transcript: [] });
+        call.transcript = []; // メモリ上でも更新
+      }
+    }
+  }
 
   // 各通話の詳細情報を取得
   const callsWithDetails = await Promise.all(

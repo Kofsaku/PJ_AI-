@@ -2,6 +2,11 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const UserSchema = new mongoose.Schema({
+  companyId: {
+    type: String,
+    required: [true, 'Please provide company ID'],
+    trim: true,
+  },
   companyName: {
     type: String,
     required: [true, 'Please provide company name'],
@@ -58,10 +63,48 @@ const UserSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
+  handoffPhoneNumber: {
+    type: String,
+    trim: true,
+    validate: {
+      validator: function(v) {
+        if (!v) return true;
+        // 日本の電話番号形式（0から始まる10桁または11桁）
+        return /^0\d{9,10}$/.test(v.replace(/-/g, ''));
+      },
+      message: '有効な日本の電話番号を入力してください（例: 09012345678）',
+    },
+  },
+  // Twilio専用電話番号設定
+  twilioPhoneNumber: {
+    type: String,
+    trim: true,
+    validate: {
+      validator: function(v) {
+        if (!v) return true;
+        // Twilio番号形式（+1から始まる米国番号）
+        return /^\+1\d{10}$/.test(v);
+      },
+      message: '有効なTwilio電話番号を入力してください（例: +16076956082）',
+    },
+  },
+  twilioPhoneNumberSid: {
+    type: String,
+    trim: true,
+  },
+  twilioPhoneNumberStatus: {
+    type: String,
+    enum: ['active', 'inactive', 'pending'],
+    default: 'pending',
+  },
   role: {
     type: String,
     default: 'user',
     enum: ['admin', 'user'],
+  },
+  isCompanyAdmin: {
+    type: Boolean,
+    default: false,
   },
   createdAt: {
     type: Date,
@@ -83,6 +126,31 @@ UserSchema.pre('save', async function (next) {
 // Method to compare passwords
 UserSchema.methods.comparePassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// Method to get formatted phone number for Twilio
+UserSchema.methods.getTwilioPhoneNumber = function() {
+  if (!this.handoffPhoneNumber) return null;
+  
+  // Remove hyphens and spaces
+  let cleaned = this.handoffPhoneNumber.replace(/[-\s]/g, '');
+  
+  // Convert to international format for Japan
+  if (cleaned.startsWith('0')) {
+    cleaned = '+81' + cleaned.substring(1);
+  }
+  
+  return cleaned;
+};
+
+// Method to get user's dedicated Twilio phone number for outbound calls
+UserSchema.methods.getDedicatedTwilioNumber = function() {
+  return this.twilioPhoneNumber;
+};
+
+// Method to check if user has an active Twilio number
+UserSchema.methods.hasActiveTwilioNumber = function() {
+  return this.twilioPhoneNumber && this.twilioPhoneNumberStatus === 'active';
 };
 
 module.exports = mongoose.model('User', UserSchema);

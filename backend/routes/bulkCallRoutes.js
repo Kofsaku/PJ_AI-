@@ -15,4 +15,7 @@ router.get('/bulk/status', bulkCallController.getBulkCallStatus);
 // Cancel bulk calls
 router.post('/bulk/cancel', bulkCallController.cancelBulkCalls);
 
+// Clean up old sessions
+router.post('/bulk/cleanup', bulkCallController.cleanupOldSessions);
+
 module.exports = router;

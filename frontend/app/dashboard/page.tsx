@@ -26,6 +26,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
+import { CallModal } from "@/components/calls/CallModal";
+import { CallStatusModal } from "@/components/calls/CallStatusModal";
 
 // Define customer type
 type Customer = {
@@ -53,6 +55,7 @@ const statusColors = {
   成功: "bg-green-500",
   要フォロー: "bg-purple-500",
   拒否: "bg-red-500",
+  通話中: "bg-blue-500",
 };
 
 export default function DashboardPage() {
@@ -70,6 +73,16 @@ export default function DashboardPage() {
   const [callProgress, setCallProgress] = useState(0);
   const [callResults, setCallResults] = useState<any[]>([]);
   const [isCalling, setIsCalling] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
+  const [activeCallModal, setActiveCallModal] = useState<{
+    isOpen: boolean;
+    customerName: string;
+    phoneNumber: string;
+    customerId: string;
+  }>({ isOpen: false, customerName: "", phoneNumber: "", customerId: "" });
+  const [isCallStatusModalOpen, setIsCallStatusModalOpen] = useState(false);
+  const [activePhoneNumber, setActivePhoneNumber] = useState("");
+  const [callingSessions, setCallingSessions] = useState<Set<string>>(new Set()); // 通話中の顧客ID
   const { toast } = useToast();
 
   // Fetch customers from API
@@ -266,6 +279,44 @@ export default function DashboardPage() {
     setSelectAll(newSelected.size === filteredCustomers.length && filteredCustomers.length > 0);
   };
 
+  // Handle status change
+  const handleStatusChange = async (customerId: string, newStatus: string) => {
+    setIsUpdatingStatus(customerId);
+    try {
+      const response = await fetch(`/api/customers/${customerId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update status');
+
+      // Update local state
+      setCustomers(prevCustomers => 
+        prevCustomers.map(c => 
+          (c._id || c.id.toString()) === customerId 
+            ? { ...c, result: newStatus, callResult: newStatus }
+            : c
+        )
+      );
+
+      toast({
+        title: "ステータス更新",
+        description: "ステータスが正常に更新されました",
+      });
+    } catch (error) {
+      toast({
+        title: "エラー",
+        description: "ステータスの更新に失敗しました",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingStatus(null);
+    }
+  };
+
   // Handle bulk call
   const handleBulkCall = async () => {
     const selectedCustomerData = customers.filter(c => 
@@ -288,13 +339,22 @@ export default function DashboardPage() {
       return;
     }
 
-    // Open progress dialog
-    setIsCallDialogOpen(true);
+    // Don't open the progress dialog, go directly to call status modal
     setIsCalling(true);
     setCallProgress(0);
     setCallResults([]);
 
     try {
+      // 選択された顧客を通話中状態に設定
+      setCallingSessions(new Set(customerIds));
+      
+      // Immediately open the call status modal
+      if (phoneNumbers.length > 0) {
+        console.log("[Dashboard] 一斉コール開始, 電話番号:", phoneNumbers[0]);
+        setActivePhoneNumber(phoneNumbers[0]);
+        setIsCallStatusModalOpen(true);
+      }
+
       const response = await fetch('/api/calls/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -316,19 +376,22 @@ export default function DashboardPage() {
       setIsCalling(false);
       
       toast({
-        title: "一斉コール完了",
-        description: `成功: ${result.successful}件, 失敗: ${result.failed}件`,
+        title: "一斉コール開始",
+        description: `${phoneNumbers.length}件の電話を開始しました`,
       });
       
       // Clear selection after starting calls
       setSelectedCustomers(new Set());
       setSelectAll(false);
       
-      // Redirect to call monitor page
-      router.push('/call-monitor');
+      // 通話終了後に通話中状態をクリア
+      setTimeout(() => {
+        setCallingSessions(new Set());
+      }, 5000); // 5秒後にクリア（実際は通話終了イベントで管理）
       
     } catch (error) {
       setIsCalling(false);
+      setCallingSessions(new Set()); // エラー時も通話中状態をクリア
       toast({
         title: "エラー",
         description: "一斉コールの開始に失敗しました",
@@ -584,15 +647,51 @@ export default function DashboardPage() {
                       <td className="p-3">{customer.phone || `電話番号${index + 1}`}</td>
                       <td className="p-3">{customer.date || '2025/03/01'}</td>
                       <td className="p-3">
-                        <Badge
-                          className={`${
-                            statusColors[
-                              customer.result as keyof typeof statusColors
-                            ] || "bg-gray-500"
-                          } text-white`}
-                        >
-                          {customer.result || customer.callResult || "不在"}
-                        </Badge>
+                        {callingSessions.has(customerId) ? (
+                          <Badge
+                            className="bg-blue-500 text-white cursor-pointer hover:bg-blue-600 transition-colors"
+                            onClick={() => {
+                              console.log("[Dashboard] 通話中バッジクリック, 電話番号:", customer.phone);
+                              setActivePhoneNumber(customer.phone || "");
+                              setIsCallStatusModalOpen(true);
+                            }}
+                          >
+                            通話中
+                          </Badge>
+                        ) : (
+                          <Select
+                            value={customer.result || customer.callResult || "不在"}
+                            onValueChange={(value) => handleStatusChange(customerId, value)}
+                          >
+                            <SelectTrigger className="w-32 h-8">
+                              <SelectValue>
+                                <Badge
+                                  className={`${
+                                    statusColors[
+                                      (customer.result || customer.callResult || "不在") as keyof typeof statusColors
+                                    ] || "bg-gray-500"
+                                  } text-white`}
+                                >
+                                  {customer.result || customer.callResult || "不在"}
+                                </Badge>
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="不在">
+                                <Badge className="bg-yellow-500 text-white">不在</Badge>
+                              </SelectItem>
+                              <SelectItem value="成功">
+                                <Badge className="bg-green-500 text-white">成功</Badge>
+                              </SelectItem>
+                              <SelectItem value="要フォロー">
+                                <Badge className="bg-purple-500 text-white">要フォロー</Badge>
+                              </SelectItem>
+                              <SelectItem value="拒否">
+                                <Badge className="bg-red-500 text-white">拒否</Badge>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
                       </td>
                     </tr>
                   );
@@ -619,63 +718,25 @@ export default function DashboardPage() {
         </div>
       </main>
 
-      {/* Call Progress Dialog */}
-      <Dialog open={isCallDialogOpen} onOpenChange={setIsCallDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>一斉コール実行中</DialogTitle>
-            <DialogDescription>
-              選択された顧客に順番に電話をかけています...
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            {isCalling && (
-              <div className="flex items-center space-x-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>通話を開始しています...</span>
-              </div>
-            )}
-            
-            {callResults.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">コール結果:</p>
-                <div className="max-h-60 overflow-y-auto space-y-1">
-                  {callResults.map((result, index) => (
-                    <div key={index} className="flex items-center justify-between text-sm">
-                      <span className="truncate">{result.phoneNumber}</span>
-                      <Badge 
-                        className={result.success ? "bg-green-500" : "bg-red-500"}
-                      >
-                        {result.success ? "成功" : "失敗"}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            
-            {!isCalling && callResults.length > 0 && (
-              <div className="flex justify-end space-x-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsCallDialogOpen(false)}
-                >
-                  閉じる
-                </Button>
-                <Button
-                  onClick={() => {
-                    setIsCallDialogOpen(false);
-                    router.push('/call-monitor');
-                  }}
-                >
-                  コール状況を確認
-                </Button>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Call Modal */}
+      <CallModal
+        isOpen={activeCallModal.isOpen}
+        onClose={() => setActiveCallModal({ ...activeCallModal, isOpen: false })}
+        customerName={activeCallModal.customerName}
+        phoneNumber={activeCallModal.phoneNumber}
+        customerId={activeCallModal.customerId}
+      />
+
+      {/* Call Status Modal */}
+      <CallStatusModal
+        isOpen={isCallStatusModalOpen}
+        onClose={() => {
+          setIsCallStatusModalOpen(false);
+          // モーダルを閉じたときに通話中状態をクリア
+          setCallingSessions(new Set());
+        }}
+        phoneNumber={activePhoneNumber}
+      />
     </div>
   );
 }

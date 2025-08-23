@@ -43,6 +43,7 @@ export function Sidebar() {
 
 const navigation = [
   { name: "企業一覧", href: "/admin/companies" },
+  { name: "ユーザー管理", href: "/admin/users" },
   { name: "企業管理", href: "/admin/company-management", children: [
     { name: "新規登録", href: "/admin/company-management/register" },
     { name: "テキスト", href: "/admin/company-management/text1" },
@@ -87,13 +88,22 @@ const navigation = [
 
           {isManagementOpen && (
             <div className="bg-blue-700">
-              <Link href="/management">
+              <Link href="/user-info">
                 <div
                   className={`px-8 py-2 hover:bg-blue-800 cursor-pointer text-sm ${
-                    isActive("/management") ? "bg-blue-800" : ""
+                    isActive("/user-info") ? "bg-blue-800" : ""
                   }`}
                 >
-                  システム管理
+                  ユーザー情報
+                </div>
+              </Link>
+              <Link href="/company-info">
+                <div
+                  className={`px-8 py-2 hover:bg-blue-800 cursor-pointer text-sm ${
+                    isActive("/company-info") ? "bg-blue-800" : ""
+                  }`}
+                >
+                  会社情報
                 </div>
               </Link>
               <Link href="/import">

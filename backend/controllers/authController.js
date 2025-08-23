@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Company = require('../models/Company');
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('../middlewares/asyncHandler');
 
@@ -7,6 +8,7 @@ const asyncHandler = require('../middlewares/asyncHandler');
 // @access  Public
 exports.register = asyncHandler(async (req, res, next) => {
   const {
+    companyId,
     companyName,
     email,
     password,
@@ -19,6 +21,15 @@ exports.register = asyncHandler(async (req, res, next) => {
     description,
   } = req.body;
 
+  // Validate company ID
+  const company = await Company.findOne({ companyId: companyId, status: 'active' });
+  if (!company) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid company ID',
+    });
+  }
+
   // Check if user already exists
   const existingUser = await User.findOne({ email });
   if (existingUser) {
@@ -30,7 +41,8 @@ exports.register = asyncHandler(async (req, res, next) => {
 
   // Create user
   const user = await User.create({
-    companyName,
+    companyId,
+    companyName: company.name,
     email,
     password,
     firstName,
@@ -52,6 +64,7 @@ exports.register = asyncHandler(async (req, res, next) => {
     token,
     data: {
       id: user._id,
+      companyId: user.companyId,
       companyName: user.companyName,
       email: user.email,
       firstName: user.firstName,
@@ -105,6 +118,7 @@ exports.login = asyncHandler(async (req, res, next) => {
     token,
     data: {
       id: user._id,
+      companyId: user.companyId,
       companyName: user.companyName,
       email: user.email,
       firstName: user.firstName,
@@ -120,6 +134,46 @@ exports.login = asyncHandler(async (req, res, next) => {
 // @access  Private
 exports.getMe = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.user.id).select('-password');
+
+  res.status(200).json({
+    success: true,
+    data: user,
+  });
+});
+
+// @desc    Update user profile
+// @route   PUT /api/users/profile
+// @access  Private
+exports.updateProfile = asyncHandler(async (req, res, next) => {
+  const { username, name, email, phone, handoffPhoneNumber } = req.body;
+  const userId = req.user.id;
+
+  const updateData = {};
+  
+  if (username !== undefined) updateData.username = username;
+  if (name !== undefined) {
+    updateData.firstName = name.split(' ')[0] || name;
+    updateData.lastName = name.split(' ').slice(1).join(' ') || '';
+  }
+  if (email !== undefined) updateData.email = email;
+  if (phone !== undefined) updateData.phone = phone;
+  if (handoffPhoneNumber !== undefined) {
+    // 電話番号のバリデーション
+    const cleanedNumber = handoffPhoneNumber.replace(/[-\s]/g, '');
+    if (cleanedNumber && !/^0\d{9,10}$/.test(cleanedNumber)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid Japanese phone number format',
+      });
+    }
+    updateData.handoffPhoneNumber = cleanedNumber;
+  }
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    updateData,
+    { new: true, runValidators: true }
+  ).select('-password');
 
   res.status(200).json({
     success: true,

@@ -52,6 +52,39 @@ const CallSessionSchema = new mongoose.Schema({
   }],
   handoffTime: Date,
   handoffReason: String,
+  handoffDetails: {
+    requestedBy: { 
+      type: mongoose.Schema.Types.ObjectId, 
+      ref: 'User' 
+    },
+    requestedAt: Date,
+    connectedAt: Date,
+    disconnectedAt: Date,
+    handoffPhoneNumber: String,
+    handoffCallSid: String,
+    handoffMethod: {
+      type: String,
+      enum: ['manual', 'auto', 'ai-triggered'],
+      default: 'manual'
+    }
+  },
+  participants: [{
+    type: {
+      type: String,
+      enum: ['customer', 'ai', 'agent']
+    },
+    callSid: String,
+    phoneNumber: String,
+    joinedAt: Date,
+    leftAt: Date,
+    isMuted: Boolean,
+    isOnHold: Boolean
+  }],
+  recordingSettings: {
+    enabled: { type: Boolean, default: true },
+    retentionDays: { type: Number, default: 7 },
+    deleteAfter: Date
+  },
   callResult: {
     type: String,
     enum: ['成功', '不在', '拒否', '要フォロー', '失敗']
@@ -73,7 +106,7 @@ const CallSessionSchema = new mongoose.Schema({
 CallSessionSchema.index({ customerId: 1, createdAt: -1 });
 CallSessionSchema.index({ assignedAgent: 1, createdAt: -1 });
 CallSessionSchema.index({ status: 1 });
-CallSessionSchema.index({ twilioCallSid: 1 });
+// twilioCallSidは既にスキーマレベルでunique: trueが設定されているため、追加のインデックスは不要
 
 // 通話時間を計算するメソッド
 CallSessionSchema.methods.calculateDuration = function() {
@@ -82,6 +115,16 @@ CallSessionSchema.methods.calculateDuration = function() {
   }
   return this.duration;
 };
+
+// 録音の自動削除日を設定
+CallSessionSchema.pre('save', function(next) {
+  if (this.isNew && this.recordingSettings.enabled) {
+    const deleteDate = new Date();
+    deleteDate.setDate(deleteDate.getDate() + this.recordingSettings.retentionDays);
+    this.recordingSettings.deleteAfter = deleteDate;
+  }
+  next();
+});
 
 // アクティブな通話を取得するスタティックメソッド
 CallSessionSchema.statics.getActiveCalls = function() {

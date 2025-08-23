@@ -30,6 +30,7 @@ async function manageAdminUser() {
 
     // Create new admin by directly inserting into collection to bypass validation
     await User.create({
+      companyId: 'ADMIN001',  // Add companyId
       username: 'admin',
       email: adminEmail,
       password: adminPassword,
