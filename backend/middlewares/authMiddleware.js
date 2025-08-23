@@ -14,6 +14,23 @@ exports.protect = asyncHandler(async (req, res, next) => {
     token = req.headers.authorization.split(' ')[1];
   }
 
+  // Development mode: Allow dev tokens
+  if (!token && process.env.NODE_ENV === 'development') {
+    // Check for dev user token
+    if (req.headers.authorization && req.headers.authorization.includes('dev-user-')) {
+      // Create a mock user for development
+      req.user = {
+        id: 'dev-user-id',
+        _id: 'dev-user-id',
+        email: 'dev@example.com',
+        firstName: 'Dev',
+        lastName: 'User',
+        role: 'user'
+      };
+      return next();
+    }
+  }
+
   if (!token) {
     return next(new ErrorResponse('Not authorized to access this route', 401));
   }

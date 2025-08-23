@@ -38,10 +38,19 @@ exports.initiateHandoff = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse('Handoff already in progress or completed', 400));
   }
 
-  // ユーザー情報を取得
-  const user = await User.findById(userId);
-  if (!user.handoffPhoneNumber) {
-    return next(new ErrorResponse('User does not have handoff phone number configured', 400));
+  // ユーザー情報を取得（開発環境のモックユーザーをスキップ）
+  let user = null;
+  // モックユーザーIDの場合はデータベース検索をスキップ
+  if (userId === 'dev-user-id' || userId === 'direct-user-id' || userId === 'test-user-id') {
+    user = {
+      _id: userId,
+      handoffPhoneNumber: '08070239355' // 固定の取次先番号
+    };
+  } else {
+    user = await User.findById(userId);
+    if (!user || !user.handoffPhoneNumber) {
+      return next(new ErrorResponse('User does not have handoff phone number configured', 400));
+    }
   }
 
   try {
@@ -51,13 +60,20 @@ exports.initiateHandoff = asyncHandler(async (req, res, next) => {
     console.log(`[Handoff] Using fixed handoff number: ${agentPhoneNumber}`);
 
     // 通話セッションを更新（取次開始）
-    await CallSession.findByIdAndUpdate(callId, {
+    // モックユーザーの場合はrequestByをnullにする
+    const updateData = {
       status: 'transferring',
-      'handoffDetails.requestedBy': userId,
       'handoffDetails.requestedAt': new Date(),
       'handoffDetails.handoffPhoneNumber': agentPhoneNumber,
       'handoffDetails.handoffMethod': 'manual'
-    });
+    };
+    
+    // モックユーザーでない場合のみrequestByを設定
+    if (!['dev-user-id', 'direct-user-id', 'test-user-id'].includes(userId)) {
+      updateData['handoffDetails.requestedBy'] = userId;
+    }
+    
+    await CallSession.findByIdAndUpdate(callId, updateData);
 
     // 担当者に電話をかけて、Conference経由で接続
     console.log(`[Handoff] Creating conference call to agent ${agentPhoneNumber}`);
@@ -322,6 +338,16 @@ exports.initiateHandoffByPhone = asyncHandler(async (req, res, next) => {
     userObject: req.user
   });
   
+  // In development, create a mock user if not authenticated
+  if (!req.user && process.env.NODE_ENV === 'development') {
+    console.log(`[Handoff Debug] Creating dev user for development mode`);
+    req.user = {
+      id: 'dev-user-id',
+      _id: 'dev-user-id',
+      email: 'dev@example.com'
+    };
+  }
+  
   if (!req.user || !req.user.id) {
     console.log(`[Handoff Debug] Error: User not authenticated`);
     return next(new ErrorResponse('User not authenticated', 401));
@@ -423,9 +449,20 @@ exports.initiateHandoffByPhone = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse('現在進行中の通話がありません。通話中にのみ取次が可能です。', 404));
   }
 
-  // ユーザー情報を取得
+  // ユーザー情報を取得（開発環境のモックユーザーをスキップ）
   console.log(`[Handoff Debug] Getting user info for userId: ${userId}`);
-  const user = await User.findById(userId);
+  
+  let user = null;
+  // モックユーザーIDの場合はデータベース検索をスキップ
+  if (userId === 'dev-user-id' || userId === 'direct-user-id' || userId === 'test-user-id') {
+    console.log(`[Handoff Debug] Using mock user for development`);
+    user = {
+      _id: userId,
+      handoffPhoneNumber: '08070239355' // 固定の取次先番号
+    };
+  } else {
+    user = await User.findById(userId);
+  }
   
   console.log(`[Handoff Debug] User found:`, {
     found: !!user,
@@ -447,13 +484,20 @@ exports.initiateHandoffByPhone = asyncHandler(async (req, res, next) => {
     console.log(`[Handoff] Using fixed handoff number: ${agentPhoneNumber}`);
 
     // 通話セッションを更新（取次開始）
-    await CallSession.findByIdAndUpdate(callSession._id, {
+    // モックユーザーの場合はrequestByをnullにする
+    const updateData = {
       status: 'transferring',
-      'handoffDetails.requestedBy': userId,
       'handoffDetails.requestedAt': new Date(),
       'handoffDetails.handoffPhoneNumber': agentPhoneNumber,
       'handoffDetails.handoffMethod': 'manual'
-    });
+    };
+    
+    // モックユーザーでない場合のみrequestByを設定
+    if (!['dev-user-id', 'direct-user-id', 'test-user-id'].includes(userId)) {
+      updateData['handoffDetails.requestedBy'] = userId;
+    }
+    
+    await CallSession.findByIdAndUpdate(callSession._id, updateData);
 
     // 担当者に電話をかけて、Conference経由で接続
     console.log(`[Handoff] Creating conference call to agent ${agentPhoneNumber}`);
@@ -471,7 +515,7 @@ exports.initiateHandoffByPhone = asyncHandler(async (req, res, next) => {
             startConferenceOnEnter="true" 
             endConferenceOnExit="true"
             record="record-from-start"
-            recordingStatusCallback="${process.env.BASE_URL}/api/twilio/recording/status/${callId}"
+            recordingStatusCallback="${process.env.BASE_URL}/api/twilio/recording/status/${callSession._id}"
             recordingStatusCallbackMethod="POST">${conferenceName}</Conference>
         </Dial>
       </Response>`,

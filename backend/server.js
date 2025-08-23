@@ -22,6 +22,7 @@ const conferenceRoutes = require('./routes/conferenceRoutes');
 const companyRoutes = require('./routes/companyRoutes');
 const audioRoutes = require('./routes/audioRoutes');
 const handoffRoutes = require('./routes/handoffRoutes');
+const handoffDirectRoutes = require('./routes/handoffDirectRoutes');
 const companyAdminRoutes = require('./routes/companyAdminRoutes');
 const healthRoutes = require('./routes/healthRoutes');
 
@@ -74,6 +75,7 @@ app.use('/api/calls', conferenceRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/twilio', twilioRoutes);
 app.use('/api/audio', audioRoutes);
+app.use('/api/direct', handoffDirectRoutes); // Direct routes without auth
 app.use('/api', handoffRoutes);
 app.use('/api/company-admin', companyAdminRoutes);
 app.use('/', healthRoutes);

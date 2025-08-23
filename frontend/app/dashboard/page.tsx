@@ -649,7 +649,7 @@ export default function DashboardPage() {
                       <td className="p-3">
                         {callingSessions.has(customerId) ? (
                           <Badge
-                            className="bg-blue-500 text-white cursor-pointer hover:bg-blue-600 transition-colors"
+                            className="bg-green-500 text-white cursor-pointer hover:bg-green-600 transition-colors animate-pulse"
                             onClick={() => {
                               console.log("[Dashboard] 通話中バッジクリック, 電話番号:", customer.phone);
                               setActivePhoneNumber(customer.phone || "");
@@ -732,8 +732,7 @@ export default function DashboardPage() {
         isOpen={isCallStatusModalOpen}
         onClose={() => {
           setIsCallStatusModalOpen(false);
-          // モーダルを閉じたときに通話中状態をクリア
-          setCallingSessions(new Set());
+          // モーダルを閉じても通話中状態は維持（実際の通話状態に依存）
         }}
         phoneNumber={activePhoneNumber}
       />

@@ -320,7 +320,7 @@ export function CallStatusModal({
       const token = localStorage.getItem('token');
       console.log("[取次ボタン] トークン取得:", token ? "有効" : "無効");
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/calls/handoff-by-phone`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/direct/handoff-direct`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
