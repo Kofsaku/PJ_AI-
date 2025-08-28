@@ -75,6 +75,12 @@ const UserSchema = new mongoose.Schema({
       message: '有効な日本の電話番号を入力してください（例: 09012345678）',
     },
   },
+  aiCallName: {
+    type: String,
+    trim: true,
+    default: '',
+    maxlength: [50, 'AI call name cannot be more than 50 characters'],
+  },
   // Twilio専用電話番号設定
   twilioPhoneNumber: {
     type: String,

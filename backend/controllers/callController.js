@@ -4,6 +4,7 @@ const CallSession = require('../models/CallSession');
 const AgentSettings = require('../models/AgentSettings');
 const AgentStatus = require('../models/AgentStatus');
 const Customer = require('../models/Customer');
+const User = require('../models/User');
 const twilio = require('twilio');
 
 // Twilio client initialization
@@ -30,11 +31,15 @@ exports.startCall = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse('Agent settings not found. Please configure your settings first.', 404));
   }
 
+  // ユーザーIDを取得
+  const userId = agentId || req.user._id;
+  
   // 通話セッションを作成
   const callSession = await CallSession.create({
     customerId,
     twilioCallSid: 'pending', // Twilioからの実際のSIDで更新される
     status: 'initiated',
+    assignedAgent: userId, // ユーザーIDを設定
     aiConfiguration: {
       companyName: agentSettings.conversationSettings.companyName,
       serviceName: agentSettings.conversationSettings.serviceName,
@@ -44,10 +49,28 @@ exports.startCall = asyncHandler(async (req, res, next) => {
   });
 
   try {
+    // ユーザー情報を取得
+    const user = await User.findById(userId);
+    
+    // ユーザーに割り当てられた電話番号を確認
+    if (!user || !user.twilioPhoneNumber || user.twilioPhoneNumberStatus !== 'active') {
+      // CallSessionを削除
+      await CallSession.findByIdAndDelete(callSession._id);
+      
+      return next(new ErrorResponse(
+        '電話番号が割り当てられていません。運営会社にお問い合わせください。\n' +
+        'No phone number assigned to this user. Please contact the administrator.',
+        400
+      ));
+    }
+    
+    const fromNumber = user.twilioPhoneNumber;
+    console.log(`[CallController] Using user's assigned number: ${fromNumber}`);
+    
     // Twilioで通話を開始
     const call = await client.calls.create({
       to: customer.phone,
-      from: process.env.TWILIO_PHONE_NUMBER,
+      from: fromNumber,
       url: `${process.env.BASE_URL}/api/twilio/voice/conference/${callSession._id}`,
       statusCallback: `${process.env.BASE_URL}/api/twilio/call/status/${callSession._id}`,
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
@@ -176,13 +199,28 @@ exports.handoffCall = asyncHandler(async (req, res, next) => {
   }
 
   try {
+    // ユーザー情報を取得して電話番号を確認
+    const userId = agentId || req.user._id;
+    const user = await User.findById(userId);
+    
+    if (!user || !user.twilioPhoneNumber || user.twilioPhoneNumberStatus !== 'active') {
+      return next(new ErrorResponse(
+        '電話番号が割り当てられていません。運営会社にお問い合わせください。\n' +
+        'No phone number assigned to this user. Please contact the administrator.',
+        400
+      ));
+    }
+    
+    const fromNumber = user.twilioPhoneNumber;
+    console.log(`[CallController] Using user's assigned number for agent transfer: ${fromNumber}`);
+    
     // Conference名
     const conferenceName = `call-${callId}`;
 
     // エージェントをConferenceに追加
     const agentCall = await client.calls.create({
       to: agentPhoneNumber,
-      from: process.env.TWILIO_PHONE_NUMBER,
+      from: fromNumber,
       url: `${process.env.BASE_URL}/api/twilio/voice/conference/agent/${conferenceName}`,
       statusCallback: `${process.env.BASE_URL}/api/twilio/call/agent-status/${callId}`
     });

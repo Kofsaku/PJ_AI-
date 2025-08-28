@@ -28,6 +28,11 @@ export default function AdminLoginPage() {
     setError("")
 
     try {
+      console.log('=== Admin Login Attempt ===');
+      console.log('Email:', formData.email);
+      console.log('Password length:', formData.password.length);
+      console.log('Attempting login to /api/auth/admin-login');
+
       const response = await fetch('/api/auth/admin-login', {
         method: 'POST',
         headers: {
@@ -36,19 +41,33 @@ export default function AdminLoginPage() {
         body: JSON.stringify(formData),
       })
 
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+
       const data = await response.json()
+      console.log('Response data:', data);
 
       if (!response.ok) {
+        console.error('Login failed with error:', data.error);
         throw new Error(data.error || 'Login failed')
       }
 
+      console.log('Login successful!');
+      console.log('Token received:', !!data.token);
+      console.log('User role:', data.role);
+
       if (data.token) {
         localStorage.setItem('token', data.token)
+        console.log('Token saved to localStorage');
       }
       localStorage.setItem('userData', JSON.stringify(data))
+      console.log('User data saved to localStorage');
 
+      console.log('Redirecting to /admin/companies');
       router.push('/admin/companies')
     } catch (err) {
+      console.error('=== Login Error ===');
+      console.error('Error:', err);
       if (err instanceof Error) {
         setError(err.message)
       } else {

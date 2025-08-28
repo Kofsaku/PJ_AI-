@@ -1,15 +1,19 @@
 import { NextResponse, NextRequest } from 'next/server'
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5000'
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5001'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     
+    // Get authorization header from the request
+    const authHeader = request.headers.get('authorization')
+    
     const response = await fetch(`${BACKEND_URL}/api/calls/bulk/cancel`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(authHeader && { 'Authorization': authHeader })
       },
       body: JSON.stringify(body),
     })

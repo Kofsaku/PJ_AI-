@@ -68,35 +68,54 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
       console.log('[Incoming Call] Existing customer found:', customer._id);
     }
     
-    // デフォルトのエージェント設定を取得
-    console.log('[Incoming Call] Looking for agent settings...');
-    const agentSettings = await AgentSettings.findOne();
-    if (!agentSettings) {
-      return sendErrorResponse('エージェント設定が見つかりません。システム管理者にお問い合わせください。');
-    }
-    console.log('[Incoming Call] Agent settings found:', agentSettings._id);
+    // まず既存のCallSessionをCallSidで検索（bulk callの場合はすでに存在）
+    let callSession = await CallSession.findOne({ twilioCallSid: CallSid }).populate('assignedAgent');
     
-    // 通話セッションを検索または作成
-    let callSession = await CallSession.findOne({ twilioCallSid: CallSid });
+    // エージェント設定を取得
+    let agentSettings = null;
     
     if (callSession) {
-      console.log('[Incoming Call] Existing call session found:', callSession._id);
+      console.log('[Incoming Call] Found existing call session:', callSession._id);
+      
+      // CallSessionに紐づいているユーザーのエージェント設定を取得
+      if (callSession.assignedAgent) {
+        console.log('[Incoming Call] Looking for agent settings for user:', callSession.assignedAgent._id);
+        agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent._id });
+      }
+      
       // 既存のセッションを更新
       callSession.status = 'in-progress';
-      callSession.customerId = customer._id;
-      callSession.aiConfiguration = {
-        companyName: agentSettings.conversationSettings.companyName,
-        serviceName: agentSettings.conversationSettings.serviceName,
-        representativeName: agentSettings.conversationSettings.representativeName,
-        targetDepartment: agentSettings.conversationSettings.targetDepartment
-      };
+      
+      // aiConfigurationが既に設定されている場合はそれを使用
+      if (!callSession.aiConfiguration && agentSettings) {
+        callSession.aiConfiguration = {
+          companyName: agentSettings.conversationSettings.companyName,
+          serviceName: agentSettings.conversationSettings.serviceName,
+          representativeName: agentSettings.conversationSettings.representativeName,
+          targetDepartment: agentSettings.conversationSettings.targetDepartment
+        };
+      }
       await callSession.save();
     } else {
-      // 新規セッションを作成
+      // 新規セッションを作成（通常の着信の場合）
+      console.log('[Incoming Call] Creating new call session for CallSid:', CallSid);
+      
+      // デフォルトのエージェント設定を取得
+      if (!agentSettings) {
+        console.log('[Incoming Call] Looking for default agent settings...');
+        agentSettings = await AgentSettings.findOne();
+      }
+      
+      if (!agentSettings) {
+        return sendErrorResponse('エージェント設定が見つかりません。システム管理者にお問い合わせください。');
+      }
+      
       callSession = await CallSession.create({
         customerId: customer._id,
         twilioCallSid: CallSid,
-        status: 'in-progress',  // 通話開始時点でin-progressにする
+        status: 'in-progress',
+        transcript: [],
+        phoneNumber: phoneNumber,
         aiConfiguration: {
           companyName: agentSettings.conversationSettings.companyName,
           serviceName: agentSettings.conversationSettings.serviceName,
@@ -125,62 +144,35 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
       status: 'in-progress'
     });
     
-    webSocketService.broadcastCallEvent('call-status', {
-      callId: callSession._id.toString(),
-      callSid: CallSid,  // TwilioのCallSidも追加
-      phoneNumber: toPhoneNumber,  // To番号（発信先）を使用
-      fromPhone: customer.phone,    // From番号（発信元）も送信
-      status: 'in-progress',
-      timestamp: new Date()
-    });
+    // 即座にTwiMLをリダイレクト（遅延を最小化）
+    console.log('[Incoming Call] IMMEDIATE REDIRECT TO MINIMIZE DELAYS');
     
-    // 会話エンジンを初期化（最初の1回のみ）
-    const callIdString = callSession._id.toString();
-    if (!conversationEngine.hasConversation(callIdString)) {
-      conversationEngine.initializeConversation(callIdString, callSession.aiConfiguration);
-    }
-    
-    // 初期メッセージを即座に生成（データベースアクセスを避ける）
-    const { companyName, serviceName, representativeName, targetDepartment } = callSession.aiConfiguration;
-    const initialMessage = `お世話になります。${companyName}の${representativeName}と申します。${serviceName}のご案内でお電話しました。本日、${targetDepartment}のご担当者さまはいらっしゃいますでしょうか？`;
-    console.log('[Incoming Call] Initial message prepared instantly:', initialMessage);
-    
-    // 最初の応答を速くする（最大3秒以内）
-    console.log('[Incoming Call] Starting initial response immediately...');
-    
-    // 即座にAIが話し始める設定
-    const gather = twiml.gather({
-      input: 'speech',
-      language: 'ja-JP',
-      speechTimeout: 'auto',  // 自動検出
-      timeout: 3,  // 3秒でタイムアウト（電話がつながって3秒以内に話す）
-      action: `${process.env.BASE_URL}/api/twilio/voice/gather/${callSession._id}?isFirst=true`,
-      method: 'POST',
-      partialResultCallback: `${process.env.BASE_URL}/api/twilio/voice/partial/${callSession._id}`,
-      partialResultCallbackMethod: 'POST'
-    });
-    
-    // Gather中は何も言わない（相手の発話を待つ）
-    
-    // タイムアウト時（3秒無音）はAIが名乗る
-    console.log('[Incoming Call] Adding initial message to TwiML...');
-    // CoeFontを使用（初期メッセージは即座に準備済み）
-    await coefontService.getTwilioPlayElement(twiml, initialMessage);
-    
-    // 初期メッセージをWebSocketで送信
-    webSocketService.sendTranscriptUpdate(callIdString, {
-      speaker: 'ai',
-      message: initialMessage,
-      phoneNumber: toPhoneNumber,
-      callId: callIdString,
-      timestamp: new Date()
-    });
-    
-    // 名乗った後、相手の応答を待つ
     twiml.redirect({
       method: 'POST'
-    }, `${process.env.BASE_URL}/api/twilio/voice/gather/${callSession._id}`);
+    }, `${process.env.BASE_URL}/api/twilio/voice/conference/${callSession._id}`);
     
+    // 重い処理を非同期で実行（レスポンス送信後）
+    setImmediate(() => {
+      // WebSocket通知
+      webSocketService.broadcastCallEvent('call-status', {
+        callId: callSession._id.toString(),
+        callSid: CallSid,
+        phoneNumber: toPhoneNumber,
+        fromPhone: customer.phone,
+        status: 'in-progress',
+        timestamp: new Date()
+      });
+      
+      // 会話エンジンを初期化
+      const callIdString = callSession._id.toString();
+      console.log('[Background] Initializing conversation engine');
+      conversationEngine.resetConversationForNewCall(callIdString, callSession.aiConfiguration);
+    });
+    
+    // リダイレクト後に初期メッセージ処理は行われるため、ここでは削除
+    console.log('[Incoming Call] Initial message will be handled by conference endpoint');
+    
+    // TwiMLレスポンスを送信（リダイレクトは上で既に追加済み）
     const twimlString = twiml.toString();
     console.log('[Incoming Call] Sending TwiML response:');
     console.log(twimlString);

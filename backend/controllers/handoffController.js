@@ -17,8 +17,20 @@ const client = twilio(
 // @route   POST /api/calls/:callId/handoff
 // @access  Private
 exports.initiateHandoff = asyncHandler(async (req, res, next) => {
+  console.log('[Handoff] Starting handoff process');
+  console.log('[Handoff] Call ID:', req.params.callId);
+  console.log('[Handoff] User:', req.user);
+  
   const { callId } = req.params;
+  
+  // req.userが存在することを確認
+  if (!req.user || !req.user.id) {
+    console.error('[Handoff] req.user or req.user.id is undefined');
+    return next(new ErrorResponse('ユーザー認証情報が無効です。', 401));
+  }
+  
   const userId = req.user.id;
+  console.log('[Handoff] User ID:', userId);
 
   // 通話セッションを取得
   const callSession = await CallSession.findById(callId)
@@ -38,26 +50,64 @@ exports.initiateHandoff = asyncHandler(async (req, res, next) => {
     return next(new ErrorResponse('Handoff already in progress or completed', 400));
   }
 
-  // ユーザー情報を取得（開発環境のモックユーザーをスキップ）
+  // ユーザー情報を取得（確実に初期化）
   let user = null;
-  // モックユーザーIDの場合はデータベース検索をスキップ
-  if (userId === 'dev-user-id' || userId === 'direct-user-id' || userId === 'test-user-id') {
-    user = {
-      _id: userId,
-      handoffPhoneNumber: '08070239355' // 固定の取次先番号
-    };
-  } else {
-    user = await User.findById(userId);
-    if (!user || !user.handoffPhoneNumber) {
-      return next(new ErrorResponse('User does not have handoff phone number configured', 400));
+  
+  try {
+    // モックユーザーIDの場合はデータベース検索をスキップ
+    if (userId === 'dev-user-id' || userId === 'direct-user-id' || userId === 'test-user-id') {
+      console.log('[Handoff] Using mock user for development');
+      user = {
+        _id: userId,
+        handoffPhoneNumber: '08070239355', // 開発環境用の固定番号
+        getTwilioPhoneNumber: function() {
+          return '+818070239355';
+        }
+      };
+    } else {
+      console.log('[Handoff] Looking up real user from database');
+      user = await User.findById(userId);
+      if (!user) {
+        console.error('[Handoff] User not found in database:', userId);
+        return next(new ErrorResponse('ユーザーが見つかりません。', 404));
+      }
+      if (!user.handoffPhoneNumber) {
+        console.error('[Handoff] User has no handoff phone number:', userId);
+        return next(new ErrorResponse('取次用電話番号が設定されていません。ユーザー情報画面で設定してください。', 400));
+      }
     }
+
+    // userが正しく設定されていることを確認
+    if (!user) {
+      console.error('[Handoff] User initialization failed');
+      return next(new ErrorResponse('ユーザー情報の取得に失敗しました。', 500));
+    }
+    
+    console.log('[Handoff] User successfully initialized:', user._id);
+  } catch (userError) {
+    console.error('[Handoff] Error during user initialization:', userError);
+    return next(new ErrorResponse('ユーザー情報の取得中にエラーが発生しました。', 500));
   }
 
   try {
-    // 固定の取次先電話番号を使用（08070239355）
-    // const agentPhoneNumber = user.getTwilioPhoneNumber();
-    const agentPhoneNumber = '+818070239355';  // 日本の国際電話番号形式
-    console.log(`[Handoff] Using fixed handoff number: ${agentPhoneNumber}`);
+    // ユーザーの取次用電話番号を使用（さらに安全な処理）
+    let agentPhoneNumber;
+    try {
+      if (user.getTwilioPhoneNumber && typeof user.getTwilioPhoneNumber === 'function') {
+        agentPhoneNumber = user.getTwilioPhoneNumber();
+      } else if (user.handoffPhoneNumber) {
+        // 日本の番号を国際形式に変換
+        agentPhoneNumber = user.handoffPhoneNumber.startsWith('0') 
+          ? `+81${user.handoffPhoneNumber.substring(1)}` 
+          : `+81${user.handoffPhoneNumber}`;
+      } else {
+        throw new Error('取次用電話番号が設定されていません');
+      }
+      console.log(`[Handoff] Using user handoff number: ${agentPhoneNumber}`);
+    } catch (phoneError) {
+      console.error('[Handoff] Error processing phone number:', phoneError);
+      return next(new ErrorResponse('取次用電話番号の処理に失敗しました。', 400));
+    }
 
     // 通話セッションを更新（取次開始）
     // モックユーザーの場合はrequestByをnullにする
@@ -80,12 +130,15 @@ exports.initiateHandoff = asyncHandler(async (req, res, next) => {
     
     const conferenceName = `handoff-${callId}`;
     
-    // 1. 担当者に電話をかける
-    const agentCall = await client.calls.create({
-      to: agentPhoneNumber,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      twiml: `<Response>
-        <Say voice="Polly.Mizuki" language="ja-JP">お客様からのお電話です。接続します。</Say>
+    // 1. 担当者に電話をかける（CoeFont音声を使用）
+    const agentMessage = 'お客様からのお電話です。接続します。';
+    const agentAudioUrl = await coefontService.generateSpeechUrl(agentMessage);
+    
+    let agentTwiml;
+    if (agentAudioUrl) {
+      // CoeFontの音声URLを使用
+      agentTwiml = `<Response>
+        <Play>${agentAudioUrl}</Play>
         <Dial>
           <Conference 
             startConferenceOnEnter="true" 
@@ -94,7 +147,42 @@ exports.initiateHandoff = asyncHandler(async (req, res, next) => {
             recordingStatusCallback="${process.env.BASE_URL}/api/twilio/recording/status/${callId}"
             recordingStatusCallbackMethod="POST">${conferenceName}</Conference>
         </Dial>
-      </Response>`,
+      </Response>`;
+    } else {
+      // フォールバック: Polly.Mizukiを使用
+      agentTwiml = `<Response>
+        <Say voice="Polly.Mizuki" language="ja-JP">${agentMessage}</Say>
+        <Dial>
+          <Conference 
+            startConferenceOnEnter="true" 
+            endConferenceOnExit="true"
+            record="record-from-start"
+            recordingStatusCallback="${process.env.BASE_URL}/api/twilio/recording/status/${callId}"
+            recordingStatusCallbackMethod="POST">${conferenceName}</Conference>
+        </Dial>
+      </Response>`;
+    }
+    
+    // CallSessionからユーザーIDを取得して番号を確認
+    if (!callSession.assignedAgent) {
+      throw new Error('エージェントが割り当てられていません。運営会社にお問い合わせください。');
+    }
+    
+    const assignedAgentUser = await User.findById(callSession.assignedAgent);
+    if (!assignedAgentUser || !assignedAgentUser.twilioPhoneNumber || assignedAgentUser.twilioPhoneNumberStatus !== 'active') {
+      throw new Error(
+        '電話番号が割り当てられていません。運営会社にお問い合わせください。\n' +
+        'No phone number assigned to this user. Please contact the administrator.'
+      );
+    }
+    
+    const fromNumber = assignedAgentUser.twilioPhoneNumber;
+    console.log(`[Handoff] Using user's assigned number: ${fromNumber}`);
+    
+    const agentCall = await client.calls.create({
+      to: agentPhoneNumber,
+      from: fromNumber,
+      twiml: agentTwiml,
       timeout: 30
     });
     
@@ -458,30 +546,52 @@ exports.initiateHandoffByPhone = asyncHandler(async (req, res, next) => {
     console.log(`[Handoff Debug] Using mock user for development`);
     user = {
       _id: userId,
-      handoffPhoneNumber: '08070239355' // 固定の取次先番号
+      handoffPhoneNumber: '08070239355', // 開発環境用の固定番号
+      getTwilioPhoneNumber: function() {
+        return '+818070239355';
+      }
     };
   } else {
     user = await User.findById(userId);
+    if (!user || !user.handoffPhoneNumber) {
+      console.log(`[Handoff Debug] Error: User does not have handoff phone number configured`);
+      return next(new ErrorResponse('取次用電話番号が設定されていません。ユーザー情報画面で設定してください。', 400));
+    }
   }
   
   console.log(`[Handoff Debug] User found:`, {
     found: !!user,
     userId: user ? user._id : null,
     hasHandoffPhone: user ? !!user.handoffPhoneNumber : null,
-    handoffPhone: user && user.handoffPhoneNumber ? user.handoffPhoneNumber.replace(/(.*).{4}/, '****$1') : null
+    handoffPhone: user && user.handoffPhoneNumber ? user.handoffPhoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') : null
   });
 
-  // 取次先電話番号の確認をスキップ（固定番号を使用するため）
-  // if (!user.handoffPhoneNumber) {
-  //   console.log(`[Handoff Debug] Error: User does not have handoff phone number configured`);
-  //   return next(new ErrorResponse('User does not have handoff phone number configured', 400));
-  // }
+  // userが正しく設定されていることを確認
+  if (!user) {
+    console.error('[Handoff Debug] CRITICAL: User is null after initialization');
+    return next(new ErrorResponse('ユーザー情報の取得に失敗しました。', 500));
+  }
+
+  // 取次先電話番号の確認（モックユーザー以外）
+  if (!['dev-user-id', 'direct-user-id', 'test-user-id'].includes(userId) && !user.handoffPhoneNumber) {
+    console.log(`[Handoff Debug] Error: User does not have handoff phone number configured`);
+    return next(new ErrorResponse('取次用電話番号が設定されていません。ユーザー情報画面で設定してください。', 400));
+  }
 
   try {
-    // 固定の取次先電話番号を使用（08070239355）
-    // const agentPhoneNumber = user.getTwilioPhoneNumber();
-    const agentPhoneNumber = '+818070239355';  // 日本の国際電話番号形式
-    console.log(`[Handoff] Using fixed handoff number: ${agentPhoneNumber}`);
+    // ユーザーの取次用電話番号を使用（安全な処理）
+    let agentPhoneNumber;
+    if (user.getTwilioPhoneNumber && typeof user.getTwilioPhoneNumber === 'function') {
+      agentPhoneNumber = user.getTwilioPhoneNumber();
+    } else if (user.handoffPhoneNumber) {
+      // 日本の番号を国際形式に変換
+      agentPhoneNumber = user.handoffPhoneNumber.startsWith('0') 
+        ? `+81${user.handoffPhoneNumber.substring(1)}` 
+        : `+81${user.handoffPhoneNumber}`;
+    } else {
+      throw new Error('取次用電話番号が設定されていません');
+    }
+    console.log(`[Handoff] Using user handoff number: ${agentPhoneNumber}`);
 
     // 通話セッションを更新（取次開始）
     // モックユーザーの場合はrequestByをnullにする
@@ -504,12 +614,15 @@ exports.initiateHandoffByPhone = asyncHandler(async (req, res, next) => {
     
     const conferenceName = `handoff-${callSession._id}`;
     
-    // 1. 担当者に電話をかける
-    const agentCall = await client.calls.create({
-      to: agentPhoneNumber,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      twiml: `<Response>
-        <Say voice="Polly.Mizuki" language="ja-JP">お客様からのお電話です。接続します。</Say>
+    // 1. 担当者に電話をかける（CoeFont音声を使用）
+    const agentMessage = 'お客様からのお電話です。接続します。';
+    const agentAudioUrl = await coefontService.generateSpeechUrl(agentMessage);
+    
+    let agentTwiml;
+    if (agentAudioUrl) {
+      // CoeFontの音声URLを使用
+      agentTwiml = `<Response>
+        <Play>${agentAudioUrl}</Play>
         <Dial>
           <Conference 
             startConferenceOnEnter="true" 
@@ -518,26 +631,77 @@ exports.initiateHandoffByPhone = asyncHandler(async (req, res, next) => {
             recordingStatusCallback="${process.env.BASE_URL}/api/twilio/recording/status/${callSession._id}"
             recordingStatusCallbackMethod="POST">${conferenceName}</Conference>
         </Dial>
-      </Response>`,
+      </Response>`;
+    } else {
+      // フォールバック: Polly.Mizukiを使用
+      agentTwiml = `<Response>
+        <Say voice="Polly.Mizuki" language="ja-JP">${agentMessage}</Say>
+        <Dial>
+          <Conference 
+            startConferenceOnEnter="true" 
+            endConferenceOnExit="true"
+            record="record-from-start"
+            recordingStatusCallback="${process.env.BASE_URL}/api/twilio/recording/status/${callSession._id}"
+            recordingStatusCallbackMethod="POST">${conferenceName}</Conference>
+        </Dial>
+      </Response>`;
+    }
+    
+    // CallSessionからユーザーIDを取得して番号を確認
+    if (!callSession.assignedAgent) {
+      throw new Error('エージェントが割り当てられていません。運営会社にお問い合わせください。');
+    }
+    
+    const assignedAgentUser = await User.findById(callSession.assignedAgent);
+    if (!assignedAgentUser || !assignedAgentUser.twilioPhoneNumber || assignedAgentUser.twilioPhoneNumberStatus !== 'active') {
+      throw new Error(
+        '電話番号が割り当てられていません。運営会社にお問い合わせください。\n' +
+        'No phone number assigned to this user. Please contact the administrator.'
+      );
+    }
+    
+    const fromNumber = assignedAgentUser.twilioPhoneNumber;
+    console.log(`[Handoff] Using user's assigned number: ${fromNumber}`);
+    
+    const agentCall = await client.calls.create({
+      to: agentPhoneNumber,
+      from: fromNumber,
+      twiml: agentTwiml,
       timeout: 30
     });
     
     console.log(`[Handoff] Agent call created: ${agentCall.sid}`);
     
-    // 2. 顧客をConferenceに移動
+    // 2. 顧客をConferenceに移動（CoeFont音声を使用）
     if (callSession.twilioCallSid && callSession.twilioCallSid.startsWith('CA')) {
-      const customerTwiml = `<Response>
-        <Say voice="Polly.Mizuki" language="ja-JP">担当者におつなぎします。</Say>
-        <Dial>
-          <Conference startConferenceOnEnter="false" endConferenceOnExit="false">${conferenceName}</Conference>
-        </Dial>
-      </Response>`;
+      // CoeFontで音声URLを生成
+      const customerMessage = '担当者におつなぎします。';
+      const customerAudioUrl = await coefontService.generateSpeechUrl(customerMessage);
+      
+      let customerTwiml;
+      if (customerAudioUrl) {
+        // CoeFontの音声URLを使用
+        customerTwiml = `<Response>
+          <Play>${customerAudioUrl}</Play>
+          <Dial>
+            <Conference startConferenceOnEnter="false" endConferenceOnExit="false">${conferenceName}</Conference>
+          </Dial>
+        </Response>`;
+      } else {
+        // フォールバック: Polly.Mizukiを使用
+        customerTwiml = `<Response>
+          <Say voice="Polly.Mizuki" language="ja-JP">${customerMessage}</Say>
+          <Dial>
+            <Conference startConferenceOnEnter="false" endConferenceOnExit="false">${conferenceName}</Conference>
+          </Dial>
+        </Response>`;
+      }
       
       try {
         await client.calls(callSession.twilioCallSid).update({
           twiml: customerTwiml
         });
-        console.log(`[Handoff] Customer moved to conference successfully`);
+        console.log(`[Handoff] Customer moved to conference successfully with CoeFont announcement`);
       } catch (error) {
         console.error(`[Handoff] Error moving customer to conference:`, error.message);
         // 担当者への通話もキャンセル

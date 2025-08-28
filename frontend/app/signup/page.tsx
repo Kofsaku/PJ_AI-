@@ -53,6 +53,7 @@ export default function SignupPage() {
     description: "",
   });
   const [companyValidated, setCompanyValidated] = useState(false);
+  const [hasExistingAdmin, setHasExistingAdmin] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -109,6 +110,12 @@ export default function SignupPage() {
 
   const handleNext = () => {
     if (!validateStep(step)) return;
+
+    // 既存管理者がいる場合はステップ3をスキップ
+    if (step === 2 && hasExistingAdmin) {
+      handleSubmit();
+      return;
+    }
 
     if (step < 3) {
       setStep(step + 1);
@@ -184,6 +191,14 @@ export default function SignupPage() {
         setCompanyValidated(true);
         setFormData(prev => ({ ...prev, companyName: data.data.name }));
         setErrors(prev => ({ ...prev, companyId: undefined }));
+        
+        // 管理者が既に存在するかチェック
+        setHasExistingAdmin(data.data.hasAdmin || false);
+        
+        // 企業ID確認後、自動的に次のステップに進む
+        setTimeout(() => {
+          setStep(2);
+        }, 500);
       } else {
         setCompanyValidated(false);
         setErrors(prev => ({ ...prev, companyId: '無効な企業IDです' }));
@@ -200,7 +215,7 @@ export default function SignupPage() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold mb-4">2. 会員登録</h1>
           <div className="flex items-center space-x-4">
-            {[1, 2, 3].map((i) => (
+            {[1, 2, hasExistingAdmin ? null : 3].filter(Boolean).map((i, index, array) => (
               <div key={i} className="flex items-center">
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center ${
@@ -211,7 +226,7 @@ export default function SignupPage() {
                 >
                   {i}
                 </div>
-                {i < 3 && <div className="w-12 h-0.5 bg-gray-300 mx-2" />}
+                {index < array.length - 1 && <div className="w-12 h-0.5 bg-gray-300 mx-2" />}
               </div>
             ))}
           </div>
@@ -464,7 +479,7 @@ export default function SignupPage() {
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     処理中...
                   </>
-                ) : step === 3 ? (
+                ) : (step === 3 || (step === 2 && hasExistingAdmin)) ? (
                   "登録完了"
                 ) : (
                   "次へ"

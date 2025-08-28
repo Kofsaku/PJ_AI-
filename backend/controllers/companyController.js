@@ -119,11 +119,19 @@ exports.validateCompanyId = asyncHandler(async (req, res) => {
     });
   }
 
+  // 管理者が存在するかチェック
+  const User = require('../models/User');
+  const existingAdmin = await User.findOne({ 
+    companyId: company._id,
+    role: { $in: ['admin', 'company-admin'] }
+  });
+
   res.status(200).json({
     success: true,
     data: {
       companyId: company.companyId,
-      name: company.name
+      name: company.name,
+      hasAdmin: !!existingAdmin
     }
   });
 });

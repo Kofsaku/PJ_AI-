@@ -58,24 +58,38 @@ exports.makeCall = async (phoneNumber, sessionId, userId = null) => {
     }
     
     console.log('[TwilioService] Formatted phone number:', formattedNumber);
+    
     // Determine which phone number to use
-    let fromNumber = twilioPhoneNumber; // Default fallback
+    let fromNumber = null;
     
     if (userId) {
       try {
         const User = require('../models/User');
         const user = await User.findById(userId);
         
-        if (user && user.hasActiveTwilioNumber()) {
-          fromNumber = user.getDedicatedTwilioNumber();
-          console.log(`[TwilioService] Using user's dedicated number: ${fromNumber}`);
+        if (user && user.twilioPhoneNumber && user.twilioPhoneNumberStatus === 'active') {
+          fromNumber = user.twilioPhoneNumber;
+          console.log(`[TwilioService] Using user's assigned number: ${fromNumber}`);
+        } else if (process.env.NODE_ENV === 'development') {
+          // 開発環境では環境変数の電話番号を使用
+          fromNumber = process.env.TWILIO_PHONE_NUMBER;
+          console.log(`[TwilioService] Development mode: Using default number: ${fromNumber}`);
         } else {
-          console.log(`[TwilioService] User ${userId} has no active dedicated number, using default: ${fromNumber}`);
+          throw new Error(
+            '電話番号が割り当てられていません。運営会社にお問い合わせください。\n' +
+            'No phone number assigned to this user. Please contact the administrator.'
+          );
         }
       } catch (userError) {
-        console.error('[TwilioService] Error fetching user:', userError);
-        console.log('[TwilioService] Using default number:', fromNumber);
+        console.error('[TwilioService] Error:', userError);
+        throw userError;
       }
+    } else {
+      // userIdが提供されていない場合もエラー
+      throw new Error(
+        'ユーザー情報が提供されていません。運営会社にお問い合わせください。\n' +
+        'User information not provided. Please contact the administrator.'
+      );
     }
     
     // Use webhook base URL from config
@@ -90,7 +104,7 @@ exports.makeCall = async (phoneNumber, sessionId, userId = null) => {
       from: fromNumber,
       url: `${baseUrl}/api/twilio/voice`,
       statusCallback: `${baseUrl}/api/twilio/call/status/${sessionId}`,
-      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed', 'failed', 'busy', 'no-answer', 'cancelled'],
       statusCallbackMethod: 'POST',
       method: 'POST'
     });

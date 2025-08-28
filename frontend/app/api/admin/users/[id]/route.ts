@@ -1,31 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb';
-import User from '@/models/User';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+    const authHeader = request.headers.get('authorization');
     
-    const user = await User.findById(params.id, { password: 0 });
-    
-    if (!user) {
+    const backendResponse = await fetch(`${apiUrl}/api/users/${params.id}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authHeader && { 'Authorization': authHeader })
+      },
+    });
+
+    if (!backendResponse.ok) {
+      const errorData = await backendResponse.json().catch(() => ({}));
       return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
+        { error: errorData.error || 'Failed to fetch user' },
+        { status: backendResponse.status }
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      user,
-    });
+    const data = await backendResponse.json();
+    return NextResponse.json(data);
+    
   } catch (error) {
     console.error('Error fetching user:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to fetch user' },
+      { error: 'Failed to fetch user' },
       { status: 500 }
     );
   }
@@ -36,37 +41,70 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
-    
     const body = await request.json();
-    const { twilioPhoneNumber, twilioPhoneNumberSid, twilioPhoneNumberStatus, ...updateData } = body;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+    const authHeader = request.headers.get('authorization');
     
-    const user = await User.findByIdAndUpdate(
-      params.id,
-      {
-        ...updateData,
-        twilioPhoneNumber,
-        twilioPhoneNumberSid,
-        twilioPhoneNumberStatus,
+    const backendResponse = await fetch(`${apiUrl}/api/users/${params.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authHeader && { 'Authorization': authHeader })
       },
-      { new: true, runValidators: true }
-    ).select('-password');
-    
-    if (!user) {
+      body: JSON.stringify(body),
+    });
+
+    if (!backendResponse.ok) {
+      const errorData = await backendResponse.json().catch(() => ({}));
       return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
+        { error: errorData.error || 'Failed to update user' },
+        { status: backendResponse.status }
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      user,
-    });
+    const data = await backendResponse.json();
+    return NextResponse.json(data);
+    
   } catch (error) {
     console.error('Error updating user:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to update user' },
+      { error: 'Failed to update user' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+    const authHeader = request.headers.get('authorization');
+    
+    const backendResponse = await fetch(`${apiUrl}/api/users/${params.id}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authHeader && { 'Authorization': authHeader })
+      },
+    });
+
+    if (!backendResponse.ok) {
+      const errorData = await backendResponse.json().catch(() => ({}));
+      return NextResponse.json(
+        { error: errorData.error || 'Failed to delete user' },
+        { status: backendResponse.status }
+      );
+    }
+
+    const data = await backendResponse.json();
+    return NextResponse.json(data);
+    
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete user' },
       { status: 500 }
     );
   }

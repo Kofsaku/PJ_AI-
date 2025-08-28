@@ -2,57 +2,53 @@ const AgentSettings = require('../models/AgentSettings');
 
 class ConversationEngine {
   constructor() {
-    // call_logic.mdに基づいた応答パターン
+    // call_logic.mdに完全準拠した応答パターン
     this.responsePatterns = {
-      // P1-A: そのまま取次ぎ可
-      transfer_ready: {
-        keywords: ['おつなぎします', '繋ぎます', 'お待ちください', '少々お待ち'],
-        confidence: 0.85
-      },
-      // P1-B: 英語担当者確認
-      english_inquiry: {
-        keywords: ['英語担当', 'English', '英語で', '英語の方'],
+      // A: 普通の応答（「はい」「お世話になります」）
+      normal_response: {
+        keywords: ['はい', 'お世話になります', 'どうぞ', '私です', '担当です'],
         confidence: 0.8
       },
-      // P1-C: 用件確認
-      purpose_inquiry: {
-        keywords: ['ご用件', '用件は', 'どういった', 'なんの用', '何の件'],
+      // B: 聞き返し（「はい？」）
+      clarification_request: {
+        keywords: ['はい？', 'もしもし？', 'えっ？', 'なんでしょう', '聞こえない', 'もう一度'],
         confidence: 0.85
       },
-      // P2-A: 社名確認
-      company_inquiry: {
-        keywords: ['どちら様', '会社名', 'お名前', '社名は', 'どこの'],
-        confidence: 0.8
+      // C: 社名確認（「もう一度社名を？」）
+      company_confirmation: {
+        keywords: ['社名', 'どちら様', '会社名', 'お名前', 'どこの', 'どちらから'],
+        confidence: 0.85
       },
-      // P3-A: 不在
+      // D: 担当者不在
       absent: {
-        keywords: ['不在', 'いない', 'いません', '席を外し', '出張', '会議中', '休み', '外出', '他の電話'],
+        keywords: ['不在', 'いない', 'いません', '席を外し', '出張', '会議', '休み', '外出', '他の電話', 'おりません'],
         confidence: 0.85
       },
-      // P3-B: 新規電話拒否
+      // E: 新規電話お断り
       rejection: {
-        keywords: ['受け付けない', '必要ない', 'いらない', '結構です', 'お断り', '営業お断り', '間に合って'],
+        keywords: ['お断り', '必要ない', 'いらない', '結構です', '営業お断り', '間に合って', '受け付けない'],
         confidence: 0.9
       },
-      // P3-C: Web/メール指定
+      // F: HP/メール誘導
       website_redirect: {
-        keywords: ['ホームページ', 'ウェブ', 'メール', 'HP', 'Web', 'サイト', 'フォーム', '問い合わせフォーム'],
-        confidence: 0.8
+        keywords: ['ホームページ', 'HP', 'Web', 'メール', 'サイト', 'フォーム', '問い合わせフォーム', 'ウェブ'],
+        confidence: 0.85
       },
-      // 担当者確認
-      is_responsible_person: {
-        keywords: ['私が担当', '担当です', '本人です', '私です', 'わたしが'],
+      // 用件確認
+      purpose_inquiry: {
+        keywords: ['ご用件', '用件は', 'どういった', 'なんの用', '何の件', 'どのような'],
+        confidence: 0.85
+      },
+      // 終話の合図
+      closing_signal: {
+        keywords: ['失礼します', '失礼いたします', 'ありがとうございました', 'では失礼', 'それでは'],
         confidence: 0.9
       },
-      // 相手が名乗った
-      greeting: {
-        keywords: ['です', 'と申します', 'お電話ありがとう'],
-        confidence: 0.7
-      },
+      // 無音
       silent: {
         keywords: [],
         confidence: 0.9,
-        timeout: 2000 // 2秒間無音
+        timeout: 2000 // 2秒間無音で自己紹介開始
       }
     };
 
@@ -61,11 +57,17 @@ class ConversationEngine {
   }
 
   // 会話を初期化
-  initializeConversation(callId, agentSettings) {
-    // 既に存在する場合は初期化しない
-    if (this.conversationStates.has(callId)) {
+  initializeConversation(callId, agentSettings, forceReset = false) {
+    // 既に存在する場合でも、forceResetがtrueなら再初期化
+    if (this.conversationStates.has(callId) && !forceReset) {
       console.log(`[ConversationEngine] Conversation already exists for ${callId}, skipping initialization`);
       return this.conversationStates.get(callId);
+    }
+    
+    // 既存の会話状態があれば削除（新しい通話のため）
+    if (this.conversationStates.has(callId)) {
+      console.log(`[ConversationEngine] Force resetting conversation for ${callId}`);
+      this.conversationStates.delete(callId);
     }
     
     console.log(`[ConversationEngine] Initializing NEW conversation for ${callId}`);
@@ -78,10 +80,10 @@ class ConversationEngine {
     
     const state = {
       callId,
-      currentPhase: 'S0', // S0: 初回待機状態
+      currentPhase: 'INITIAL', // INITIAL: 初回待機状態
       turnCount: 0,
       silentCount: 0,
-      clarificationCount: 0,
+      clarificationCount: 0, // 聞き返し回数（1回まで）
       lastResponse: null,
       agentSettings,
       shouldHandoff: false,
@@ -90,8 +92,10 @@ class ConversationEngine {
       lastSpeechTime: Date.now(),
       continuousSilentCount: 0,
       customerSpokeFirst: false,
-      askedFor10SecPitch: false,
-      askedFor30SecDetail: false
+      hasIntroduced: false, // 自己紹介済みフラグ
+      hasGivenPurpose: false, // 用件説明済みフラグ
+      waitingForClosing: false, // 終話待機中フラグ
+      closingTimer: null // 終話タイマー
     };
 
     this.conversationStates.set(callId, state);
@@ -118,7 +122,7 @@ class ConversationEngine {
     return this.conversationStates.get(callId);
   }
 
-  // 音声認識結果を分類
+  // 音声認識結果を分類（call_logic.md準拠）
   classifyResponse(speechText, callId) {
     console.log(`[ConversationEngine] Classifying response for callId: ${callId}`);
     console.log(`[ConversationEngine] Speech text: "${speechText}"`);
@@ -139,6 +143,17 @@ class ConversationEngine {
       state.continuousSilentCount++;
       state.silentCount++;
       
+      // 初回の無音（2秒後）は自己紹介を開始
+      if (!state.hasIntroduced && state.silentCount === 1) {
+        console.log('[ConversationEngine] Initial silence detected - will introduce');
+        return {
+          intent: 'initial_silence',
+          confidence: 1.0,
+          shouldHandoff: false,
+          nextAction: 'introduce'
+        };
+      }
+      
       // 連続して3回以上無音の場合のみ通話終了
       if (state.continuousSilentCount >= 3) {
         return {
@@ -148,6 +163,7 @@ class ConversationEngine {
           nextAction: 'end_call'
         };
       }
+      
       return {
         intent: 'silent',
         confidence: 1.0,
@@ -193,40 +209,71 @@ class ConversationEngine {
 
     console.log(`[ConversationEngine] Best match intent: ${bestMatch.intent}, confidence: ${bestMatch.confidence}`);
     
-    // 意図に基づいてアクションを決定
+    // call_logic.md に基づいた対応分岐
     switch (bestMatch.intent) {
-      case 'transfer_ready':
-        console.log(`[ConversationEngine] Customer ready for transfer`);
-        bestMatch.shouldHandoff = true;
-        bestMatch.nextAction = 'handoff';
-        state.shouldHandoff = true;
-        state.handoffReason = 'Customer ready for transfer';
-        break;
-      
-      case 'rejection':
-      case 'website_redirect':
-        console.log(`[ConversationEngine] Customer rejected or requested website - ending call`);
-        bestMatch.nextAction = 'end_call';
-        break;
-      
+      // D, E, F: 即終了パターン
       case 'absent':
-        bestMatch.nextAction = 'schedule_callback';
+        console.log('[ConversationEngine] 担当者不在 - 終話へ');
+        state.currentPhase = 'CLOSING';
+        bestMatch.nextAction = 'respond_and_end';
+        break;
+        
+      case 'rejection':
+        console.log('[ConversationEngine] 新規お断り - 終話へ');
+        state.currentPhase = 'CLOSING';
+        bestMatch.nextAction = 'respond_and_end';
+        break;
+        
+      case 'website_redirect':
+        console.log('[ConversationEngine] HP/メール誘導 - 終話へ');
+        state.currentPhase = 'CLOSING';
+        bestMatch.nextAction = 'respond_and_end';
         break;
       
-      case 'is_responsible_person':
-        console.log(`[ConversationEngine] Customer confirmed they are the responsible person`);
-        bestMatch.nextAction = 'continue';
-        bestMatch.intent = 'purpose_inquiry';  // 10秒ピッチに移行
-        state.currentPhase = 'S2';  // 用件確認フェーズへ
-        break;
-      
-      case 'unclear':
+      // B: 聞き返し（1回まで）
+      case 'clarification_request':
         state.clarificationCount++;
-        if (state.clarificationCount >= 3) {
-          bestMatch.shouldHandoff = true;
-          bestMatch.nextAction = 'handoff';
-          state.handoffReason = 'Multiple clarifications needed';
+        console.log(`[ConversationEngine] 聞き返し回数: ${state.clarificationCount}`);
+        if (state.clarificationCount > 1) {
+          // 2回目の聞き返しは諦めて終了
+          console.log('[ConversationEngine] 聞き返し2回目 - 終了');
+          bestMatch.intent = 'too_many_clarifications';
+          bestMatch.nextAction = 'apologize_and_end';
+          state.currentPhase = 'CLOSING';
+        } else {
+          // 1回目は再度説明
+          bestMatch.nextAction = 'clarify';
         }
+        break;
+      
+      // C: 社名確認
+      case 'company_confirmation':
+        console.log('[ConversationEngine] 社名確認要求');
+        bestMatch.nextAction = 'confirm_company';
+        break;
+      
+      // 用件確認への対応（10秒ピッチ）
+      case 'purpose_inquiry':
+        if (!state.hasGivenPurpose) {
+          console.log('[ConversationEngine] 用件説明（10秒ピッチ）');
+          state.hasGivenPurpose = true;
+          bestMatch.nextAction = 'give_purpose';
+        }
+        break;
+      
+      // A: 通常の応答
+      case 'normal_response':
+        if (!state.hasIntroduced) {
+          state.hasIntroduced = true;
+        }
+        bestMatch.nextAction = 'continue';
+        break;
+      
+      // 終話の合図を検出
+      case 'closing_signal':
+        console.log('[ConversationEngine] 終話合図検出 - 0.7-1.2秒待機');
+        state.waitingForClosing = true;
+        bestMatch.nextAction = 'prepare_closing';
         break;
     }
 
@@ -289,12 +336,12 @@ class ConversationEngine {
     // 「不在」「結構です」への適切な応答
     if (intent === 'absent' || (state.conversationHistory.length > 0 && 
         state.conversationHistory[state.conversationHistory.length - 1].message?.includes('不在'))) {
-      return this.getDefaultResponse('absent');
+      return this.getDefaultResponse('absent', callId);
     }
     
     if (intent === 'rejection' || (state.conversationHistory.length > 0 && 
         state.conversationHistory[state.conversationHistory.length - 1].message?.includes('結構'))) {
-      return this.getDefaultResponse('rejection');
+      return this.getDefaultResponse('rejection', callId);
     }
 
     // agentSettingsから直接設定を取得
@@ -310,8 +357,8 @@ class ConversationEngine {
       }
     }
     
-    // デフォルト応答を使用する（processTemplateは存在しない可能性があるため）
-    const finalResponse = this.getDefaultResponse(intent);
+    // デフォルト応答を使用する（カスタマイズ設定を考慮）
+    const finalResponse = this.getDefaultResponse(intent, callId);
     
     // AI応答を会話履歴に追加
     if (state && finalResponse) {
@@ -330,20 +377,49 @@ class ConversationEngine {
     return 'お世話になります。AIコールシステム株式会社の佐藤と申します。AIアシスタントサービスのご案内でお電話しました。本日、営業部のご担当者さまはいらっしゃいますでしょうか？';
   }
 
-  // デフォルト応答を取得（call_logic.mdに基づく）
-  getDefaultResponse(intent) {
+  // デフォルト応答を取得（call_logic.md完全準拠）
+  getDefaultResponse(intent, callId) {
+    // callIdがあれば、agentSettingsから設定を取得してテンプレートを使用
+    let templateResponse = null;
+    if (callId) {
+      const state = this.conversationStates.get(callId);
+      if (state && state.agentSettings) {
+        const AgentSettings = require('../models/AgentSettings');
+        // AgentSettingsインスタンスとしてprocessTemplateメソッドを使用
+        if (typeof state.agentSettings.processTemplate === 'function') {
+          templateResponse = state.agentSettings.processTemplate(intent);
+        } else {
+          // agentSettingsがプレーンオブジェクトの場合、手動でテンプレート処理
+          templateResponse = this.processTemplate(intent, state.agentSettings);
+        }
+      }
+    }
+    
+    if (templateResponse) {
+      return templateResponse;
+    }
+    
     const defaultResponses = {
-      // P0: 開始
-      initial: 'お世話になります。AIコールシステム株式会社の佐藤と申します。AIアシスタントサービスのご案内でお電話しました。本日、営業部のご担当者さまはいらっしゃいますでしょうか？',
+      // 初回挨拶（call_logic.md: AIのオープニング）
+      initial: 'お世話になります。{{companyName}}の{{representativeName}}と申します。{{serviceName}}のご案内でお電話しました。本日、{{targetDepartment}}のご担当者さまはいらっしゃいますでしょうか？',
       
-      // P1-A: 取次ぎ可
-      transfer_ready: 'ありがとうございます。よろしくお願いいたします。',
+      // B: 聞き返し対応（社名と目的を短く言い直す）
+      clarification: '{{companyName}}の{{representativeName}}です。{{serviceName}}のご案内でお電話しました。{{targetDepartment}}のご担当者さまはいらっしゃいますでしょうか？',
       
-      // P1-B: 英語担当確認
-      english_inquiry: 'はい、可能です。まずは日本語で大丈夫です。ご担当者さまに概要だけお伝えできれば幸いです。',
+      // C: 社名確認への応答
+      company_confirmation: '{{companyName}}の{{representativeName}}です。',
       
-      // P1-C: 用件確認（10秒ピッチ）
-      purpose_inquiry: 'ありがとうございます。AIコールシステム株式会社では、生成AIを使った新規顧客獲得テレアポ支援により、AIが一次架電と仕分けを行い、見込み度の高いお客さまだけを営業におつなぎする仕組みをご提供しています。御社の営業部ご担当者さまに、概要だけご説明させていただけますか？',
+      // D: 不在対応
+      absent: '承知しました。では、また改めてお電話いたします。ありがとうございました。',
+      
+      // E: 新規電話お断り対応
+      rejection: '承知いたしました。本日は突然のご連絡、失礼いたしました。よろしくお願いいたします。',
+      
+      // F: HP/メール誘導対応
+      website_redirect: '承知しました。御社ホームページの問い合わせフォームからご連絡いたします。ありがとうございました。',
+      
+      // 用件説明（10秒ピッチ）
+      purpose_inquiry: 'ありがとうございます。{{companyDescription}} {{callToAction}}',
       
       // P2-A: 社名確認
       company_inquiry: 'AIコールシステム株式会社でございます。担当は佐藤です。',
@@ -360,17 +436,73 @@ class ConversationEngine {
       // P3-C: Web/メール指定
       website_redirect: '承知しました。御社の問い合わせフォーム（またはメール）からご連絡いたします。ありがとうございます。',
       
-      // P4: 終話
+      // 終話
       closing: '本日はありがとうございました。失礼いたします。',
+      
+      // 初回無音時の自己紹介（2秒待機後）
+      initial_silence: 'お世話になります。{{companyName}}の{{representativeName}}と申します。{{serviceName}}のご案内でお電話しました。本日、{{targetDepartment}}のご担当者さまはいらっしゃいますでしょうか？',
+      
+      // 聞き返しが多すぎる場合
+      too_many_clarifications: '申し訳ございません。音声が聞き取りづらいようでしたら、後日改めてご連絡いたします。ありがとうございました。',
       
       // その他
       silent: 'お客様、お聞きになれますか？',
-      clarification: '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？',
-      is_responsible_person: 'ありがとうございます。それでは、AIアシスタントサービスについて簡単にご説明させていただきます。',
       unknown: '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？'
     };
 
-    return defaultResponses[intent] || defaultResponses.clarification;
+    // テンプレート処理が必要な応答は処理
+    const response = defaultResponses[intent] || defaultResponses.unknown;
+    
+    // 変数を置換（簡易版）
+    if (callId && response.includes('{{')) {
+      const state = this.conversationStates.get(callId);
+      if (state && state.agentSettings) {
+        return this.processTemplate(intent, state.agentSettings) || response;
+      }
+    }
+    
+    return response;
+  }
+
+  // 手動でテンプレート処理を行う
+  processTemplate(templateName, agentSettings) {
+    const templates = {
+      purpose_inquiry: 'sales_pitch', // purpose_inquiry用にsales_pitchテンプレートを使用
+      company_inquiry: 'company_confirmation',
+      service_detail: 'sales_pitch_short'
+    };
+    
+    const actualTemplateName = templates[templateName] || templateName;
+    
+    // デフォルトのテンプレート定義
+    const defaultTemplates = {
+      sales_pitch: 'ありがとうございます。{{companyDescription}} {{callToAction}}',
+      sales_pitch_short: '詳しくは、{{serviceDescription}} {{callToAction}}',
+      company_confirmation: '{{companyName}}でございます。{{representativeName}}です。'
+    };
+    
+    const template = defaultTemplates[actualTemplateName];
+    if (!template) return null;
+    
+    // 変数の値を取得（call_logic.md準拠のデフォルト値）
+    const vars = {
+      companyName: agentSettings.companyName || 'AIコールシステム株式会社',
+      serviceName: agentSettings.serviceName || 'AIアシスタントサービス',
+      representativeName: agentSettings.representativeName || '佐藤',
+      targetDepartment: agentSettings.targetDepartment || '営業部',
+      companyDescription: agentSettings.salesPitch?.companyDescription || '弊社では、AIアシスタントサービスを提供しております。AIが一次架電を行い、見込み度の高いお客様だけを営業におつなぎする仕組みです。',
+      serviceDescription: agentSettings.salesPitch?.serviceDescription || '（1）AIが自動で一次架電→要件把握、（2）見込み度スコアで仕分け、（3）高確度のみ人の営業に引き継ぎ、という流れです。架電の無駄を削減し、商談化率の向上に寄与します。',
+      callToAction: agentSettings.salesPitch?.callToAction || 'ぜひ御社の営業部ご担当者さまに概要をご案内できればと思いまして。'
+    };
+    
+    // テンプレート変数を置換
+    let processed = template;
+    Object.keys(vars).forEach(key => {
+      const regex = new RegExp(`{{${key}}}`, 'g');
+      processed = processed.replace(regex, vars[key]);
+    });
+    
+    return processed;
   }
 
   // 会話フローの次のステップを決定
@@ -448,9 +580,47 @@ class ConversationEngine {
     };
   }
 
+  // 終話待機処理（0.7〜1.2秒待機）
+  async handleClosingWithDelay(callId, callback) {
+    const state = this.conversationStates.get(callId);
+    if (!state) return;
+    
+    // 0.7〜1.2秒のランダム待機時間
+    const waitTime = Math.floor(Math.random() * 500 + 700); // 700-1200ms
+    console.log(`[ConversationEngine] 終話待機: ${waitTime}ms`);
+    
+    state.waitingForClosing = true;
+    state.closingTimer = setTimeout(() => {
+      console.log('[ConversationEngine] 終話待機完了 - 通話終了');
+      if (callback && typeof callback === 'function') {
+        callback();
+      }
+      this.clearConversation(callId);
+    }, waitTime);
+    
+    this.conversationStates.set(callId, state);
+  }
+  
   // 会話状態をクリア
   clearConversation(callId) {
+    console.log(`[ConversationEngine] Clearing conversation state for ${callId}`);
+    const state = this.conversationStates.get(callId);
+    
+    // 終話タイマーがあればクリア
+    if (state && state.closingTimer) {
+      clearTimeout(state.closingTimer);
+    }
+    
     this.conversationStates.delete(callId);
+  }
+  
+  // 新しい通話のために会話履歴を完全にリセット
+  resetConversationForNewCall(callId, agentSettings) {
+    console.log(`[ConversationEngine] Resetting conversation for new call: ${callId}`);
+    // 既存の状態を完全に削除
+    this.clearConversation(callId);
+    // 新しい状態を作成
+    return this.initializeConversation(callId, agentSettings, true);
   }
 
   // カスタムインテント検出器を追加

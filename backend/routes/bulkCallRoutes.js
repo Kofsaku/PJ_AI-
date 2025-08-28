@@ -3,19 +3,19 @@ const router = express.Router();
 const bulkCallController = require('../controllers/bulkCallController');
 const { protect } = require('../middlewares/authMiddleware');
 
-// Note: Authentication is optional for development
-// Add protect middleware when ready for production: router.post('/bulk', protect, bulkCallController.initiateBulkCalls);
+// Initiate bulk calls (with authentication)
+router.post('/bulk', protect, bulkCallController.initiateBulkCalls);
 
-// Initiate bulk calls (no auth for development)
-router.post('/bulk', bulkCallController.initiateBulkCalls);
+// Stop all bulk calls (with authentication)
+router.post('/bulk/stop', protect, bulkCallController.stopAllBulkCalls);
 
-// Get bulk call status
-router.get('/bulk/status', bulkCallController.getBulkCallStatus);
+// Get bulk call status (with authentication)
+router.get('/bulk/status', protect, bulkCallController.getBulkCallStatus || (() => {}));
 
-// Cancel bulk calls
-router.post('/bulk/cancel', bulkCallController.cancelBulkCalls);
+// Cancel bulk calls (with authentication)
+router.post('/bulk/cancel', protect, bulkCallController.cancelBulkCalls || (() => {}));
 
-// Clean up old sessions
-router.post('/bulk/cleanup', bulkCallController.cleanupOldSessions);
+// Clean up old sessions (with authentication)
+router.post('/bulk/cleanup', protect, bulkCallController.cleanupOldSessions);
 
 module.exports = router;

@@ -16,18 +16,67 @@ export default function UserInfoPage() {
   const { toast } = useToast()
 
   useEffect(() => {
-    const storedUserData = localStorage.getItem('userData')
-    if (storedUserData) {
-      try {
-        const data = JSON.parse(storedUserData)
-        const user = data.user || data.data || data
+    fetchUserData()
+  }, [])
+
+  const fetchUserData = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        // トークンがない場合はLocalStorageから取得
+        const storedUserData = localStorage.getItem('userData')
+        if (storedUserData) {
+          const data = JSON.parse(storedUserData)
+          const user = data.user || data.data || data
+          setUserData(user)
+          setEditedData(user)
+        }
+        return
+      }
+
+      // APIから最新のユーザー情報を取得
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'
+      const response = await fetch(`${apiUrl}/api/auth/me`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        const user = result.data || result.user || result
+        
+        // LocalStorageも更新
+        localStorage.setItem('userData', JSON.stringify({ user }))
+        
         setUserData(user)
         setEditedData(user)
-      } catch (error) {
-        console.error("Error parsing user data:", error)
+      } else {
+        // APIが失敗した場合はLocalStorageから取得
+        const storedUserData = localStorage.getItem('userData')
+        if (storedUserData) {
+          const data = JSON.parse(storedUserData)
+          const user = data.user || data.data || data
+          setUserData(user)
+          setEditedData(user)
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching user data:", error)
+      // エラーの場合もLocalStorageから取得
+      const storedUserData = localStorage.getItem('userData')
+      if (storedUserData) {
+        try {
+          const data = JSON.parse(storedUserData)
+          const user = data.user || data.data || data
+          setUserData(user)
+          setEditedData(user)
+        } catch (parseError) {
+          console.error("Error parsing stored user data:", parseError)
+        }
       }
     }
-  }, [])
+  }
 
   const handleSave = async () => {
     try {
@@ -42,11 +91,11 @@ export default function UserInfoPage() {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          username: editedData.username,
-          name: editedData.name,
+          name: `${editedData.lastName || ''} ${editedData.firstName || ''}`.trim() || editedData.name || editedData.fullName,
           email: editedData.email,
           phone: editedData.phone,
-          handoffPhoneNumber: editedData.handoffPhoneNumber
+          handoffPhoneNumber: editedData.handoffPhoneNumber,
+          aiCallName: editedData.aiCallName
         })
       })
 
@@ -56,10 +105,19 @@ export default function UserInfoPage() {
         throw new Error(errorData.error || `HTTP ${response.status}: Failed to save user data`)
       }
 
-      // LocalStorageも更新
-      localStorage.setItem('userData', JSON.stringify({ user: editedData }))
-      setUserData(editedData)
+      // Get the updated user data from the response
+      const responseData = await response.json()
+      const updatedUser = responseData.data || responseData.user || responseData
+      
+      // Update LocalStorage with the response data
+      localStorage.setItem('userData', JSON.stringify({ user: updatedUser }))
+      setUserData(updatedUser)
+      setEditedData(updatedUser)
       setEditMode(false)
+      
+      // 最新データを再取得して確実に反映
+      await fetchUserData()
+      
       toast({
         title: "保存完了",
         description: "ユーザー情報が更新されました。",
@@ -122,28 +180,44 @@ export default function UserInfoPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <Label className="text-sm text-gray-500">ユーザー名</Label>
+                  <Label className="text-sm text-gray-500">氏名</Label>
                   {editMode ? (
-                    <Input
-                      value={editedData?.username || ""}
-                      onChange={(e) => handleInputChange("username", e.target.value)}
-                      className="mt-1"
-                    />
+                    <div className="flex gap-2 mt-1">
+                      <Input
+                        value={editedData?.lastName || ""}
+                        onChange={(e) => handleInputChange("lastName", e.target.value)}
+                        placeholder="姓"
+                      />
+                      <Input
+                        value={editedData?.firstName || ""}
+                        onChange={(e) => handleInputChange("firstName", e.target.value)}
+                        placeholder="名"
+                      />
+                    </div>
                   ) : (
-                    <p className="text-lg font-medium">{userData.username || "未設定"}</p>
+                    <p className="text-lg font-medium">
+                      {userData.firstName && userData.lastName 
+                        ? `${userData.lastName} ${userData.firstName}`
+                        : userData.name || userData.fullName || "未設定"}
+                    </p>
                   )}
                 </div>
                 <div>
-                  <Label className="text-sm text-gray-500">氏名</Label>
+                  <Label className="text-sm text-gray-500">AIコール時の名前</Label>
                   {editMode ? (
                     <Input
-                      value={editedData?.name || editedData?.fullName || ""}
-                      onChange={(e) => handleInputChange("name", e.target.value)}
+                      value={editedData?.aiCallName || ""}
+                      onChange={(e) => handleInputChange("aiCallName", e.target.value)}
                       className="mt-1"
+                      placeholder="例: 田中様、山田さん"
                     />
                   ) : (
-                    <p className="text-lg font-medium">{userData.name || userData.fullName || "未設定"}</p>
+                    <p className="text-lg font-medium">{userData.aiCallName || "未設定"}</p>
                   )}
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-500">会社名</Label>
+                  <p className="text-lg font-medium">{userData.companyName || "未設定"}</p>
                 </div>
                 <div>
                   <Label className="text-sm text-gray-500">ユーザーID</Label>
@@ -178,12 +252,12 @@ export default function UserInfoPage() {
                   {editMode ? (
                     <Input
                       type="tel"
-                      value={editedData?.phone || editedData?.phoneNumber || ""}
+                      value={editedData?.phone || ""}
                       onChange={(e) => handleInputChange("phone", e.target.value)}
                       className="mt-1"
                     />
                   ) : (
-                    <p className="text-lg font-medium">{userData.phone || userData.phoneNumber || "未設定"}</p>
+                    <p className="text-lg font-medium">{userData.phone || "未設定"}</p>
                   )}
                 </div>
                 <div>

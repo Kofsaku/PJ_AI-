@@ -13,6 +13,7 @@ connectDB();
 
 // Route files
 const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
 const customerRoutes = require('./routes/customers');
 const agentRoutes = require('./routes/agentRoutes');
 const callRoutes = require('./routes/callRoutes');
@@ -25,6 +26,8 @@ const handoffRoutes = require('./routes/handoffRoutes');
 const handoffDirectRoutes = require('./routes/handoffDirectRoutes');
 const companyAdminRoutes = require('./routes/companyAdminRoutes');
 const healthRoutes = require('./routes/healthRoutes');
+const callHistoryRoutes = require('./routes/callHistoryRoutes');
+const testRoutes = require('./routes/testRoutes');
 
 const app = express();
 
@@ -66,7 +69,9 @@ if (process.env.NODE_ENV === 'development') {
 
 // Mount routers
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/companies', companyRoutes);
+app.use('/api/company', require('./routes/companyRoutes')); // User's company info routes
 app.use('/api/customers', customerRoutes);
 app.use('/api/agents', agentRoutes);
 // Mount bulk routes BEFORE general call routes to avoid auth middleware conflict
@@ -76,9 +81,23 @@ app.use('/api/calls', callRoutes);
 app.use('/api/twilio', twilioRoutes);
 app.use('/api/audio', audioRoutes);
 app.use('/api/direct', handoffDirectRoutes); // Direct routes without auth
+app.use('/api/test', testRoutes); // Test routes for debugging
 app.use('/api', handoffRoutes);
 app.use('/api/company-admin', companyAdminRoutes);
+app.use('/api/call-history', callHistoryRoutes);
 app.use('/', healthRoutes);
+
+// Database cleanup endpoint
+const { cleanupOldCalls } = require('./cleanup-calls');
+app.post('/api/admin/cleanup-calls', async (req, res) => {
+  try {
+    const result = await cleanupOldCalls();
+    res.json(result);
+  } catch (error) {
+    console.error('Cleanup error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Error handler
 app.use(require('./middlewares/errorHandler'));
@@ -95,6 +114,31 @@ webSocketService.initialize(server);
 // Start listening with error handling
 server.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  
+  // Set up periodic cleanup of stale call sessions
+  const bulkCallController = require('./controllers/bulkCallController');
+  const cleanupInterval = 5 * 60 * 1000; // Every 5 minutes
+  
+  setInterval(async () => {
+    try {
+      console.log('[Periodic Cleanup] Running call session cleanup...');
+      // Create a mock req and res for the cleanup function
+      const mockReq = {};
+      const mockRes = {
+        status: () => mockRes,
+        json: (data) => {
+          console.log('[Periodic Cleanup] Result:', data.message);
+          return mockRes;
+        }
+      };
+      
+      await bulkCallController.cleanupOldSessions(mockReq, mockRes);
+    } catch (error) {
+      console.error('[Periodic Cleanup] Error:', error);
+    }
+  }, cleanupInterval);
+  
+  console.log(`[Cleanup] Automatic cleanup scheduled every ${cleanupInterval / 1000 / 60} minutes`);
 });
 
 server.on('error', (err) => {

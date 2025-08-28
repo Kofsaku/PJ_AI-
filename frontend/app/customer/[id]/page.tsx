@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sidebar } from "@/components/sidebar"
 import { useToast } from "@/components/ui/use-toast"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Phone, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react"
+import { CallHistoryModal } from "@/components/calls/CallHistoryModal"
 
 // Prefecture mapping
 const prefectureMap: { [key: string]: string } = {
@@ -80,6 +81,9 @@ export default function CustomerDetailPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
+  const [callHistory, setCallHistory] = useState<any[]>([])
+  const [selectedCall, setSelectedCall] = useState<any>(null)
+  const [isCallHistoryModalOpen, setIsCallHistoryModalOpen] = useState(false)
   const router = useRouter()
   const params = useParams()
   const { toast } = useToast()
@@ -131,6 +135,9 @@ export default function CustomerDetailPage() {
           position: data.position || "",
           notes: data.notes || "",
         })
+        
+        // 通話履歴を取得
+        fetchCallHistory()
       } catch (error) {
         toast({
           title: "エラー",
@@ -147,6 +154,37 @@ export default function CustomerDetailPage() {
       fetchCustomer()
     }
   }, [customerId, toast, router])
+  
+  // 通話履歴を取得
+  const fetchCallHistory = async () => {
+    try {
+      const response = await fetch(`/api/customers/${customerId}/call-history`)
+      if (response.ok) {
+        const history = await response.json()
+        setCallHistory(history)
+      }
+    } catch (error) {
+      console.error('通話履歴の取得に失敗しました:', error)
+    }
+  }
+  
+  const handleCallHistoryClick = (call: any) => {
+    setSelectedCall(call)
+    setIsCallHistoryModalOpen(true)
+  }
+  
+  const getCallResultIcon = (result: string) => {
+    switch (result) {
+      case '成功':
+        return <CheckCircle className="h-4 w-4 text-green-600" />
+      case '拒否':
+        return <XCircle className="h-4 w-4 text-red-600" />
+      case '不在':
+        return <AlertCircle className="h-4 w-4 text-yellow-600" />
+      default:
+        return <Clock className="h-4 w-4 text-gray-600" />
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -477,8 +515,60 @@ export default function CustomerDetailPage() {
               </form>
             </CardContent>
           </Card>
+          
+          {/* 通話履歴セクション */}
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Phone className="h-5 w-5" />
+                通話履歴
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {callHistory.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  通話履歴がありません
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {callHistory.map((call, index) => (
+                    <div 
+                      key={call._id || index}
+                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 cursor-pointer"
+                      onClick={() => handleCallHistoryClick(call)}
+                    >
+                      <div className="flex items-center gap-3">
+                        {getCallResultIcon(call.callResult)}
+                        <div>
+                          <div className="font-medium">
+                            {new Date(call.createdAt).toLocaleString('ja-JP')}
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            結果: {call.callResult || '未設定'} ・ 時間: {call.duration ? Math.floor(call.duration / 60) + '分' + (call.duration % 60) + '秒' : '不明'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-sm text-blue-600">
+                        詳細を見る
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </main>
+      
+      {/* 通話履歴モーダル */}
+      <CallHistoryModal
+        isOpen={isCallHistoryModalOpen}
+        onClose={() => {
+          setIsCallHistoryModalOpen(false)
+          setSelectedCall(null)
+        }}
+        callSession={selectedCall}
+      />
     </div>
   )
 }

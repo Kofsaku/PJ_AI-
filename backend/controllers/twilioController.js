@@ -1,6 +1,7 @@
 const asyncHandler = require('../middlewares/asyncHandler');
 const twilio = require('twilio');
 const CallSession = require('../models/CallSession');
+const Customer = require('../models/Customer');
 const AgentSettings = require('../models/AgentSettings');
 const conversationEngine = require('../services/conversationEngine');
 const webSocketService = require('../services/websocket');
@@ -20,7 +21,9 @@ const VoiceResponse = twilio.twiml.VoiceResponse;
 // @access  Public (Twilio webhook)
 exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
   const { callId } = req.params;
+  const aiStart = req.query.aiStart === 'true';  // AI即座開始フラグ
   console.log(`[TwiML Conference] Starting call for callId: ${callId}`);
+  console.log(`[TwiML Conference] AI Immediate Start: ${aiStart}`);
   console.log(`[TwiML Conference] Request body:`, req.body);
   const twiml = new VoiceResponse();
 
@@ -35,44 +38,53 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
       return res.type('text/xml').send(twiml.toString());
     }
 
-    // AI設定から初期メッセージを生成
-    let initialMessage;
-    try {
-      initialMessage = await conversationEngine.generateResponse(callId, 'initial');
-      if (!initialMessage) {
-        console.error(`[TwiML Conference] WARNING: Empty initial message for callId: ${callId}`);
-        initialMessage = 'お世話になります。AIコールシステム株式会社です。営業部のご担当者さまはいらっしゃいますでしょうか？';
-      }
-    } catch (aiError) {
-      console.error(`[TwiML Conference] ERROR generating initial message:`, aiError);
-      initialMessage = 'お世話になります。AIコールシステム株式会社です。営業部のご担当者さまはいらっしゃいますでしょうか？';
-    }
-    console.log(`[TwiML Conference] Initial message: ${initialMessage}`);
+    // デフォルトの初期メッセージを使用（遅延を避けるため）
+    let initialMessage = 'お世話になります。AIコールシステム株式会社です。営業部のご担当者さまはいらっしゃいますでしょうか？';
     
-    // 初期挨拶と最初のGatherを設定
-    console.log(`[TwiML Conference] Setting up initial Gather with BASE_URL: ${process.env.BASE_URL}`);
+    // AI設定があれば、それを使用してメッセージを構築（同期的に）
+    if (callSession.aiConfiguration) {
+      const { companyName, serviceName, representativeName, targetDepartment } = callSession.aiConfiguration;
+      if (companyName && representativeName && serviceName && targetDepartment) {
+        initialMessage = `お世話になります。${companyName}の${representativeName}と申します。${serviceName}のご案内でお電話しました。本日、${targetDepartment}のご担当者さまはいらっしゃいますでしょうか？`;
+      }
+    }
+    console.log(`[TwiML Conference] Using immediate initial message: ${initialMessage}`);
+    console.log('[TwiML Conference] Testing CoeFont service...');
+    
+    // 完全に即座にAIが話し始める - 遅延ゼロ
+    console.log(`[TwiML Conference] ZERO DELAY - AI speaks immediately on call connect`);
+    
+    // AIが即座に話し、同時に音声認識開始
     const gather = twiml.gather({
       input: 'speech',
       language: 'ja-JP',
-      speechTimeout: 'auto',  // 自動検出
-      timeout: 10,  // 全体のタイムアウトを10秒に
+      speechTimeout: 'auto',
+      timeout: 10,
       action: `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`,
       method: 'POST',
       partialResultCallback: `${process.env.BASE_URL}/api/twilio/voice/partial/${callId}`,
       partialResultCallbackMethod: 'POST'
     });
+    
+    // AI音声を即座に再生（CoeFontを使用）
     await coefontService.getTwilioPlayElement(gather, initialMessage);
     
-    // タイムアウト時のフォールバック - 何か話してもらうよう促す
-    await coefontService.getTwilioPlayElement(twiml, 'お客様、お聞きになれますか？');
+    // フォールバック
     twiml.redirect({
       method: 'POST'
     }, `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`);
+    
+    console.log(`[TwiML Conference] Structure: immediate gather+say -> redirect`);
 
-    // 会話エンジンを初期化
-    conversationEngine.initializeConversation(callId, callSession.aiConfiguration);
+    // TwiMLを即座に返す（会話エンジン初期化は後で行う）
+    const twimlResponse = twiml.toString();
+    
+    // 会話エンジンを非同期で初期化（レスポンス送信後）
+    setImmediate(() => {
+      conversationEngine.initializeConversation(callId, callSession.aiConfiguration);
+    });
 
-    res.type('text/xml').send(twiml.toString());
+    res.type('text/xml').send(twimlResponse);
   } catch (error) {
     console.error('Error generating conference TwiML:', error);
     await coefontService.getTwilioPlayElement(twiml, 'システムエラーが発生しました。');
@@ -140,7 +152,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
     
     // 無音や無入力の場合の処理
     if (!SpeechResult || SpeechResult.trim() === '') {
-      // 最初の無音（2秒待った後）の場合、AIが名乗る
+      // 最初の無音の場合、AIが名乗る
       if (isFirst) {
         console.log(`[Speech Input] First silence detected - AI will introduce itself`);
         const initialMessage = await conversationEngine.generateResponse(callId, 'initial');
@@ -233,6 +245,25 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
     // 音声入力があったので無音カウントをリセット
     conversationEngine.updateConversationState(callId, { continuousSilentCount: 0 });
     
+    // 通話状態をai-respondingに更新
+    await CallSession.findByIdAndUpdate(callId, {
+      status: 'ai-responding'
+    });
+    
+    // WebSocketで通話状態更新を通知
+    let toPhoneNumber = req.body.To || '';
+    if (toPhoneNumber.startsWith('+81')) {
+      toPhoneNumber = '0' + toPhoneNumber.substring(3);
+    }
+    
+    webSocketService.broadcastCallEvent('call-status', {
+      callId: callId,
+      callSid: callSession.twilioCallSid,
+      phoneNumber: toPhoneNumber,
+      status: 'ai-responding',
+      timestamp: new Date()
+    });
+    
     // 最初の応答で相手が名乗った場合
     if (isFirst) {
       console.log(`[Speech Input] Customer spoke first: "${SpeechResult}"`);
@@ -253,26 +284,14 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         }
       }
     });
-
-    // WebSocketで文字起こしを送信（電話番号も含める）
-    // To番号（発信先）を取得して日本国内形式に変換
-    let toPhoneNumber = req.body.To || '';
-    if (toPhoneNumber.startsWith('+81')) {
-      toPhoneNumber = '0' + toPhoneNumber.substring(3);
-    }
     
-    // From番号（発信元）を取得して日本国内形式に変換
-    let fromPhoneNumber = req.body.From || '';
-    if (fromPhoneNumber.startsWith('+1')) {
-      fromPhoneNumber = fromPhoneNumber; // 米国番号はそのまま
-    }
-    
+    // WebSocketで顧客の発話を送信
     webSocketService.sendTranscriptUpdate(callId, {
       speaker: 'customer',
       message: SpeechResult,
-      phoneNumber: toPhoneNumber,  // To番号（発信先）を使用
-      fromPhone: callSession?.customerId?.phone || fromPhoneNumber || '不明',  // CallSessionから顧客情報取得
+      phoneNumber: toPhoneNumber,
       callId: callId,
+      callSid: callSession.twilioCallSid,
       timestamp: new Date()
     });
 
@@ -353,33 +372,61 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         }
       });
 
-      // WebSocketで文字起こしを送信（電話番号も含める）
-      // To番号（発信先）を取得して日本国内形式に変換
-      let toPhoneNumber = req.body.To || '';
-      if (toPhoneNumber.startsWith('+81')) {
-        toPhoneNumber = '0' + toPhoneNumber.substring(3);
-      }
-      
-      // From番号（発信元）を取得して日本国内形式に変換
-      let fromPhoneNumber = req.body.From || '';
-      if (fromPhoneNumber.startsWith('+1')) {
-        fromPhoneNumber = fromPhoneNumber; // 米国番号はそのまま
-      }
-      
       webSocketService.sendTranscriptUpdate(callId, {
         speaker: 'ai',
         message: aiResponse,
-        phoneNumber: toPhoneNumber,  // To番号（発信先）を使用
-        fromPhone: callSession?.customerId?.phone || fromPhoneNumber || '不明',  // CallSessionから顧客情報取得
+        phoneNumber: toPhoneNumber,
         callId: callId,
+        callSid: callSession.twilioCallSid,
         timestamp: new Date()
       });
 
       // 応答を再生して次の入力を待つ
-      if (classification.nextAction === 'end_call') {
-        console.log('[Speech Input] ENDING CALL based on classification');
+      if (classification.nextAction === 'end_call' || classification.nextAction === 'respond_and_end' || classification.nextAction === 'apologize_and_end') {
+        console.log(`[Speech Input] ENDING CALL - Action: ${classification.nextAction}, Intent: ${classification.intent}`);
         await coefontService.getTwilioPlayElement(twiml, aiResponse);
+        
+        // 終了前に少し待機（0.7-1.2秒のランダム待機）
+        if (classification.nextAction === 'respond_and_end') {
+          const waitTime = Math.floor(Math.random() * 0.5 + 0.7); // 0.7-1.2秒
+          twiml.pause({ length: waitTime });
+        }
+        
         twiml.hangup();
+        console.log(`[Speech Input] Hangup TwiML generated for call ${callId}`);
+        
+        // 通話ステータスを更新
+        await CallSession.findByIdAndUpdate(callId, {
+          status: 'completed',
+          endTime: new Date(),
+          callResult: classification.intent === 'absent' ? '不在' : 
+                      classification.intent === 'rejection' ? 'お断り' : 
+                      classification.intent === 'website_redirect' ? 'Web誘導' : '終了'
+        });
+        
+        // 会話エンジンをクリア
+        conversationEngine.clearConversation(callId);
+        
+      } else if (classification.nextAction === 'prepare_closing') {
+        // 終話シグナル検出時の処理（「失礼します」等）
+        console.log('[Speech Input] Closing signal detected - preparing to end call');
+        await coefontService.getTwilioPlayElement(twiml, aiResponse);
+        
+        // 0.7-1.2秒待機してから終話
+        const waitTime = Math.floor(Math.random() * 0.5 + 0.7);
+        twiml.pause({ length: waitTime });
+        twiml.hangup();
+        
+        // 通話ステータスを更新
+        await CallSession.findByIdAndUpdate(callId, {
+          status: 'completed',
+          endTime: new Date(),
+          callResult: '正常終了'
+        });
+        
+        // 会話エンジンをクリア
+        conversationEngine.clearConversation(callId);
+        
       } else {
         console.log('[Speech Input] CONTINUING CONVERSATION - Setting up next Gather');
         console.log(`[Speech Input] Setting up next Gather for continuous conversation`);
@@ -551,33 +598,72 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
     switch (CallStatus) {
       case 'initiated':
       case 'ringing':
-        updateData.status = 'initiated';
+        updateData.status = 'calling';
         break;
+      case 'answered':
       case 'in-progress':
-        updateData.status = 'ai-responding';
+        updateData.status = 'in-progress';
         break;
       case 'completed':
-      case 'failed':
-      case 'busy':
-      case 'no-answer':
-        updateData.status = CallStatus === 'completed' ? 'completed' : 'failed';
+        updateData.status = 'completed';
         updateData.endTime = new Date();
         if (Duration) {
           updateData.duration = parseInt(Duration);
         }
-        
+        // 会話エンジンをクリア
+        conversationEngine.clearConversation(callId);
+        break;
+      case 'failed':
+      case 'busy':
+      case 'no-answer':
+      case 'cancelled':
+        updateData.status = 'failed';
+        updateData.endTime = new Date();
+        updateData.error = `Call ${CallStatus}`;
+        if (Duration) {
+          updateData.duration = parseInt(Duration);
+        }
         // 会話エンジンをクリア
         conversationEngine.clearConversation(callId);
         break;
     }
 
-    await CallSession.findByIdAndUpdate(callId, updateData);
+    const callSession = await CallSession.findByIdAndUpdate(callId, updateData, { new: true }).populate('customerId');
 
-    // WebSocketで通知
-    webSocketService.broadcastCallEvent('call-status-changed', {
+    // 通話が完了した場合、顧客の最終コール日を更新
+    if (CallStatus === 'completed' && callSession?.customerId?._id) {
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
+      
+      await Customer.findByIdAndUpdate(callSession.customerId._id, {
+        date: dateStr,
+        result: callSession.callResult || '完了'
+      });
+      
+      console.log(`[handleCallStatus] Updated customer last call date: ${dateStr} for customer: ${callSession.customerId._id}`);
+    }
+
+    // WebSocketで通知（電話番号情報を含める）
+    let phoneNumber = '';
+    if (callSession?.customerId?.phone) {
+      phoneNumber = callSession.customerId.phone;
+    } else {
+      // TwilioのFrom/Toから電話番号を取得
+      phoneNumber = req.body.To || req.body.From || '';
+      if (phoneNumber.startsWith('+81')) {
+        phoneNumber = '0' + phoneNumber.substring(3);
+      }
+    }
+    
+    console.log(`[handleCallStatus] CallStatus: ${CallStatus}, CallId: ${callId}, Phone: ${phoneNumber}`);
+    
+    webSocketService.broadcastCallEvent('call-status', {
       callId,
-      status: CallStatus,
-      duration: Duration
+      callSid: CallSid,
+      phoneNumber: phoneNumber,
+      status: updateData.status || CallStatus,
+      duration: Duration,
+      timestamp: new Date()
     });
 
     res.status(200).send('OK');

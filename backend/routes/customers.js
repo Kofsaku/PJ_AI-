@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Customer = require('../models/Customer');
+const CallSession = require('../models/CallSession');
 const multer = require('multer');
 const csvParser = require('csv-parser');
 const fs = require('fs');
@@ -40,6 +41,32 @@ router.get('/:id', async (req, res) => {
     res.send(customer);
   } catch (error) {
     res.status(500).send(error);
+  }
+});
+
+// Get customer's call history
+router.get('/:id/call-history', async (req, res) => {
+  try {
+    const customerId = req.params.id;
+    
+    // Get customer to validate existence
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      return res.status(404).send({ error: 'Customer not found' });
+    }
+    
+    // Get call sessions for this customer, sorted by creation date (newest first)
+    const callSessions = await CallSession.find({ 
+      customerId: customerId 
+    })
+    .sort({ createdAt: -1 })
+    .populate('customerId', 'customer phone')
+    .select('createdAt endTime duration status callResult transcript notes phoneNumber twilioCallSid');
+    
+    res.send(callSessions);
+  } catch (error) {
+    console.error('Error fetching call history:', error);
+    res.status(500).send({ error: 'Failed to fetch call history' });
   }
 });
 

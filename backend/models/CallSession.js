@@ -22,7 +22,7 @@ const CallSessionSchema = new mongoose.Schema({
   },
   status: { 
     type: String, 
-    enum: ['initiating', 'calling', 'initiated', 'ai-responding', 'transferring', 'human-connected', 'completed', 'failed', 'cancelled', 'in-progress'],
+    enum: ['initiating', 'calling', 'initiated', 'ai-responding', 'transferring', 'human-connected', 'completed', 'failed', 'cancelled', 'in-progress', 'queued'],
     default: 'initiating'
   },
   error: {

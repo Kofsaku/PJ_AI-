@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, use } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -8,12 +8,13 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 interface PageProps {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
 export default function CompanyEdit({ params }: PageProps) {
+  const { id } = use(params)
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(true)
@@ -38,11 +39,11 @@ export default function CompanyEdit({ params }: PageProps) {
       return;
     }
     fetchCompany();
-  }, [router, params.id])
+  }, [router, id])
 
   const fetchCompany = async () => {
     try {
-      const response = await fetch(`/api/companies/${params.id}`);
+      const response = await fetch(`/api/companies/${id}`);
       const data = await response.json();
       if (data.success) {
         setFormData({
@@ -77,7 +78,7 @@ export default function CompanyEdit({ params }: PageProps) {
     setLoading(true);
     
     try {
-      const response = await fetch(`/api/companies/${params.id}`, {
+      const response = await fetch(`/api/companies/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

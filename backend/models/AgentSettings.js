@@ -9,9 +9,11 @@ const AgentSettingsSchema = new mongoose.Schema({
   },
   phoneNumber: { 
     type: String, 
-    required: true,
+    required: false,  // 必須ではなくする
     validate: {
       validator: function(v) {
+        // 値がある場合のみ検証
+        if (!v) return true;
         // 日本の電話番号形式（国際電話番号形式）をチェック
         return /^\+81\d{10,11}$/.test(v) || /^0\d{9,10}$/.test(v);
       },
@@ -39,6 +41,24 @@ const AgentSettingsSchema = new mongoose.Schema({
       type: String, 
       required: true,
       default: '営業部'
+    },
+    // カスタムセールスピッチ設定（call_logic.md準拠）
+    salesPitch: {
+      companyDescription: {
+        type: String,
+        default: '弊社では、{{serviceName}}を提供しております。AIが一次架電を行い、見込み度の高いお客様だけを営業におつなぎする仕組みです。'
+      },
+      serviceDescription: {
+        type: String,
+        default: '（1）AIが自動で一次架電→要件把握、（2）見込み度スコアで仕分け、（3）高確度のみ人の営業に引き継ぎ、という流れです。架電の無駄を削減し、商談化率の向上に寄与します。'
+      },
+      keyBenefits: [{
+        type: String
+      }],
+      callToAction: {
+        type: String,
+        default: 'ぜひ御社の{{targetDepartment}}ご担当者さまに概要をご案内できればと思いまして。'
+      }
     },
     customTemplates: {
       initial: {
@@ -72,6 +92,14 @@ const AgentSettingsSchema = new mongoose.Schema({
       handoff_message: {
         type: String,
         default: '担当者におつなぎいたします。少々お待ちください。'
+      },
+      sales_pitch: {
+        type: String,
+        default: '{{companyDescription}} {{callToAction}}'
+      },
+      sales_pitch_short: {
+        type: String,
+        default: '{{serviceDescription}} {{callToAction}}'
       }
     }
   },
@@ -123,6 +151,9 @@ AgentSettingsSchema.methods.processTemplate = function(templateName, additionalV
     serviceName: this.conversationSettings.serviceName,
     representativeName: this.conversationSettings.representativeName,
     targetDepartment: this.conversationSettings.targetDepartment,
+    companyDescription: this.conversationSettings.salesPitch?.companyDescription || 'AIコールシステム株式会社では、生成AIを使った新規顧客獲得テレアポ支援により、AIが一次架電と仕分けを行い、見込み度の高いお客さまだけを営業におつなぎする仕組みをご提供しています。',
+    serviceDescription: this.conversationSettings.salesPitch?.serviceDescription || '概要だけご説明させていただけますか？',
+    callToAction: this.conversationSettings.salesPitch?.callToAction || '御社の営業部ご担当者さまに、概要だけご説明させていただけますか？',
     ...additionalVars
   };
 
