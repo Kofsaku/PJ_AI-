@@ -20,15 +20,17 @@ const connectDB = async () => {
 async function manageAdminUser() {
   try {
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@example.com';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'password123';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
     
-    // Remove any existing admins first
-    const deleteResult = await User.deleteMany({ role: 'admin' });
-    if (deleteResult.deletedCount > 1) {
-      console.log(`Removed ${deleteResult.deletedCount} previous admin(s)`);
+    // Check if admin already exists
+    const existingAdmin = await User.findOne({ email: adminEmail, role: 'admin' });
+    
+    if (existingAdmin) {
+      console.log('Admin user already exists:', adminEmail);
+      return;
     }
 
-    // Create new admin by directly inserting into collection to bypass validation
+    // Create new admin only if it doesn't exist
     await User.create({
       companyId: 'ADMIN001',  // Add companyId
       username: 'admin',

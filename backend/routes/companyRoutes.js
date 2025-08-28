@@ -4,6 +4,37 @@ const Company = require('../models/Company');
 const User = require('../models/User');
 const { protect } = require('../middlewares/authMiddleware');
 const asyncHandler = require('../middlewares/asyncHandler');
+const companyController = require('../controllers/companyController');
+
+// @desc    Get all companies (no auth for admin panel)
+// @route   GET /api/companies
+// @access  Public (admin panel uses this)
+router.get('/', companyController.getAllCompanies);
+
+// @desc    Create a new company
+// @route   POST /api/companies
+// @access  Public (admin panel uses this)
+router.post('/', companyController.createCompany);
+
+// @desc    Validate company ID (must come before /:id)
+// @route   GET /api/companies/validate/:companyId
+// @access  Public
+router.get('/validate/:companyId', companyController.getCompanyByCompanyId);
+
+// @desc    Get company by ID
+// @route   GET /api/companies/:id
+// @access  Public (admin panel uses this)
+router.get('/:id', companyController.getCompanyById);
+
+// @desc    Update company
+// @route   PUT /api/companies/:id
+// @access  Public (admin panel uses this)
+router.put('/:id', companyController.updateCompany);
+
+// @desc    Delete company
+// @route   DELETE /api/companies/:id
+// @access  Public (admin panel uses this)
+router.delete('/:id', companyController.deleteCompany);
 
 // @desc    Get user's company information
 // @route   GET /api/company/my-company

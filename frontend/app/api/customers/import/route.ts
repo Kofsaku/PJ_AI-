@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5000'
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5001'
 const API_BASE_URL = `${BACKEND_URL}/api/customers/import`
 
 export async function POST(request: Request) {

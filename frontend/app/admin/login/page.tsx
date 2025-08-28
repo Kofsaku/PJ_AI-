@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function AdminLoginPage() {
   const [formData, setFormData] = useState({
@@ -15,6 +16,7 @@ export default function AdminLoginPage() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -91,6 +93,15 @@ export default function AdminLoginPage() {
                 {error}
               </div>
             )}
+            
+            {/* デバッグ情報 - 正しいログイン情報を表示 */}
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <p className="text-sm font-semibold text-blue-900 mb-1">正しいログイン情報:</p>
+              <div className="text-xs space-y-1 font-mono">
+                <p>Email: <span className="bg-white px-1 rounded">admin@example.com</span></p>
+                <p>Password: <span className="bg-white px-1 rounded">admin123</span></p>
+              </div>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="email">メールアドレス</Label>
               <Input
@@ -105,15 +116,35 @@ export default function AdminLoginPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">パスワード</Label>
-              <Input
-                id="password"
-                type="password"
-                name="password"
-                placeholder="••••••••"
-                value={formData.password}
-                onChange={(e) => handleChange(e)}
-                required
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={(e) => handleChange(e)}
+                  required
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
+                  aria-label={showPassword ? "パスワードを隠す" : "パスワードを表示"}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-gray-500" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-gray-500" />
+                  )}
+                </button>
+              </div>
+              {showPassword && formData.password && (
+                <div className="mt-2 p-2 bg-gray-100 rounded text-sm">
+                  入力中のパスワード: <span className="font-mono">{formData.password}</span>
+                </div>
+              )}
             </div>
             <Button 
               type="submit" 

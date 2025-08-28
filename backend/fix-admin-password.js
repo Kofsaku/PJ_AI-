@@ -1,94 +1,87 @@
 const mongoose = require('mongoose');
-const User = require('./models/User');
 const bcrypt = require('bcryptjs');
 require('dotenv').config();
 
-async function fixAdminPassword() {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI || process.env.MONGO_URI);
-    console.log('Connected to MongoDB');
-
-    // Find admin account
-    let admin = await User.findOne({ email: 'admin@example.com' });
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ai-agent').then(async () => {
+  const User = require('./models/User');
+  
+  console.log('=== Checking Admin Account ===');
+  
+  const adminUser = await User.findOne({ email: 'admin@example.com' }).select('+password');
+  
+  if (adminUser) {
+    console.log('Admin user found:');
+    console.log('Email:', adminUser.email);
+    console.log('Role:', adminUser.role);
+    console.log('Password field exists:', Boolean(adminUser.password));
+    console.log('Password hash (first 20 chars):', adminUser.password?.substring(0, 20));
     
-    if (!admin) {
-      console.log('Creating new admin account...');
-      
-      // Directly create with hashed password (bypass pre-save hook)
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash('admin123', salt);
-      
-      admin = new User({
-        email: 'admin@example.com',
-        password: hashedPassword,
-        firstName: 'Admin',
-        lastName: 'User',
-        companyId: 'ADMIN',
-        companyName: 'Admin Company',
-        role: 'admin',
-        phone: '090-0000-0000',
-        address: 'Tokyo, Japan',
-        businessType: 'it',
-        employees: '1-10',
-        description: 'System Administrator'
-      });
-      
-      // Skip the pre-save middleware
-      await admin.save({ validateBeforeSave: false });
-      console.log('✅ New admin created');
-      
-    } else {
-      console.log('Updating existing admin password...');
-      
-      // Generate new hash
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash('admin123', salt);
-      
-      // Direct database update to bypass pre-save hook
-      await User.updateOne(
-        { email: 'admin@example.com' },
-        { 
-          $set: { 
-            password: hashedPassword,
-            role: 'admin'
-          }
-        }
-      );
-      
-      console.log('✅ Admin password updated directly in database');
+    // パスワードが正しくハッシュ化されているかチェック
+    const isValidHash = adminUser.password && 
+      (adminUser.password.startsWith('$2b$') || adminUser.password.startsWith('$2a$'));
+    
+    console.log('Is valid bcrypt hash:', isValidHash);
+    
+    // パスワードをリセット（常に新しいハッシュを生成）
+    console.log('\nResetting password to: admin123');
+    const hashedPassword = await bcrypt.hash('admin123', 10);
+    
+    // 直接データベースを更新（pre-saveフックを回避）
+    await User.findOneAndUpdate(
+      { email: 'admin@example.com' },
+      { password: hashedPassword },
+      { new: true }
+    );
+    
+    console.log('Password has been reset with new hash');
+    
+    // 更新後のユーザーを再取得
+    const updatedUser = await User.findOne({ email: 'admin@example.com' }).select('+password');
+    
+    // テスト
+    const testResult = await bcrypt.compare('admin123', updatedUser.password);
+    console.log('\nTest password comparison:');
+    console.log('Password "admin123" matches:', testResult);
+    
+    // comparePasswordメソッドのテスト
+    try {
+      const methodResult = await updatedUser.comparePassword('admin123');
+      console.log('comparePassword method result:', methodResult);
+    } catch (err) {
+      console.log('comparePassword method error:', err.message);
     }
-
-    console.log('\n========================================');
-    console.log('Admin Login Credentials:');
+    
+    console.log('\n==== LOGIN CREDENTIALS ====');
     console.log('Email: admin@example.com');
     console.log('Password: admin123');
-    console.log('========================================\n');
+    console.log('===========================');
     
-    // Test the password
-    console.log('Testing login...');
-    const testAdmin = await User.findOne({ email: 'admin@example.com' }).select('+password');
+  } else {
+    console.log('Admin user not found. Creating new admin...');
     
-    if (testAdmin) {
-      console.log('Admin found, testing password...');
-      console.log('Password hash exists:', !!testAdmin.password);
-      console.log('Hash starts with $2:', testAdmin.password.startsWith('$2'));
-      
-      // Test with bcrypt directly
-      const directTest = await bcrypt.compare('admin123', testAdmin.password);
-      console.log('Direct bcrypt test:', directTest ? '✅ PASS' : '❌ FAIL');
-      
-      // Test with model method
-      if (testAdmin.comparePassword) {
-        const methodTest = await testAdmin.comparePassword('admin123');
-        console.log('Model method test:', methodTest ? '✅ PASS' : '❌ FAIL');
-      }
-    }
-
-    process.exit(0);
-  } catch (error) {
-    console.error('Error:', error);
-    process.exit(1);
+    const hashedPassword = await bcrypt.hash('admin123', 10);
+    const newAdmin = new User({
+      email: 'admin@example.com',
+      password: hashedPassword,
+      role: 'admin',
+      name: 'Admin',
+      firstName: 'Admin',
+      lastName: 'User',
+      companyId: 'DEFAULT',
+      companyName: 'Admin Company'
+    });
+    
+    await newAdmin.save();
+    console.log('New admin user created\!');
+    
+    console.log('\n==== LOGIN CREDENTIALS ====');
+    console.log('Email: admin@example.com');
+    console.log('Password: admin123');
+    console.log('===========================');
   }
-}
-
-fixAdminPassword();
+  
+  process.exit(0);
+}).catch(err => {
+  console.error('Error:', err);
+  process.exit(1);
+});

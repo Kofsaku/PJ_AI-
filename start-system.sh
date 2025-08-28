@@ -151,7 +151,7 @@ echo ""
 
 echo -e "${GREEN}📧 ログイン情報:${NC}"
 echo -e "   Email: admin@example.com"
-echo -e "   Password: password123"
+echo -e "   Password: admin123"
 echo ""
 
 echo -e "${GREEN}📋 プロセス情報:${NC}"

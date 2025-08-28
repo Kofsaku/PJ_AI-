@@ -9,10 +9,10 @@ export const config = {
   api: {
     baseUrl: isProduction
       ? process.env.NEXT_PUBLIC_API_URL_PROD || 'https://your-production-api.com'
-      : process.env.NEXT_PUBLIC_API_URL_DEV || 'http://localhost:5000',
+      : process.env.NEXT_PUBLIC_API_URL_DEV || 'http://localhost:5001',
     wsUrl: isProduction
       ? process.env.NEXT_PUBLIC_WS_URL_PROD || 'wss://your-production-api.com'
-      : process.env.NEXT_PUBLIC_WS_URL_DEV || 'ws://localhost:5000',
+      : process.env.NEXT_PUBLIC_WS_URL_DEV || 'ws://localhost:5001',
   },
   
   twilio: {
