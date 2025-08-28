@@ -1,70 +1,94 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Search, Filter, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, Filter, Plus, ChevronLeft, ChevronRight, Trash2, Edit } from 'lucide-react'
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
-const companies = [
-  { id: "XXXXXX", name: "企業名1", address: "住所1", url: "URL1", phone: "電話番号1", lastCall: "2025/03/01" },
-  { id: "XXXXXX", name: "企業名2", address: "住所2", url: "URL2", phone: "電話番号2", lastCall: "2025/03/01" },
-  { id: "XXXXXX", name: "企業名3", address: "住所3", url: "URL3", phone: "電話番号3", lastCall: "2025/03/01" },
-  { id: "XXXXXX", name: "企業名4", address: "住所4", url: "URL4", phone: "電話番号4", lastCall: "2025/03/01" },
-  { id: "XXXXXX", name: "企業名5", address: "住所5", url: "URL5", phone: "電話番号5", lastCall: "2025/03/01" },
-  { id: "XXXXXX", name: "企業名6", address: "住所6", url: "URL6", phone: "電話番号6", lastCall: "2025/03/01" },
-]
+interface Company {
+  _id: string;
+  companyId: string;
+  name: string;
+  address: string;
+  url: string;
+  phone: string;
+  email?: string;
+  lastCall?: string;
+  status: string;
+  createdAt: string;
+}
 
 export default function CompanyList() {
   const router = useRouter()
+  const [companies, setCompanies] = useState<Company[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 10
+
+  useEffect(() => {
+    const userData = localStorage.getItem('userData');
+    if (!userData) {
+      router.push('/admin/login');
+      return;
+    }
+    const user = JSON.parse(userData);
+    if (user.role !== 'admin') {
+      router.push('/admin/login');
+      return;
+    }
+    fetchCompanies();
+  }, [router])
+
+  const fetchCompanies = async () => {
+    try {
+      const response = await fetch('/api/companies');
+      const data = await response.json();
+      if (data.success) {
+        setCompanies(data.data || []);
+      }
+    } catch (error) {
+      console.error('Error fetching companies:', error);
+      toast.error('企業データの取得に失敗しました');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('この企業を削除してもよろしいですか？')) return;
+    
+    try {
+      const response = await fetch(`/api/companies/${id}`, {
+        method: 'DELETE',
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast.success('企業を削除しました');
+        fetchCompanies();
+      } else {
+        toast.error(data.error || '削除に失敗しました');
+      }
+    } catch (error) {
+      console.error('Error deleting company:', error);
+      toast.error('削除に失敗しました');
+    }
+  };
 
   const handleNewRegistration = () => {
     router.push("/admin/company-management/register")
   }
 
-  const handleCSVExport = () => {
-    // Show CSV export modal
-    const modal = document.createElement('div')
-    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50'
-    modal.innerHTML = `
-      <div class="bg-white rounded-lg p-8 max-w-md mx-auto text-center">
-        <h2 class="text-xl font-bold mb-4">CSVでエクスポート</h2>
-        <p class="text-gray-600 mb-6">CSVでエクスポートをします。</p>
-        <div class="w-16 h-16 mx-auto mb-4 border-4 border-gray-200 border-t-orange-500 rounded-full animate-spin"></div>
-        <p class="text-sm text-gray-500 mb-8">すべての項目をエクスポートします。</p>
-        <button class="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-full" onclick="this.parentElement.parentElement.remove()">
-          エクスポートを開始する
-        </button>
-      </div>
-    `
-    document.body.appendChild(modal)
-    
-    // Simulate export completion after 2 seconds
-    setTimeout(() => {
-      modal.innerHTML = `
-        <div class="bg-white rounded-lg p-8 max-w-md mx-auto text-center">
-          <h2 class="text-xl font-bold mb-4">エクスポート完了</h2>
-          <p class="text-gray-600 mb-6">CSVエクスポートが完了しました。</p>
-          <div class="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-            <svg class="w-8 h-8 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"></path>
-            </svg>
-          </div>
-          <p class="text-sm text-gray-500 mb-2">ファイル名: 新規リスト1</p>
-          <p class="text-sm text-gray-500 mb-8">日時: 2025/04/01</p>
-          <button class="w-full bg-orange-500 hover:bg-orange-600 text-white py-3 rounded-full" onclick="this.parentElement.parentElement.remove()">
-            企業一覧へ戻る
-          </button>
-        </div>
-      `
-    }, 2000)
+  const handleEdit = (id: string) => {
+    router.push(`/admin/company-management/edit/${id}`)
   }
 
-  const toggleCompanySelection = (companyId: string) => {
+  const handleToggleCompany = (companyId: string) => {
     setSelectedCompanies(prev => 
       prev.includes(companyId) 
         ? prev.filter(id => id !== companyId)
@@ -72,113 +96,186 @@ export default function CompanyList() {
     )
   }
 
-  return (
-    <div className="p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">企業一覧</h1>
-        <div className="flex gap-2">
-          <Button 
-            onClick={handleCSVExport}
-            variant="outline" 
-            className="border-orange-500 text-orange-500 hover:bg-orange-50"
-          >
-            CSV出力
-          </Button>
-          <Button 
-            onClick={handleNewRegistration}
-            className="bg-orange-500 hover:bg-orange-600 text-white"
-          >
-            新規登録
-          </Button>
+  const handleSelectAll = () => {
+    if (selectedCompanies.length === companies.length) {
+      setSelectedCompanies([])
+    } else {
+      setSelectedCompanies(companies.map(c => c._id))
+    }
+  }
+
+  const filteredCompanies = companies.filter(company =>
+    company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    company.companyId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    company.address.toLowerCase().includes(searchTerm.toLowerCase())
+  )
+
+  const totalPages = Math.ceil(filteredCompanies.length / itemsPerPage)
+  const paginatedCompanies = filteredCompanies.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  )
+
+  if (loading) {
+    return (
+      <div className="p-8">
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
         </div>
       </div>
+    );
+  }
 
-      <div className="bg-white rounded-lg p-6">
-        <div className="flex gap-4 mb-6">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <Input
-              placeholder="顧客検索"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+  return (
+    <div className="p-8">
+      <div className="mb-6 flex justify-between items-center">
+        <h1 className="text-2xl font-semibold">企業一覧</h1>
+        <Button 
+          onClick={handleNewRegistration} 
+          className="bg-orange-500 hover:bg-orange-600 text-white"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          新規登録
+        </Button>
+      </div>
+
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-4 border-b flex justify-between items-center">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input
+                type="text"
+                placeholder="検索..."
+                className="pl-10 w-64"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <Button variant="outline" size="sm">
+              <Filter className="w-4 h-4 mr-2" />
+              フィルター
+            </Button>
           </div>
-          <Select>
-            <SelectTrigger className="w-32">
-              <Filter className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="検索条件" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">すべて</SelectItem>
-              <SelectItem value="active">アクティブ</SelectItem>
-              <SelectItem value="inactive">非アクティブ</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select>
-            <SelectTrigger className="w-32">
-              <Filter className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="検索条件" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">すべて</SelectItem>
-              <SelectItem value="tokyo">東京</SelectItem>
-              <SelectItem value="osaka">大阪</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" className="flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            条件を追加
-          </Button>
+          <div className="text-sm text-gray-500">
+            全{filteredCompanies.length}件
+          </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left py-3 px-2">
-                  <Checkbox />
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="p-3 text-left">
+                  <Checkbox 
+                    checked={selectedCompanies.length === companies.length && companies.length > 0}
+                    onCheckedChange={handleSelectAll}
+                  />
                 </th>
-                <th className="text-left py-3 px-4">企業ID</th>
-                <th className="text-left py-3 px-4">顧客名</th>
-                <th className="text-left py-3 px-4">住所</th>
-                <th className="text-left py-3 px-4">URL</th>
-                <th className="text-left py-3 px-4">電話番号</th>
-                <th className="text-left py-3 px-4">最終コール日</th>
+                <th className="p-3 text-left text-sm font-medium text-gray-700">企業ID</th>
+                <th className="p-3 text-left text-sm font-medium text-gray-700">企業名</th>
+                <th className="p-3 text-left text-sm font-medium text-gray-700">住所</th>
+                <th className="p-3 text-left text-sm font-medium text-gray-700">URL</th>
+                <th className="p-3 text-left text-sm font-medium text-gray-700">電話番号</th>
+                <th className="p-3 text-left text-sm font-medium text-gray-700">ステータス</th>
+                <th className="p-3 text-left text-sm font-medium text-gray-700">操作</th>
               </tr>
             </thead>
             <tbody>
-              {companies.map((company, index) => (
-                <tr key={index} className="border-b hover:bg-gray-50">
-                  <td className="py-3 px-2">
+              {paginatedCompanies.map((company) => (
+                <tr key={company._id} className="border-b hover:bg-gray-50">
+                  <td className="p-3">
                     <Checkbox 
-                      checked={selectedCompanies.includes(company.id)}
-                      onCheckedChange={() => toggleCompanySelection(company.id)}
+                      checked={selectedCompanies.includes(company._id)}
+                      onCheckedChange={() => handleToggleCompany(company._id)}
                     />
                   </td>
-                  <td className="py-3 px-4">{company.id}</td>
-                  <td className="py-3 px-4">{company.name}</td>
-                  <td className="py-3 px-4">{company.address}</td>
-                  <td className="py-3 px-4">{company.url}</td>
-                  <td className="py-3 px-4">{company.phone}</td>
-                  <td className="py-3 px-4">{company.lastCall}</td>
+                  <td className="p-3 text-sm font-mono">{company.companyId}</td>
+                  <td className="p-3 text-sm font-medium">{company.name}</td>
+                  <td className="p-3 text-sm text-gray-600">{company.address}</td>
+                  <td className="p-3 text-sm">
+                    {company.url && (
+                      <a href={company.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                        {company.url}
+                      </a>
+                    )}
+                  </td>
+                  <td className="p-3 text-sm">{company.phone}</td>
+                  <td className="p-3">
+                    <span className={`inline-flex px-2 py-1 text-xs rounded-full ${
+                      company.status === 'active' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {company.status === 'active' ? 'アクティブ' : '非アクティブ'}
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(company._id)}
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(company._id)}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
-        <div className="flex justify-between items-center mt-6">
-          <Button variant="outline" className="flex items-center gap-2">
-            <ChevronLeft className="w-4 h-4" />
-            前へ
-          </Button>
-          <span className="text-sm text-gray-500">1-6件（全○件）</span>
-          <Button variant="outline" className="flex items-center gap-2">
-            次へ
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        </div>
+        {filteredCompanies.length === 0 && (
+          <div className="p-8 text-center text-gray-500">
+            企業データがありません
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="p-4 border-t flex justify-between items-center">
+            <div className="text-sm text-gray-500">
+              {(currentPage - 1) * itemsPerPage + 1} - {Math.min(currentPage * itemsPerPage, filteredCompanies.length)} / {filteredCompanies.length}件
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                <Button
+                  key={page}
+                  variant={currentPage === page ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setCurrentPage(page)}
+                >
+                  {page}
+                </Button>
+              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

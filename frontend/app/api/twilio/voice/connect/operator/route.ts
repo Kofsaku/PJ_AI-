@@ -13,17 +13,17 @@ export async function POST() {
       callerId: process.env.TWILIO_PHONE_NUMBER,
       timeout: 180,
       record: 'record-from-answer',
-      recordingStatusCallback: `${process.env.NGROK_URL}/api/twilio/voice/recording-status`,
+      recordingStatusCallback: `${process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'}/api/twilio/voice/recording-status`,
       recordingStatusCallbackEvent: ['completed'],
       recordingStatusCallbackMethod: 'POST',
       answerOnBridge: true,
-      referUrl: `${process.env.NGROK_URL}/api/twilio/voice/status`,
+      referUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'}/api/twilio/voice/status`,
       hangupOnStar: false,
       timeLimit: 3600,
       sequential: true,
       machineDetection: 'Enable',
       machineDetectionTimeout: 30,
-      machineDetectionUrl: `${process.env.NGROK_URL}/api/twilio/voice/machine-detection`,
+      machineDetectionUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'}/api/twilio/voice/machine-detection`,
       machineDetectionMethod: 'POST'
     });
 
@@ -31,15 +31,15 @@ export async function POST() {
       callerId: process.env.TWILIO_PHONE_NUMBER,
       timeout: 180,
       record: 'record-from-answer',
-      recordingStatusCallback: `${process.env.NGROK_URL}/api/twilio/voice/recording-status`,
+      recordingStatusCallback: `${process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'}/api/twilio/voice/recording-status`,
       answerOnBridge: true,
-      referUrl: `${process.env.NGROK_URL}/api/twilio/voice/status`,
+      referUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'}/api/twilio/voice/status`,
       hangupOnStar: false,
       timeLimit: 3600,
       sequential: true,
       machineDetection: 'Enable',
       machineDetectionTimeout: 30,
-      machineDetectionUrl: `${process.env.NGROK_URL}/api/twilio/voice/machine-detection`,
+      machineDetectionUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'}/api/twilio/voice/machine-detection`,
       machineDetectionMethod: 'POST'
     });
 
@@ -52,7 +52,7 @@ export async function POST() {
     // クライアントパラメータの設定
     client.parameter({
       name: 'statusCallback',
-      value: `${process.env.NGROK_URL}/api/twilio/voice/status`
+      value: `${process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'}/api/twilio/voice/status`
     });
     client.parameter({
       name: 'statusCallbackEvent',

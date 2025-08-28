@@ -20,6 +20,7 @@ import { Loader2 } from "lucide-react";
 import { env } from "process";
 
 type FormData = {
+  companyId: string;
   companyName: string;
   email: string;
   password: string;
@@ -38,6 +39,7 @@ type FormErrors = Partial<Record<keyof FormData, string>>;
 export default function SignupPage() {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<FormData>({
+    companyId: "",
     companyName: "",
     email: "",
     password: "",
@@ -50,6 +52,8 @@ export default function SignupPage() {
     employees: "",
     description: "",
   });
+  const [companyValidated, setCompanyValidated] = useState(false);
+  const [hasExistingAdmin, setHasExistingAdmin] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -59,17 +63,11 @@ export default function SignupPage() {
     const newErrors: FormErrors = {};
 
     if (step === 1) {
-      if (!formData.companyName.trim()) {
-        newErrors.companyName = "会社名は必須です";
+      if (!formData.companyId.trim()) {
+        newErrors.companyId = "企業IDは必須です";
       }
-      if (!formData.businessType) {
-        newErrors.businessType = "業種を選択してください";
-      }
-      if (!formData.employees) {
-        newErrors.employees = "従業員数を選択してください";
-      }
-      if (!formData.address.trim()) {
-        newErrors.address = "住所は必須です";
+      if (!companyValidated) {
+        newErrors.companyId = "企業IDを確認してください";
       }
     }
 
@@ -113,6 +111,12 @@ export default function SignupPage() {
   const handleNext = () => {
     if (!validateStep(step)) return;
 
+    // 既存管理者がいる場合はステップ3をスキップ
+    if (step === 2 && hasExistingAdmin) {
+      handleSubmit();
+      return;
+    }
+
     if (step < 3) {
       setStep(step + 1);
     } else {
@@ -133,7 +137,7 @@ export default function SignupPage() {
 
     try {
       const response = await fetch(
-        process.env.NEXT_PUBLIC_BACKEND_URL + `/api/auth/signup`,
+        '/api/auth/signup',
         {
           method: "POST",
           headers: {
@@ -166,6 +170,43 @@ export default function SignupPage() {
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: undefined }));
     }
+    // Reset company validation when company ID changes
+    if (field === 'companyId') {
+      setCompanyValidated(false);
+      setFormData(prev => ({ ...prev, companyName: '' }));
+    }
+  };
+
+  const validateCompanyId = async () => {
+    if (!formData.companyId.trim()) {
+      setErrors(prev => ({ ...prev, companyId: '企業IDを入力してください' }));
+      return;
+    }
+    
+    try {
+      const response = await fetch(`/api/companies/validate/${formData.companyId}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setCompanyValidated(true);
+        setFormData(prev => ({ ...prev, companyName: data.data.name }));
+        setErrors(prev => ({ ...prev, companyId: undefined }));
+        
+        // 管理者が既に存在するかチェック
+        setHasExistingAdmin(data.data.hasAdmin || false);
+        
+        // 企業ID確認後、自動的に次のステップに進む
+        setTimeout(() => {
+          setStep(2);
+        }, 500);
+      } else {
+        setCompanyValidated(false);
+        setErrors(prev => ({ ...prev, companyId: '無効な企業IDです' }));
+      }
+    } catch (error) {
+      setCompanyValidated(false);
+      setErrors(prev => ({ ...prev, companyId: '企業IDの確認に失敗しました' }));
+    }
   };
 
   return (
@@ -174,7 +215,7 @@ export default function SignupPage() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold mb-4">2. 会員登録</h1>
           <div className="flex items-center space-x-4">
-            {[1, 2, 3].map((i) => (
+            {[1, 2, hasExistingAdmin ? null : 3].filter(Boolean).map((i, index, array) => (
               <div key={i} className="flex items-center">
                 <div
                   className={`w-8 h-8 rounded-full flex items-center justify-center ${
@@ -185,7 +226,7 @@ export default function SignupPage() {
                 >
                   {i}
                 </div>
-                {i < 3 && <div className="w-12 h-0.5 bg-gray-300 mx-2" />}
+                {index < array.length - 1 && <div className="w-12 h-0.5 bg-gray-300 mx-2" />}
               </div>
             ))}
           </div>
@@ -211,20 +252,38 @@ export default function SignupPage() {
             {step === 1 && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="companyName">会社名</Label>
-                  <Input
-                    id="companyName"
-                    value={formData.companyName}
-                    onChange={(e) =>
-                      updateFormData("companyName", e.target.value)
-                    }
-                    placeholder="株式会社サンプル"
-                    className={errors.companyName ? "border-red-500" : ""}
-                  />
-                  {errors.companyName && (
-                    <p className="text-sm text-red-500">{errors.companyName}</p>
+                  <Label htmlFor="companyId">企業ID</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="companyId"
+                      value={formData.companyId}
+                      onChange={(e) =>
+                        updateFormData("companyId", e.target.value)
+                      }
+                      placeholder="企業IDを入力"
+                      className={errors.companyId ? "border-red-500" : ""}
+                    />
+                    <Button
+                      type="button"
+                      onClick={validateCompanyId}
+                      variant="outline"
+                    >
+                      確認
+                    </Button>
+                  </div>
+                  {errors.companyId && (
+                    <p className="text-sm text-red-500">{errors.companyId}</p>
+                  )}
+                  {companyValidated && (
+                    <p className="text-sm text-green-600">✓ 企業確認済み: {formData.companyName}</p>
                   )}
                 </div>
+                {companyValidated && (
+                  <div className="p-4 bg-gray-50 rounded-lg">
+                    <p className="text-sm text-gray-600">所属企業</p>
+                    <p className="font-medium">{formData.companyName}</p>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="businessType">業種</Label>
                   <Select
@@ -420,7 +479,7 @@ export default function SignupPage() {
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     処理中...
                   </>
-                ) : step === 3 ? (
+                ) : (step === 3 || (step === 2 && hasExistingAdmin)) ? (
                   "登録完了"
                 ) : (
                   "次へ"

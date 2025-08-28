@@ -90,6 +90,7 @@ export async function POST(request: Request) {
     console.log("=== リクエスト受信 ===")
     console.log("URL:", request.url)
     console.log("Method:", request.method)
+    console.log("NEXT_PUBLIC_APP_URL:", process.env.NEXT_PUBLIC_APP_URL)
 
     // リクエストヘッダーの確認
     const headers = Object.fromEntries(request.headers.entries())
@@ -118,7 +119,7 @@ export async function POST(request: Request) {
         language: "ja-JP",
         timeout: 15,
         speechTimeout: "auto",
-        action: `${process.env.NGROK_URL}/api/twilio/voice/response?state=initial`,
+        action: `${process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'}/api/twilio/voice/response?state=initial`,
         method: "POST",
         // hints: "はい,いいえ,担当者,営業,お断り,ホームページ,また電話,失礼,結構"
       })
@@ -131,6 +132,10 @@ export async function POST(request: Request) {
     const { searchParams } = new URL(request.url)
     const state = searchParams.get("state") || "initial"
     const response = new VoiceResponse()
+    
+    // Base URLを一度だけ定義
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'
+    console.log('Using base URL:', baseUrl)
 
     // ステートごとの応答ロジック
     switch (state) {
@@ -142,7 +147,7 @@ export async function POST(request: Request) {
           language: "ja-JP",
           timeout: 30,
           speechTimeout: "auto",
-          action: `${process.env.NGROK_URL}/api/twilio/voice/response?state=second_response`,
+          action: `${baseUrl}/api/twilio/voice/response?state=second_response`,
           method: "POST",
           hints: "はい,ええ,"
         });
@@ -156,7 +161,7 @@ export async function POST(request: Request) {
           language: "ja-JP",
           timeout: 30,
           speechTimeout: "auto",
-          action: `${process.env.NGROK_URL}/api/twilio/voice/response?state=check_availability`,
+          action: `${baseUrl}/api/twilio/voice/response?state=check_availability`,
           method: "POST",
           hints: "はい,いいえ,担当者,営業,お断り,ホームページ,また電話,失礼,結構,外出,会議,打ち合わせ,電話中,社名,会社名,どちら様"
         });
@@ -170,7 +175,7 @@ export async function POST(request: Request) {
           language: "ja-JP",
           timeout: 30,
           speechTimeout: "auto",
-          action: `${process.env.NGROK_URL}/api/twilio/voice/response?state=check_availability`,
+          action: `${baseUrl}/api/twilio/voice/response?state=check_availability`,
           method: "POST",
           hints: "はい,いいえ,担当者,営業,お断り,ホームページ,また電話,失礼,結構,外出,会議,打ち合わせ,電話中"
         });
@@ -186,7 +191,7 @@ export async function POST(request: Request) {
             language: "ja-JP",
             timeout: 30,
             speechTimeout: "auto",
-            action: `${process.env.NGROK_URL}/api/twilio/voice/response?state=check_availability`,
+            action: `${process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'}/api/twilio/voice/response?state=check_availability`,
             method: "POST",
             hints: "はい,いいえ,担当者,営業,お断り,ホームページ,また電話,失礼,結構,外出,会議,打ち合わせ,電話中"
           });
@@ -214,7 +219,7 @@ export async function POST(request: Request) {
         } else if (userResponse.includes("はい") || userResponse.includes("担当者")) {
           response.redirect({
             method: "POST"
-          }, `${process.env.NGROK_URL}/api/twilio/voice/connect/operator`);
+          }, `${baseUrl}/api/twilio/voice/connect/operator`);
         } else {
           response.say({ voice: "Polly.Mizuki", language: "ja-JP" }, "申し訳ありません。もう一度お願いできますでしょうか？");
           response.gather({
@@ -222,7 +227,7 @@ export async function POST(request: Request) {
             language: "ja-JP",
             timeout: 30,
             speechTimeout: "auto",
-            action: `${process.env.NGROK_URL}/api/twilio/voice/response?state=check_availability`,
+            action: `${process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'}/api/twilio/voice/response?state=check_availability`,
             method: "POST",
             hints: "はい,いいえ,担当者,営業,お断り,ホームページ,また電話,失礼,結構,外出,会議,打ち合わせ,電話中"
           });
@@ -237,7 +242,7 @@ export async function POST(request: Request) {
           language: "ja-JP",
           timeout: 15,
           speechTimeout: "auto",
-          action: `${process.env.NGROK_URL}/api/twilio/voice/response?state=check_availability`,
+          action: `${process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'}/api/twilio/voice/response?state=check_availability`,
           method: "POST",
           hints: "はい,いいえ,担当者,営業,お断り,ホームページ,また電話,失礼,結構,外出,会議,打ち合わせ,電話中"
         });
@@ -256,7 +261,7 @@ export async function POST(request: Request) {
           language: "ja-JP",
           timeout: 15,
           speechTimeout: "auto",
-          action: `${process.env.NGROK_URL}/api/twilio/voice/response?state=introduction`,
+          action: `${baseUrl}/api/twilio/voice/response?state=introduction`,
           method: "POST",
           hints: "はい,いいえ,担当者,営業,お断り,ホームページ,また電話,失礼,結構"
         });
@@ -288,7 +293,7 @@ export async function POST(request: Request) {
           language: "ja-JP",
           timeout: 15,
           speechTimeout: "auto",
-          action: `${process.env.NGROK_URL}/api/twilio/voice/response?state=initial`,
+          action: `${baseUrl}/api/twilio/voice/response?state=initial`,
           method: "POST",
           // hints: "はい,いいえ,担当者,営業,お断り,ホームページ,また電話,失礼,結構"
         });
@@ -316,7 +321,7 @@ export async function POST(request: Request) {
       
       errorResponse.redirect({
         method: "POST"
-      }, `${process.env.NGROK_URL}/api/twilio/voice/connect/operator`)
+      }, `${baseUrl}/api/twilio/voice/connect/operator`)
       
       return new NextResponse(errorResponse.toString(), {
         headers: { "Content-Type": "text/xml; charset=utf-8" },

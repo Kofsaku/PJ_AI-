@@ -1,60 +1,58 @@
 // app/api/twilio/voice/route.ts
 import { NextResponse } from "next/server"
-import twilio from "twilio"
-
-const VoiceResponse = twilio.twiml.VoiceResponse
 
 /**
- * Twilioが通話開始時にアクセスしてくるURL
- * → TWiML (XML) を返す
+ * This route is deprecated. Twilio voice handling should go through the backend.
+ * Redirecting to backend ngrok URL.
  */
 export async function GET() {
-  return voiceResponse()
+  console.log('GET request received from Twilio - redirecting to backend')
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_NGROK_URL || 'https://21fe5a6abbaf.ngrok-free.app'
+  return NextResponse.redirect(`${backendUrl}/api/twilio/voice`, 302)
 }
 
 export async function POST(request: Request) {
-  return voiceResponse()
-}
-
-// 実際の処理をまとめる
-function voiceResponse() {
+  console.log('POST request received from Twilio - redirecting to backend')
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_NGROK_URL || 'https://21fe5a6abbaf.ngrok-free.app'
+  
+  // Forward the request to backend
   try {
-    const response = new VoiceResponse()
-    
-    // 1. アプリが初めの挨拶をする
-    response.say({
-      voice: "Polly.Mizuki",
-      language: "ja-JP"
-    }, "お世話になります。わたくしＡＩコールシステムの安達といいますが、")
-
-    // 2. ユーザーの入力を待つ
-    response.gather({
-      input: ["speech"],
-      language: "ja-JP",
-      speechTimeout: "auto",
-      action: `${process.env.NGROK_URL}/api/twilio/voice/response?state=initial`,
-      method: "POST",
-      timeout: 5
-    })
-
-    const twiml = response.toString()
-    console.log("Generated TwiML:", twiml)
-
-    return new NextResponse(twiml, {
+    const body = await request.text()
+    const response = await fetch(`${backendUrl}/api/twilio/voice`, {
+      method: 'POST',
       headers: {
-        "Content-Type": "text/xml; charset=utf-8",
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0"
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body
+    })
+    
+    const twiml = await response.text()
+    return new NextResponse(twiml, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/xml; charset=utf-8',
       },
     })
   } catch (error) {
-    console.error("Error generating TwiML:", error)
-    return new NextResponse("", {
+    console.error('Error forwarding to backend:', error)
+    // Return empty TwiML on error
+    return new NextResponse('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', {
       status: 200,
       headers: {
-        "Content-Type": "text/xml",
+        'Content-Type': 'text/xml; charset=utf-8',
       },
     })
   }
+}
+
+// Handle OPTIONS request for CORS
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "*"
+    }
+  })
 }

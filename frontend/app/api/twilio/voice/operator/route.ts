@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   response.dial({
     callerId: process.env.TWILIO_PHONE_NUMBER,
     record: 'record-from-answer',
-    recordingStatusCallback: `${process.env.NGROK_URL}/api/twilio/recording`,
+    recordingStatusCallback: `${process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'}/api/twilio/recording`,
     recordingStatusCallbackEvent: ['completed'],
     recordingStatusCallbackMethod: 'POST'
   }, operatorNumber);

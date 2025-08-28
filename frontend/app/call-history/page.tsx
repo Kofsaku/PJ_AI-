@@ -1,54 +1,194 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Search, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, ChevronLeft, ChevronRight, Phone, Calendar, Clock, User, FileText, Loader2 } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
+import { format } from "date-fns"
+import { ja } from "date-fns/locale"
 
-const callHistory = [
-  {
-    id: 1,
-    customer: "顧客名1",
-    date: "2025/03/01",
-    time: "10:30",
-    duration: "5分",
-    result: "成功",
-    notes: "商品に興味あり",
-  },
-  {
-    id: 2,
-    customer: "顧客名2",
-    date: "2025/03/02",
-    time: "14:15",
-    duration: "3分",
-    result: "不在",
-    notes: "留守番電話",
-  },
-  {
-    id: 3,
-    customer: "顧客名3",
-    date: "2025/03/03",
-    time: "16:45",
-    duration: "8分",
-    result: "要フォロー",
-    notes: "検討中",
-  },
-]
+interface Customer {
+  id: string
+  name: string
+  phone: string
+  company?: string
+}
 
-const statusColors = {
+interface CallRecord {
+  id: string
+  customer: Customer
+  date: string
+  startTime: string
+  endTime?: string
+  duration: string
+  durationSeconds: number
+  status: string
+  result: string
+  notes: string
+  assignedAgent?: {
+    id: string
+    name: string
+  }
+  twilioCallSid?: string
+  recordingUrl?: string
+  hasTranscript: boolean
+  transcriptCount: number
+}
+
+interface Pagination {
+  currentPage: number
+  totalPages: number
+  totalItems: number
+  itemsPerPage: number
+  hasNext: boolean
+  hasPrev: boolean
+}
+
+const statusColors: Record<string, string> = {
   成功: "bg-green-500",
   不在: "bg-yellow-500",
   要フォロー: "bg-purple-500",
   拒否: "bg-red-500",
+  失敗: "bg-gray-500",
+  未設定: "bg-gray-400"
 }
+
+const statusOptions = [
+  { value: "all", label: "すべて" },
+  { value: "成功", label: "成功" },
+  { value: "不在", label: "不在" },
+  { value: "要フォロー", label: "要フォロー" },
+  { value: "拒否", label: "拒否" },
+  { value: "失敗", label: "失敗" }
+]
 
 export default function CallHistoryPage() {
   const [searchTerm, setSearchTerm] = useState("")
-  const [selectedStatus, setSelectedStatus] = useState("")
+  const [selectedStatus, setSelectedStatus] = useState("all")
+  const [calls, setCalls] = useState<CallRecord[]>([])
+  const [selectedCalls, setSelectedCalls] = useState<Set<string>>(new Set())
+  const [pagination, setPagination] = useState<Pagination>({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    itemsPerPage: 10,
+    hasNext: false,
+    hasPrev: false
+  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // コール履歴を取得
+  const fetchCallHistory = async (page: number = 1) => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: "10",
+        sortBy: "createdAt",
+        sortOrder: "desc"
+      })
+
+      if (searchTerm) {
+        params.append("search", searchTerm)
+      }
+
+      if (selectedStatus !== "all") {
+        params.append("result", selectedStatus)
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/call-history?${params}`, {
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json"
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error("コール履歴の取得に失敗しました")
+      }
+
+      const data = await response.json()
+      
+      if (data.success) {
+        setCalls(data.data)
+        setPagination(data.pagination)
+      } else {
+        throw new Error(data.error || "データの取得に失敗しました")
+      }
+    } catch (err) {
+      console.error("Error fetching call history:", err)
+      setError(err instanceof Error ? err.message : "エラーが発生しました")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 初回読み込みと検索条件変更時
+  useEffect(() => {
+    fetchCallHistory(1)
+  }, [searchTerm, selectedStatus])
+
+  // チェックボックスの全選択/解除
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedCalls(new Set(calls.map(call => call.id)))
+    } else {
+      setSelectedCalls(new Set())
+    }
+  }
+
+  // 個別チェックボックスの選択
+  const handleSelectCall = (callId: string, checked: boolean) => {
+    const newSelected = new Set(selectedCalls)
+    if (checked) {
+      newSelected.add(callId)
+    } else {
+      newSelected.delete(callId)
+    }
+    setSelectedCalls(newSelected)
+  }
+
+  // ページ変更
+  const handlePageChange = (newPage: number) => {
+    fetchCallHistory(newPage)
+  }
+
+  // 日時フォーマット
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString)
+      return format(date, "yyyy/MM/dd", { locale: ja })
+    } catch {
+      return dateString
+    }
+  }
+
+  const formatTime = (dateString: string) => {
+    try {
+      const date = new Date(dateString)
+      return format(date, "HH:mm", { locale: ja })
+    } catch {
+      return ""
+    }
+  }
+
+  // 新規コール記録（ダミー機能）
+  const handleNewCallRecord = () => {
+    alert("新規コール記録機能は開発中です")
+  }
+
+  // 通話詳細表示（ダミー機能）
+  const handleCallDetails = (callId: string) => {
+    console.log("View details for call:", callId)
+    // TODO: 詳細モーダルまたは詳細ページへの遷移を実装
+  }
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -57,7 +197,12 @@ export default function CallHistoryPage() {
       <main className="flex-1 p-6">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">コール履歴</h1>
-          <Button className="bg-orange-500 hover:bg-orange-600">新規コール記録</Button>
+          <Button 
+            className="bg-orange-500 hover:bg-orange-600"
+            onClick={handleNewCallRecord}
+          >
+            新規コール記録
+          </Button>
         </div>
 
         <div className="bg-white rounded-lg shadow">
@@ -65,7 +210,7 @@ export default function CallHistoryPage() {
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
-                placeholder="顧客検索"
+                placeholder="顧客名・電話番号で検索"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -73,67 +218,176 @@ export default function CallHistoryPage() {
             </div>
 
             <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-              <SelectTrigger className="w-32">
-                <SelectValue placeholder="結果" />
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="結果で絞り込み" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="success">成功</SelectItem>
-                <SelectItem value="absent">不在</SelectItem>
-                <SelectItem value="follow">要フォロー</SelectItem>
-                <SelectItem value="reject">拒否</SelectItem>
+                {statusOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
 
+          {error && (
+            <div className="p-4 bg-red-50 text-red-600 border-b border-red-200">
+              {error}
+            </div>
+          )}
+
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="p-3 text-left">
-                    <Checkbox />
-                  </th>
-                  <th className="p-3 text-left">顧客名</th>
-                  <th className="p-3 text-left">日付</th>
-                  <th className="p-3 text-left">時間</th>
-                  <th className="p-3 text-left">通話時間</th>
-                  <th className="p-3 text-left">結果</th>
-                  <th className="p-3 text-left">メモ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {callHistory.map((call) => (
-                  <tr key={call.id} className="border-b hover:bg-gray-50">
-                    <td className="p-3">
-                      <Checkbox />
-                    </td>
-                    <td className="p-3">{call.customer}</td>
-                    <td className="p-3">{call.date}</td>
-                    <td className="p-3">{call.time}</td>
-                    <td className="p-3">{call.duration}</td>
-                    <td className="p-3">
-                      <Badge className={`${statusColors[call.result as keyof typeof statusColors]} text-white`}>
-                        {call.result}
-                      </Badge>
-                    </td>
-                    <td className="p-3">{call.notes}</td>
+            {loading ? (
+              <div className="flex justify-center items-center h-64">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+              </div>
+            ) : calls.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <Phone className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p>コール履歴がありません</p>
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="p-3 text-left">
+                      <Checkbox 
+                        checked={selectedCalls.size === calls.length && calls.length > 0}
+                        onCheckedChange={handleSelectAll}
+                      />
+                    </th>
+                    <th className="p-3 text-left">
+                      <div className="flex items-center gap-1">
+                        <User className="h-4 w-4" />
+                        顧客名
+                      </div>
+                    </th>
+                    <th className="p-3 text-left">
+                      <div className="flex items-center gap-1">
+                        <Calendar className="h-4 w-4" />
+                        日付
+                      </div>
+                    </th>
+                    <th className="p-3 text-left">
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-4 w-4" />
+                        時間
+                      </div>
+                    </th>
+                    <th className="p-3 text-left">通話時間</th>
+                    <th className="p-3 text-left">結果</th>
+                    <th className="p-3 text-left">
+                      <div className="flex items-center gap-1">
+                        <FileText className="h-4 w-4" />
+                        メモ
+                      </div>
+                    </th>
+                    <th className="p-3 text-left">担当</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {calls.map((call) => (
+                    <tr 
+                      key={call.id} 
+                      className="border-b hover:bg-gray-50 cursor-pointer"
+                      onClick={() => handleCallDetails(call.id)}
+                    >
+                      <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                        <Checkbox 
+                          checked={selectedCalls.has(call.id)}
+                          onCheckedChange={(checked) => handleSelectCall(call.id, checked as boolean)}
+                        />
+                      </td>
+                      <td className="p-3">
+                        <div>
+                          <div className="font-medium">{call.customer.name}</div>
+                          <div className="text-xs text-gray-500">{call.customer.phone}</div>
+                          {call.customer.company && (
+                            <div className="text-xs text-gray-400">{call.customer.company}</div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-3">{formatDate(call.date)}</td>
+                      <td className="p-3">{formatTime(call.startTime)}</td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-1">
+                          {call.duration}
+                          {call.hasTranscript && (
+                            <span className="text-xs text-blue-600" title="文字起こしあり">
+                              📝
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <Badge className={`${statusColors[call.result] || statusColors["未設定"]} text-white`}>
+                          {call.result}
+                        </Badge>
+                      </td>
+                      <td className="p-3">
+                        <div className="max-w-xs truncate" title={call.notes}>
+                          {call.notes || "-"}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        {call.assignedAgent ? (
+                          <div className="text-sm">{call.assignedAgent.name}</div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
 
-          <div className="p-4 flex justify-between items-center border-t">
-            <Button variant="outline" size="sm">
-              <ChevronLeft className="h-4 w-4 mr-1" />
-              前へ
-            </Button>
-            <span className="text-sm text-gray-600">1-3件 (全3件)</span>
-            <Button variant="outline" size="sm">
-              次へ
-              <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          </div>
+          {!loading && calls.length > 0 && (
+            <div className="p-4 flex justify-between items-center border-t">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => handlePageChange(pagination.currentPage - 1)}
+                disabled={!pagination.hasPrev}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                前へ
+              </Button>
+              <span className="text-sm text-gray-600">
+                {((pagination.currentPage - 1) * pagination.itemsPerPage) + 1}-
+                {Math.min(pagination.currentPage * pagination.itemsPerPage, pagination.totalItems)}件 
+                (全{pagination.totalItems}件)
+              </span>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => handlePageChange(pagination.currentPage + 1)}
+                disabled={!pagination.hasNext}
+              >
+                次へ
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          )}
         </div>
+
+        {selectedCalls.size > 0 && (
+          <div className="fixed bottom-6 right-6 bg-white rounded-lg shadow-lg p-4 border">
+            <p className="text-sm text-gray-600 mb-2">
+              {selectedCalls.size}件選択中
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline">
+                CSVエクスポート
+              </Button>
+              <Button size="sm" variant="destructive">
+                削除
+              </Button>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   )

@@ -29,14 +29,14 @@ export async function POST(request: Request) {
   const dial = response.dial({
     callerId: process.env.TWILIO_PHONE_NUMBER,
     record: 'record-from-answer',
-    recordingStatusCallback: `${process.env.NGROK_URL}/api/twilio/recording`,
+    recordingStatusCallback: `${process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'}/api/twilio/recording`,
     recordingStatusCallbackEvent: ['completed'],
     recordingStatusCallbackMethod: 'POST'
   });
 
   // Webクライアントへの接続
   dial.client('human_operator', {
-    statusCallback: `${process.env.NGROK_URL}/api/twilio/voice/status`,
+    statusCallback: `${process.env.NEXT_PUBLIC_APP_URL || 'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'}/api/twilio/voice/status`,
     statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
     statusCallbackMethod: 'POST'
   });
