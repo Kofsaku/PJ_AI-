@@ -6,7 +6,22 @@ class ConversationEngine {
     this.responsePatterns = {
       // A: 普通の応答（「はい」「お世話になります」）
       normal_response: {
-        keywords: ['はい', 'お世話になります', 'どうぞ', '私です', '担当です'],
+        keywords: ['はい', 'お世話になります', 'どうぞ', '私です', '担当です', 'お疲れ様', 'よろしく', '承知', '了解'],
+        confidence: 0.8
+      },
+      // 興味・関心を示す応答
+      interest_response: {
+        keywords: ['わかりました', '分かりました', '理解しました', 'なるほど', 'そうですね', 'どうすればいいですか', '詳しく', '教えて', '聞かせて', 'もう少し', '興味が', '関心が'],
+        confidence: 0.85
+      },
+      // 他の担当者への転送要求
+      transfer_request: {
+        keywords: ['担当に', '担当者に', '代わります', '代わって', '転送', '営業部の', '責任者に', '上司に', 'つなぎ', '回します'],
+        confidence: 0.9
+      },
+      // 理解を示しつつ次のステップを求める
+      understanding_response: {
+        keywords: ['理解', '了承', '承知', 'わかり', '分かり', '把握', 'どうぞ', 'お願い', '進めて'],
         confidence: 0.8
       },
       // B: 聞き返し（「はい？」）
@@ -36,7 +51,7 @@ class ConversationEngine {
       },
       // 用件確認
       purpose_inquiry: {
-        keywords: ['ご用件', '用件は', 'どういった', 'なんの用', '何の件', 'どのような'],
+        keywords: ['ご用件', '用件は', 'どういった', 'なんの用', '何の件', 'どのような', 'どちら様', 'どんな', 'いかが', '何か', '目的', '内容'],
         confidence: 0.85
       },
       // 終話の合図
@@ -252,6 +267,36 @@ class ConversationEngine {
         bestMatch.nextAction = 'confirm_company';
         break;
       
+      // 興味・関心を示す応答への対応
+      case 'interest_response':
+        console.log('[ConversationEngine] 興味・関心の応答 - 詳細説明へ');
+        if (!state.hasGivenPurpose) {
+          state.hasGivenPurpose = true;
+          bestMatch.nextAction = 'give_purpose';
+        } else {
+          bestMatch.nextAction = 'give_details';
+        }
+        break;
+      
+      // 転送要求への対応
+      case 'transfer_request':
+        console.log('[ConversationEngine] 転送要求 - 引き継ぎ準備');
+        bestMatch.nextAction = 'prepare_transfer';
+        state.shouldHandoff = true;
+        state.handoffReason = 'Customer requested transfer';
+        break;
+      
+      // 理解を示す応答への対応
+      case 'understanding_response':
+        console.log('[ConversationEngine] 理解応答 - 次のステップへ');
+        if (!state.hasGivenPurpose) {
+          state.hasGivenPurpose = true;
+          bestMatch.nextAction = 'give_purpose';
+        } else {
+          bestMatch.nextAction = 'continue_conversation';
+        }
+        break;
+      
       // 用件確認への対応（10秒ピッチ）
       case 'purpose_inquiry':
         if (!state.hasGivenPurpose) {
@@ -275,6 +320,12 @@ class ConversationEngine {
         state.waitingForClosing = true;
         bestMatch.nextAction = 'prepare_closing';
         break;
+    }
+
+    // unknown の場合の改善されたハンドリング
+    if (bestMatch.intent === 'unknown') {
+      console.log('[ConversationEngine] Unknown intent - applying context-aware handling');
+      bestMatch = this.handleUnknownWithContext(state, speechText, bestMatch);
     }
 
     // 会話のターン数をチェック
@@ -303,6 +354,63 @@ class ConversationEngine {
     }
 
     return matchCount / keywords.length;
+  }
+
+  // コンテキストを考慮したunknown処理
+  handleUnknownWithContext(state, speechText, currentMatch) {
+    console.log('[ConversationEngine] Applying context-aware unknown handling');
+    
+    // 会話の文脈を分析
+    const conversationContext = this.analyzeConversationContext(state);
+    
+    // 用件説明後の場合、より親切な応答を使用
+    if (state.hasGivenPurpose) {
+      console.log('[ConversationEngine] Purpose already given - using context-aware response');
+      return {
+        intent: 'unknown_after_purpose',
+        confidence: 0.7,
+        shouldHandoff: false,
+        nextAction: 'continue'
+      };
+    }
+    
+    // 顧客が何か言おうとしているが理解できない場合の判定
+    if (speechText && speechText.length > 5) {
+      console.log('[ConversationEngine] Customer seems engaged - using helpful unknown response');
+      return {
+        intent: 'unknown_context_aware',
+        confidence: 0.6,
+        shouldHandoff: false,
+        nextAction: 'continue'
+      };
+    }
+    
+    // 連続してunknownが発生している場合の対応
+    if (state.turnCount > 2 && state.lastResponse?.intent === 'unknown') {
+      console.log('[ConversationEngine] Multiple unknown responses - preparing for handoff');
+      return {
+        intent: 'unknown',
+        confidence: 0.5,
+        shouldHandoff: true,
+        nextAction: 'handoff',
+        handoffReason: 'Multiple unclear responses'
+      };
+    }
+    
+    return currentMatch;
+  }
+
+  // 会話コンテキストを分析
+  analyzeConversationContext(state) {
+    const recentMessages = state.conversationHistory.slice(-3);
+    const customerMessages = recentMessages.filter(msg => msg.speaker === 'customer');
+    
+    return {
+      hasGivenPurpose: state.hasGivenPurpose,
+      recentCustomerEngagement: customerMessages.length > 0,
+      conversationLength: state.turnCount,
+      lastIntent: state.lastResponse?.intent
+    };
   }
 
   // 応答メッセージを生成
@@ -445,9 +553,19 @@ class ConversationEngine {
       // 聞き返しが多すぎる場合
       too_many_clarifications: '申し訳ございません。音声が聞き取りづらいようでしたら、後日改めてご連絡いたします。ありがとうございました。',
       
+      // 新しいインテント用の応答
+      interest_response: 'ありがとうございます。{{companyDescription}} {{callToAction}}',
+      transfer_request: 'かしこまりました。それでは{{targetDepartment}}のご担当者さまにおつなぎいただけますでしょうか。',
+      understanding_response: 'ありがとうございます。{{companyDescription}} ご質問等ございましたらお聞かせください。',
+      give_details: '詳しくは、{{serviceDescription}} {{callToAction}}',
+      continue_conversation: 'ありがとうございます。他にご質問等ございますでしょうか？',
+      prepare_transfer: 'ありがとうございます。{{targetDepartment}}のご担当者さまへの引き継ぎ準備をいたします。',
+      
       // その他
       silent: 'お客様、お聞きになれますか？',
-      unknown: '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？'
+      unknown: '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？',
+      unknown_after_purpose: 'ご質問やご不明な点がございましたら、お聞かせください。',
+      unknown_context_aware: '恐れ入ります。{{serviceName}}について、他にご質問等ございますでしょうか？'
     };
 
     // テンプレート処理が必要な応答は処理
@@ -469,7 +587,12 @@ class ConversationEngine {
     const templates = {
       purpose_inquiry: 'sales_pitch', // purpose_inquiry用にsales_pitchテンプレートを使用
       company_inquiry: 'company_confirmation',
-      service_detail: 'sales_pitch_short'
+      service_detail: 'sales_pitch_short',
+      interest_response: 'sales_pitch',
+      understanding_response: 'sales_pitch',
+      give_details: 'sales_pitch_detailed',
+      continue_conversation: 'follow_up',
+      prepare_transfer: 'transfer_preparation'
     };
     
     const actualTemplateName = templates[templateName] || templateName;
@@ -478,7 +601,10 @@ class ConversationEngine {
     const defaultTemplates = {
       sales_pitch: 'ありがとうございます。{{companyDescription}} {{callToAction}}',
       sales_pitch_short: '詳しくは、{{serviceDescription}} {{callToAction}}',
-      company_confirmation: '{{companyName}}でございます。{{representativeName}}です。'
+      sales_pitch_detailed: '詳しくは、{{serviceDescription}} ご担当者さまに5分ほどで概要をご説明できますが、おつなぎ可能でしょうか。',
+      company_confirmation: '{{companyName}}でございます。{{representativeName}}です。',
+      follow_up: 'ありがとうございます。他にご質問等ございますでしょうか？',
+      transfer_preparation: 'ありがとうございます。{{targetDepartment}}のご担当者さまへの引き継ぎ準備をいたします。'
     };
     
     const template = defaultTemplates[actualTemplateName];
@@ -492,7 +618,7 @@ class ConversationEngine {
       targetDepartment: agentSettings.targetDepartment || '営業部',
       companyDescription: agentSettings.salesPitch?.companyDescription || '弊社では、AIアシスタントサービスを提供しております。AIが一次架電を行い、見込み度の高いお客様だけを営業におつなぎする仕組みです。',
       serviceDescription: agentSettings.salesPitch?.serviceDescription || '（1）AIが自動で一次架電→要件把握、（2）見込み度スコアで仕分け、（3）高確度のみ人の営業に引き継ぎ、という流れです。架電の無駄を削減し、商談化率の向上に寄与します。',
-      callToAction: agentSettings.salesPitch?.callToAction || 'ぜひ御社の営業部ご担当者さまに概要をご案内できればと思いまして。'
+      callToAction: agentSettings.salesPitch?.callToAction || '是非、御社の営業の方にご案内できればと思いお電話をさせていただきました！本日、営業の担当者さまはいらっしゃいますでしょうか？'
     };
     
     // テンプレート変数を置換
@@ -510,25 +636,47 @@ class ConversationEngine {
     const state = this.conversationStates.get(callId);
     if (!state) return 'continue';
 
-    // 会話フローのステートマシン
+    // 会話フローのステートマシン（改善版）
     const flowTransitions = {
       initial: {
-        transfer_ready: 'handoff',
-        unclear: 'clarification',
+        normal_response: 'purpose_explanation',
+        interest_response: 'purpose_explanation',
+        understanding_response: 'purpose_explanation',
+        transfer_request: 'prepare_handoff',
         company_inquiry: 'company_confirmation',
+        purpose_inquiry: 'purpose_explanation',
         absent: 'schedule_callback',
         rejection: 'polite_end',
         website_redirect: 'provide_website',
         silent: 'check_connection'
       },
+      purpose_explanation: {
+        interest_response: 'detailed_explanation',
+        understanding_response: 'follow_up_questions',
+        transfer_request: 'prepare_handoff',
+        normal_response: 'continue_conversation',
+        rejection: 'polite_end',
+        unclear: 'clarification',
+        unknown: 'context_aware_help'
+      },
       clarification: {
-        transfer_ready: 'handoff',
+        interest_response: 'detailed_explanation',
+        understanding_response: 'follow_up_questions',
+        transfer_request: 'prepare_handoff',
         unclear: 'handoff', // 複数回の確認が必要な場合は引き継ぎ
         rejection: 'polite_end',
         silent: 'check_connection'
       },
       company_confirmation: {
-        transfer_ready: 'handoff',
+        normal_response: 'purpose_explanation',
+        interest_response: 'purpose_explanation',
+        transfer_request: 'prepare_handoff',
+        rejection: 'polite_end',
+        unclear: 'clarification'
+      },
+      detailed_explanation: {
+        transfer_request: 'prepare_handoff',
+        understanding_response: 'follow_up_questions',
         rejection: 'polite_end',
         unclear: 'clarification'
       }
@@ -537,6 +685,8 @@ class ConversationEngine {
     const currentPhase = state.currentPhase || 'initial';
     const transitions = flowTransitions[currentPhase] || {};
     const nextStep = transitions[currentIntent] || 'continue';
+
+    console.log(`[ConversationEngine] Flow transition: ${currentPhase} -> ${currentIntent} -> ${nextStep}`);
 
     // ステート更新
     if (nextStep !== 'continue') {
