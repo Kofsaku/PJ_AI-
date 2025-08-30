@@ -7,10 +7,17 @@ import { ChevronDown, ChevronRight } from "lucide-react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 
+interface NavigationItem {
+  name: string
+  href: string
+  children?: NavigationItem[]
+}
+
 
 
 export function Sidebar() {
   const [isManagementOpen, setIsManagementOpen] = useState(false)
+  const [isCompanyManagementOpen, setIsCompanyManagementOpen] = useState(false)
   const [role, setRole] = useState<string | null>(null)
   const router = useRouter()
   const pathname = usePathname()
@@ -31,6 +38,14 @@ export function Sidebar() {
     }
   }, [])
 
+  // Auto-expand accordion if a child route is active
+  useEffect(() => {
+    const companyManagementItem = navigation.find(item => item.name === "企業管理")
+    if (companyManagementItem?.children && isChildActive(companyManagementItem.children)) {
+      setIsCompanyManagementOpen(true)
+    }
+  }, [pathname])
+
   const handleLogout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('userData')
@@ -45,11 +60,21 @@ export function Sidebar() {
 
   const isActive = (path: string) => pathname === path
 
+  const isChildActive = (children: NavigationItem[]) => {
+    return children.some(child => pathname === child.href)
+  }
 
-const navigation = [
+  const toggleAccordion = (itemName: string) => {
+    if (itemName === "企業管理") {
+      setIsCompanyManagementOpen(!isCompanyManagementOpen)
+    }
+  }
+
+
+const navigation: NavigationItem[] = [
   { name: "企業一覧", href: "/admin/companies" },
   { name: "ユーザー管理", href: "/admin/users" },
-  { name: "企業管理", href: "/admin/company-management", children: [
+  { name: "企業管理", href: "#", children: [
     { name: "新規登録", href: "/admin/company-management/register" },
     { name: "ダッシュボード", href: "/admin/company-management/dashboard" },
     { name: "確認", href: "/admin/company-management/confirm" },
@@ -139,30 +164,53 @@ const navigation = [
         <nav className="mt-8 space-y-1 px-4">
           {navigation.map((item) => (
             <div key={item.name}>
-              <Link
-                href={item.href}
-                className={cn(
-                  "block px-3 py-2 text-white hover:bg-cyan-500 rounded",
-                  pathname === item.href && "bg-cyan-500"
-                )}
-              >
-                {item.name}
-              </Link>
-              {item.children && (
-                <div className="ml-4 space-y-1">
-                  {item.children.map((child, index) => (
-                    <Link
-                      key={`${child.name}-${index}`}
-                      href={child.href}
-                      className={cn(
-                        "block px-3 py-2 text-white hover:bg-cyan-500 rounded text-sm",
-                        pathname === child.href && "bg-cyan-500"
-                      )}
-                    >
-                      {child.name}
-                    </Link>
-                  ))}
+              {item.children ? (
+                // Parent item with children (accordion)
+                <div>
+                  <div
+                    onClick={() => toggleAccordion(item.name)}
+                    className={cn(
+                      "flex items-center justify-between px-3 py-2 text-white hover:bg-cyan-500 rounded cursor-pointer",
+                      (item.children && isChildActive(item.children)) && "bg-cyan-500"
+                    )}
+                  >
+                    <span>{item.name}</span>
+                    {item.name === "企業管理" ? (
+                      isCompanyManagementOpen ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4" />
+                      )
+                    ) : null}
+                  </div>
+                  {item.name === "企業管理" && isCompanyManagementOpen && (
+                    <div className="ml-4 space-y-1 mt-1">
+                      {item.children.map((child, index) => (
+                        <Link
+                          key={`${child.name}-${index}`}
+                          href={child.href}
+                          className={cn(
+                            "block px-3 py-2 text-white hover:bg-cyan-500 rounded text-sm",
+                            pathname === child.href && "bg-cyan-500"
+                          )}
+                        >
+                          {child.name}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
                 </div>
+              ) : (
+                // Regular menu item without children
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "block px-3 py-2 text-white hover:bg-cyan-500 rounded",
+                    pathname === item.href && "bg-cyan-500"
+                  )}
+                >
+                  {item.name}
+                </Link>
               )}
             </div>
           ))}
