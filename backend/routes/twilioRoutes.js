@@ -15,7 +15,8 @@ const {
   generateWaitMusic,
   handleAgentConferenceEvents,
   agentJoinCall,
-  customerJoinConference
+  customerJoinConference,
+  handleTransferStatus
 } = require('../controllers/twilioController');
 const { handleIncomingCall } = require('../controllers/twilioVoiceController');
 
@@ -34,6 +35,7 @@ router.post('/voice/handoff-message', generateHandoffMessage);
 router.post('/conference/events/:callId', handleConferenceEvents);
 router.post('/call/status/:callId', handleCallStatus);
 router.post('/recording/status/:callId', handleRecordingStatus);
+router.post('/transfer/status/:callId', handleTransferStatus);
 
 // General status endpoint for Twilio callbacks
 router.post('/status', async (req, res) => {

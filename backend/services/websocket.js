@@ -568,17 +568,18 @@ class WebSocketService {
     if (this.io) {
       // callIdも含めて送信
       const dataWithCallId = { ...transcriptData, callId };
-      // 全体に送信（フィルタリングはフロントエンドで行う）
-      this.io.emit('transcript-update', dataWithCallId);
-      // 特定のルームにも送信
-      this.io.to(`transcript-${callId}`).emit('transcript-update', dataWithCallId);
-      // 電話番号ベースのルームにも送信
+      
+      // 電話番号ベースのルームにのみ送信（重複を防ぐため）
       if (transcriptData.phoneNumber) {
         const normalizedPhone = transcriptData.phoneNumber.startsWith('+81') 
           ? '0' + transcriptData.phoneNumber.substring(3) 
           : transcriptData.phoneNumber;
         this.io.to(`call-${normalizedPhone}`).emit('transcript-update', dataWithCallId);
-        console.log(`[WebSocket会話ログ] 電話番号ルーム call-${normalizedPhone} にも送信`);
+        console.log(`[WebSocket会話ログ] 電話番号ルーム call-${normalizedPhone} に送信`);
+      } else {
+        // 電話番号がない場合はcallIdベースのルームに送信
+        this.io.to(`transcript-${callId}`).emit('transcript-update', dataWithCallId);
+        console.log(`[WebSocket会話ログ] callIdルーム transcript-${callId} に送信`);
       }
     }
   }
