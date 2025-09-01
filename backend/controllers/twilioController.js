@@ -33,7 +33,20 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
       .populate('customerId');
 
     if (!callSession) {
-      await coefontService.getTwilioPlayElement(twiml, 'システムエラーが発生しました。申し訳ございません。');
+      // AgentSettingsからシステムエラーメッセージを取得
+      let errorMessage = 'システムエラーが発生しました。申し訳ございません。';
+      try {
+        const agentSettings = await AgentSettings.findOne({});
+        if (agentSettings) {
+          const processedMessage = agentSettings.processTemplate('systemError');
+          if (processedMessage) {
+            errorMessage = processedMessage;
+          }
+        }
+      } catch (error) {
+        console.error('[TwiML Conference] Error getting systemError message:', error);
+      }
+      await coefontService.getTwilioPlayElement(twiml, errorMessage);
       twiml.hangup();
       return res.type('text/xml').send(twiml.toString());
     }
@@ -41,11 +54,32 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
     // デフォルトの初期メッセージを使用（遅延を避けるため）
     let initialMessage = 'お世話になります。AIコールシステム株式会社です。営業部のご担当者さまはいらっしゃいますでしょうか？';
     
-    // AI設定があれば、それを使用してメッセージを構築（同期的に）
-    if (callSession.aiConfiguration) {
-      const { companyName, serviceName, representativeName, targetDepartment } = callSession.aiConfiguration;
-      if (companyName && representativeName && serviceName && targetDepartment) {
-        initialMessage = `お世話になります。${companyName}の${representativeName}と申します。${serviceName}のご案内でお電話しました。本日、${targetDepartment}のご担当者さまはいらっしゃいますでしょうか？`;
+    // AgentSettingsから新しいテンプレートを取得
+    try {
+      console.log(`[TwiML Conference] Looking for AgentSettings with assignedAgent: ${callSession.assignedAgent}`);
+      const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
+      if (agentSettings && agentSettings.conversationSettings) {
+        console.log(`[TwiML Conference] AgentSettings found, processing template...`);
+        // 新しいテンプレート処理メソッドを使用
+        const processedTemplate = agentSettings.processTemplate('initial');
+        if (processedTemplate) {
+          initialMessage = processedTemplate;
+          console.log(`[TwiML Conference] Using processed template from AgentSettings`);
+          console.log(`[TwiML Conference] Processed template: ${processedTemplate}`);
+        } else {
+          console.log(`[TwiML Conference] processTemplate returned null/empty`);
+        }
+      } else {
+        console.log(`[TwiML Conference] No AgentSettings found for assignedAgent: ${callSession.assignedAgent}, using default`);
+      }
+    } catch (error) {
+      console.error(`[TwiML Conference] Error getting AgentSettings:`, error);
+      // フォールバック: AI設定があれば、それを使用してメッセージを構築（同期的に）
+      if (callSession.aiConfiguration) {
+        const { companyName, serviceName, representativeName, targetDepartment } = callSession.aiConfiguration;
+        if (companyName && representativeName && serviceName && targetDepartment) {
+          initialMessage = `お世話になります。${companyName}の${representativeName}と申します。${serviceName}のご案内でお電話しました。本日、${targetDepartment}のご担当者さまはいらっしゃいますでしょうか？`;
+        }
       }
     }
     console.log(`[TwiML Conference] Using immediate initial message: ${initialMessage}`);
@@ -87,7 +121,20 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
     res.type('text/xml').send(twimlResponse);
   } catch (error) {
     console.error('Error generating conference TwiML:', error);
-    await coefontService.getTwilioPlayElement(twiml, 'システムエラーが発生しました。');
+    // AgentSettingsからシステムエラーメッセージを取得
+    let errorMessage = 'システムエラーが発生しました。';
+    try {
+      const agentSettings = await AgentSettings.findOne({});
+      if (agentSettings) {
+        const processedMessage = agentSettings.processTemplate('systemError');
+        if (processedMessage) {
+          errorMessage = processedMessage;
+        }
+      }
+    } catch (getAgentError) {
+      console.error('[TwiML Conference] Error getting systemError message:', getAgentError);
+    }
+    await coefontService.getTwilioPlayElement(twiml, errorMessage);
     twiml.hangup();
     res.type('text/xml').send(twiml.toString());
   }
@@ -100,7 +147,20 @@ exports.agentJoinConference = asyncHandler(async (req, res) => {
   const { conferenceName } = req.params;
   const twiml = new VoiceResponse();
 
-  await coefontService.getTwilioPlayElement(twiml, '顧客との通話に接続します。');
+  // AgentSettingsからエージェント接続メッセージを取得
+  let connectionMessage = '顧客との通話に接続します。';
+  try {
+    const agentSettings = await AgentSettings.findOne({});
+    if (agentSettings) {
+      const processedMessage = agentSettings.processTemplate('agentConnection');
+      if (processedMessage) {
+        connectionMessage = processedMessage;
+      }
+    }
+  } catch (error) {
+    console.error('[Agent Join Conference] Error getting agentConnection message:', error);
+  }
+  await coefontService.getTwilioPlayElement(twiml, connectionMessage);
 
   const dial = twiml.dial();
   dial.conference({
@@ -137,7 +197,20 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
     const callSession = await CallSession.findById(callId).populate('customerId');
     if (!callSession) {
       console.error(`[Speech Input] CallSession not found for ${callId}`);
-      await coefontService.getTwilioPlayElement(twiml, 'システムエラーが発生しました。申し訳ございません。');
+      // AgentSettingsからシステムエラーメッセージを取得
+      let errorMessage = 'システムエラーが発生しました。申し訳ございません。';
+      try {
+        const agentSettings = await AgentSettings.findOne({});
+        if (agentSettings) {
+          const processedMessage = agentSettings.processTemplate('systemError');
+          if (processedMessage) {
+            errorMessage = processedMessage;
+          }
+        }
+      } catch (error) {
+        console.error('[Speech Input] Error getting systemError message:', error);
+      }
+      await coefontService.getTwilioPlayElement(twiml, errorMessage);
       twiml.hangup();
       return res.type('text/xml').send(twiml.toString());
     }
@@ -223,7 +296,20 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
           partialResultCallbackMethod: 'POST'
         });
         // CoeFontを使用
-        await coefontService.getTwilioPlayElement(gather, 'お客様、お聞きになれますか？');
+        // AgentSettingsからnoAnswerメッセージを取得
+        let noAnswerMessage = 'お客様、お聞きになれますか？';
+        try {
+          const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
+          if (agentSettings) {
+            const processedMessage = agentSettings.processTemplate('noAnswer');
+            if (processedMessage) {
+              noAnswerMessage = processedMessage;
+            }
+          }
+        } catch (error) {
+          console.error('[Speech Input] Error getting noAnswer message:', error);
+        }
+        await coefontService.getTwilioPlayElement(gather, noAnswerMessage);
         
         twiml.redirect({
           method: 'POST'
@@ -236,7 +322,20 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
       if (silentCount >= 3) {
         console.log(`[Speech Input] Too many silences - ending call`);
         // CoeFontを使用
-        await coefontService.getTwilioPlayElement(twiml, 'お電話が遠いようですので、また改めてお電話させていただきます。失礼いたします。');
+        // AgentSettingsからtooManyClarificationsメッセージを取得
+        let tooManyMessage = 'お電話が遠いようですので、また改めてお電話させていただきます。失礼いたします。';
+        try {
+          const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
+          if (agentSettings) {
+            const processedMessage = agentSettings.processTemplate('tooManyClarifications');
+            if (processedMessage) {
+              tooManyMessage = processedMessage;
+            }
+          }
+        } catch (error) {
+          console.error('[Speech Input] Error getting tooManyClarifications message:', error);
+        }
+        await coefontService.getTwilioPlayElement(twiml, tooManyMessage);
         twiml.hangup();
         return res.type('text/xml').send(twiml.toString());
       }
@@ -295,18 +394,8 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
       timestamp: new Date()
     });
 
-    // 引き継ぎが必要な場合
-    if (classification.shouldHandoff) {
-      // 引き継ぎメッセージを再生
-      const handoffMessage = await conversationEngine.generateResponse(callId, 'handoff_message');
-      await coefontService.getTwilioPlayElement(twiml, handoffMessage);
-      
-      // 引き継ぎ処理をトリガー
-      await triggerHandoff(callId, classification.intent);
-      
-      // 保留音楽を再生
-      twiml.play({ loop: 0 }, 'http://twimlets.com/holdmusic?Bucket=com.twilio.music.classical');
-    } else {
+    // Handle the conversation normally - transfer logic will be handled in the AI response section below
+    {
       // AI応答を生成
       let aiResponse;
       try {
@@ -326,7 +415,19 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
               aiResponse = 'お世話になります。本日はサービスのご案内でお電話させていただきました。ご担当者様はいらっしゃいますでしょうか？';
             }
           } else {
+            // AgentSettingsからunknownメッセージを取得
             aiResponse = '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？';
+            try {
+              const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
+              if (agentSettings) {
+                const processedMessage = agentSettings.processTemplate('unknown');
+                if (processedMessage) {
+                  aiResponse = processedMessage;
+                }
+              }
+            } catch (error) {
+              console.error('[Speech Input] Error getting unknown message:', error);
+            }
           }
         }
       } catch (aiError) {
@@ -349,7 +450,19 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
             aiResponse = 'お世話になります。本日はサービスのご案内でお電話させていただきました。ご担当者様はいらっしゃいますでしょうか？';
           }
         } else {
+          // AgentSettingsからunknownメッセージを取得
           aiResponse = 'お聞き取りできませんでした。もう一度お願いできますでしょうか？';
+          try {
+            const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
+            if (agentSettings) {
+              const processedMessage = agentSettings.processTemplate('unknown');
+              if (processedMessage) {
+                aiResponse = processedMessage;
+              }
+            }
+          } catch (error) {
+            console.error('[Speech Input] Error getting unknown message:', error);
+          }
         }
       }
       console.log('============================================');
@@ -380,6 +493,71 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         callSid: callSession.twilioCallSid,
         timestamp: new Date()
       });
+
+      // Check if this is a transfer scenario - trigger simple transfer after AI response
+      const shouldTriggerTransfer = (
+        classification.intent === 'transfer_agreement' ||
+        classification.nextAction === 'trigger_transfer' ||
+        (aiResponse && (aiResponse.includes('転送いたします') || aiResponse.includes('転送いたしますので')))
+      );
+      
+      if (shouldTriggerTransfer) {
+        
+        console.log(`[Speech Input] TRANSFER CONFIRMED - Initiating simple transfer for call ${callId}`);
+        
+        // Play AI response first, then transfer
+        await coefontService.getTwilioPlayElement(twiml, aiResponse);
+        
+        // Initiate simple transfer after AI message
+        try {
+          await initiateSimpleTransfer(callId, twiml);
+          console.log(`[Speech Input] Simple transfer initiated for call ${callId}`);
+        } catch (transferError) {
+          console.error(`[Speech Input] Transfer failed for call ${callId}:`, transferError);
+          
+          // Send failure notification
+          webSocketService.broadcastCallEvent('transfer-failed', {
+            callId,
+            error: transferError.message,
+            timestamp: new Date()
+          });
+          
+          webSocketService.sendTranscriptUpdate(callId, {
+            speaker: 'system',
+            message: '転送に失敗しました。通話を終了します。',
+            timestamp: new Date()
+          });
+          
+          // Get error message from AgentSettings if possible
+          let errorMessage = 'システムエラーが発生しました。申し訳ございません。改めてお電話いたします。';
+          try {
+            const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
+            if (agentSettings) {
+              const processedMessage = agentSettings.processTemplate('systemError');
+              if (processedMessage) {
+                errorMessage = processedMessage;
+              }
+            }
+          } catch (getAgentError) {
+            console.error('[Speech Input] Error getting systemError message:', getAgentError);
+          }
+          
+          // Fallback to ending call gracefully
+          twiml.say({ voice: 'Polly.Mizuki', language: 'ja-JP' }, errorMessage);
+          twiml.hangup();
+          
+          await CallSession.findByIdAndUpdate(callId, {
+            status: 'failed',
+            endTime: new Date(),
+            error: 'Transfer failed: ' + transferError.message,
+            callResult: '転送失敗'
+          });
+          
+          conversationEngine.clearConversation(callId);
+        }
+        
+        return res.type('text/xml').send(twiml.toString());
+      }
 
       // 応答を再生して次の入力を待つ
       if (classification.nextAction === 'end_call' || classification.nextAction === 'respond_and_end' || classification.nextAction === 'apologize_and_end') {
@@ -445,7 +623,20 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         
         // タイムアウト時のフォールバック（無音の場合も会話を継続）
         // CoeFontを使用
-        await coefontService.getTwilioPlayElement(twiml, 'お客様、何かご質問はございますか？');
+        // AgentSettingsからnoAnswerメッセージを取得
+        let noAnswerMessage = 'お客様、何かご質問はございますか？';
+        try {
+          const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
+          if (agentSettings) {
+            const processedMessage = agentSettings.processTemplate('noAnswer');
+            if (processedMessage) {
+              noAnswerMessage = processedMessage;
+            }
+          }
+        } catch (error) {
+          console.error('[Speech Input] Error getting noAnswer message:', error);
+        }
+        await coefontService.getTwilioPlayElement(twiml, noAnswerMessage);
         twiml.redirect({
           method: 'POST'
         }, `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`);
@@ -455,8 +646,20 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
     res.type('text/xml').send(twiml.toString());
   } catch (error) {
     console.error('Error handling speech input:', error);
-    // CoeFontを使用
-    await coefontService.getTwilioPlayElement(twiml, '申し訳ございません。システムエラーが発生しました。');
+    // AgentSettingsからシステムエラーメッセージを取得
+    let errorMessage = '申し訳ございません。システムエラーが発生しました。';
+    try {
+      const agentSettings = await AgentSettings.findOne({});
+      if (agentSettings) {
+        const processedMessage = agentSettings.processTemplate('systemError');
+        if (processedMessage) {
+          errorMessage = processedMessage;
+        }
+      }
+    } catch (getAgentError) {
+      console.error('[Speech Input] Error getting systemError message:', getAgentError);
+    }
+    await coefontService.getTwilioPlayElement(twiml, errorMessage);
     twiml.hangup();
     res.type('text/xml').send(twiml.toString());
   }
@@ -492,7 +695,20 @@ exports.joinConference = asyncHandler(async (req, res) => {
   const { conferenceName } = req.params;
   const twiml = new VoiceResponse();
 
-  await coefontService.getTwilioPlayElement(twiml, '会議に接続します。');
+  // AgentSettingsからエージェント接続メッセージを取得
+  let connectionMessage = '会議に接続します。';
+  try {
+    const agentSettings = await AgentSettings.findOne({});
+    if (agentSettings) {
+      const processedMessage = agentSettings.processTemplate('agentConnection');
+      if (processedMessage) {
+        connectionMessage = processedMessage;
+      }
+    }
+  } catch (error) {
+    console.error('[Join Conference] Error getting agentConnection message:', error);
+  }
+  await coefontService.getTwilioPlayElement(twiml, connectionMessage);
 
   const dial = twiml.dial();
   dial.conference({
@@ -510,7 +726,20 @@ exports.joinConference = asyncHandler(async (req, res) => {
 exports.generateHandoffMessage = asyncHandler(async (req, res) => {
   const twiml = new VoiceResponse();
   
-  await coefontService.getTwilioPlayElement(twiml, '担当者におつなぎいたします。少々お待ちください。');
+  // AgentSettingsからエージェント接続メッセージを取得
+  let handoffMessage = '担当者におつなぎいたします。少々お待ちください。';
+  try {
+    const agentSettings = await AgentSettings.findOne({});
+    if (agentSettings) {
+      const processedMessage = agentSettings.processTemplate('agentConnection');
+      if (processedMessage) {
+        handoffMessage = processedMessage;
+      }
+    }
+  } catch (error) {
+    console.error('[Generate Handoff Message] Error getting agentConnection message:', error);
+  }
+  await coefontService.getTwilioPlayElement(twiml, handoffMessage);
   
   res.type('text/xml').send(twiml.toString());
 });
@@ -713,7 +942,20 @@ exports.agentJoinCall = asyncHandler(async (req, res) => {
     const callSession = await CallSession.findById(callId).populate('customerId');
     if (!callSession) {
       console.error(`[AgentJoin] CallSession not found for ${callId}`);
-      twiml.say('システムエラーが発生しました。', { voice: 'Polly.Mizuki', language: 'ja-JP' });
+      // AgentSettingsからシステムエラーメッセージを取得
+      let errorMessage = 'システムエラーが発生しました。';
+      try {
+        const agentSettings = await AgentSettings.findOne({});
+        if (agentSettings) {
+          const processedMessage = agentSettings.processTemplate('systemError');
+          if (processedMessage) {
+            errorMessage = processedMessage;
+          }
+        }
+      } catch (error) {
+        console.error('[AgentJoin] Error getting systemError message:', error);
+      }
+      twiml.say(errorMessage, { voice: 'Polly.Mizuki', language: 'ja-JP' });
       twiml.hangup();
       return res.type('text/xml').send(twiml.toString());
     }
@@ -726,7 +968,20 @@ exports.agentJoinCall = asyncHandler(async (req, res) => {
     });
 
     // 担当者に接続メッセージ
-    twiml.say('お客様におつなぎします。', { voice: 'Polly.Mizuki', language: 'ja-JP' });
+    // AgentSettingsからエージェント接続メッセージを取得
+    let connectionMessage = 'お客様におつなぎします。';
+    try {
+      const agentSettings = await AgentSettings.findOne({});
+      if (agentSettings) {
+        const processedMessage = agentSettings.processTemplate('agentConnection');
+        if (processedMessage) {
+          connectionMessage = processedMessage;
+        }
+      }
+    } catch (error) {
+      console.error('[AgentJoin] Error getting agentConnection message:', error);
+    }
+    twiml.say(connectionMessage, { voice: 'Polly.Mizuki', language: 'ja-JP' });
     
     // 顧客の電話にブリッジ接続（シンプルな方法）
     if (callSession.twilioCallSid) {
@@ -754,7 +1009,20 @@ exports.agentJoinCall = asyncHandler(async (req, res) => {
       });
     } else {
       console.error(`[AgentJoin] No valid Twilio CallSid for customer`);
-      twiml.say('お客様との接続に失敗しました。', { voice: 'Polly.Mizuki', language: 'ja-JP' });
+      // AgentSettingsからシステムエラーメッセージを取得
+      let errorMessage = 'お客様との接続に失敗しました。';
+      try {
+        const agentSettings = await AgentSettings.findOne({});
+        if (agentSettings) {
+          const processedMessage = agentSettings.processTemplate('systemError');
+          if (processedMessage) {
+            errorMessage = processedMessage;
+          }
+        }
+      } catch (error) {
+        console.error('[AgentJoin] Error getting systemError message:', error);
+      }
+      twiml.say(errorMessage, { voice: 'Polly.Mizuki', language: 'ja-JP' });
       twiml.hangup();
     }
 
@@ -762,7 +1030,20 @@ exports.agentJoinCall = asyncHandler(async (req, res) => {
     res.type('text/xml').send(twiml.toString());
   } catch (error) {
     console.error('[AgentJoin] Error:', error);
-    twiml.say('システムエラーが発生しました。', { voice: 'Polly.Mizuki', language: 'ja-JP' });
+    // AgentSettingsからシステムエラーメッセージを取得
+    let errorMessage = 'システムエラーが発生しました。';
+    try {
+      const agentSettings = await AgentSettings.findOne({});
+      if (agentSettings) {
+        const processedMessage = agentSettings.processTemplate('systemError');
+        if (processedMessage) {
+          errorMessage = processedMessage;
+        }
+      }
+    } catch (getAgentError) {
+      console.error('[AgentJoin] Error getting systemError message:', getAgentError);
+    }
+    twiml.say(errorMessage, { voice: 'Polly.Mizuki', language: 'ja-JP' });
     twiml.hangup();
     res.type('text/xml').send(twiml.toString());
   }
@@ -795,67 +1076,25 @@ exports.customerJoinConference = asyncHandler(async (req, res) => {
     res.type('text/xml').send(twiml.toString());
   } catch (error) {
     console.error('[CustomerJoin] Error:', error);
-    twiml.say('システムエラーが発生しました。', { voice: 'Polly.Mizuki', language: 'ja-JP' });
+    // AgentSettingsからシステムエラーメッセージを取得
+    let errorMessage = 'システムエラーが発生しました。';
+    try {
+      const agentSettings = await AgentSettings.findOne({});
+      if (agentSettings) {
+        const processedMessage = agentSettings.processTemplate('systemError');
+        if (processedMessage) {
+          errorMessage = processedMessage;
+        }
+      }
+    } catch (getAgentError) {
+      console.error('[CustomerJoin] Error getting systemError message:', getAgentError);
+    }
+    twiml.say(errorMessage, { voice: 'Polly.Mizuki', language: 'ja-JP' });
     twiml.hangup();
     res.type('text/xml').send(twiml.toString());
   }
 });
 
-// 引き継ぎ処理をトリガー（内部関数）
-async function triggerHandoff(callId, reason) {
-  try {
-    // 利用可能なエージェントを取得
-    const AgentStatus = require('../models/AgentStatus');
-    const availableAgent = await AgentStatus.getLeastBusyAgent();
-
-    if (!availableAgent) {
-      console.error('No available agents for handoff');
-      return;
-    }
-
-    // エージェント設定を取得
-    const agentSettings = await AgentSettings.findOne({ 
-      userId: availableAgent.userId 
-    });
-
-    if (!agentSettings) {
-      console.error('Agent settings not found');
-      return;
-    }
-
-    // Conference名
-    const conferenceName = `call-${callId}`;
-    const agentPhoneNumber = agentSettings.getInternationalPhoneNumber();
-
-    // エージェントをConferenceに追加
-    const agentCall = await client.calls.create({
-      to: agentPhoneNumber,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      url: `${process.env.BASE_URL}/api/twilio/voice/conference/agent/${conferenceName}`,
-      statusCallback: `${process.env.BASE_URL}/api/twilio/call/agent-status/${callId}`
-    });
-
-    // 通話セッションを更新
-    await CallSession.findByIdAndUpdate(callId, {
-      status: 'transferring',
-      assignedAgent: availableAgent.userId,
-      handoffTime: new Date(),
-      handoffReason: reason
-    });
-
-    // エージェントステータスを更新
-    await availableAgent.updateStatus('on-call', callId);
-
-    // WebSocketで通知
-    webSocketService.broadcastCallEvent('call-handoff-initiated', {
-      callId,
-      agentId: availableAgent.userId,
-      agentCallSid: agentCall.sid
-    });
-  } catch (error) {
-    console.error('Error triggering handoff:', error);
-  }
-}
 
 // @desc    Generate TwiML for agent joining conference after handoff
 // @route   POST /api/twilio/voice/agent-join/:callId
@@ -867,7 +1106,20 @@ exports.agentJoinHandoff = asyncHandler(async (req, res) => {
   try {
     const callSession = await CallSession.findById(callId);
     if (!callSession) {
-      await coefontService.getTwilioPlayElement(twiml, 'システムエラーが発生しました。');
+      // AgentSettingsからシステムエラーメッセージを取得
+      let errorMessage = 'システムエラーが発生しました。';
+      try {
+        const agentSettings = await AgentSettings.findOne({});
+        if (agentSettings) {
+          const processedMessage = agentSettings.processTemplate('systemError');
+          if (processedMessage) {
+            errorMessage = processedMessage;
+          }
+        }
+      } catch (error) {
+        console.error('[AgentJoinHandoff] Error getting systemError message:', error);
+      }
+      await coefontService.getTwilioPlayElement(twiml, errorMessage);
       twiml.hangup();
       return res.type('text/xml').send(twiml.toString());
     }
@@ -875,7 +1127,20 @@ exports.agentJoinHandoff = asyncHandler(async (req, res) => {
     const conferenceName = `call-${callId}`;
     
     // 担当者に接続メッセージ
-    await coefontService.getTwilioPlayElement(twiml, 'お客様におつなぎします。');
+    // AgentSettingsからエージェント接続メッセージを取得
+    let connectionMessage = 'お客様におつなぎします。';
+    try {
+      const agentSettings = await AgentSettings.findOne({});
+      if (agentSettings) {
+        const processedMessage = agentSettings.processTemplate('agentConnection');
+        if (processedMessage) {
+          connectionMessage = processedMessage;
+        }
+      }
+    } catch (error) {
+      console.error('[AgentJoinHandoff] Error getting agentConnection message:', error);
+    }
+    await coefontService.getTwilioPlayElement(twiml, connectionMessage);
     
     // Conference に参加
     const dial = twiml.dial();
@@ -890,7 +1155,20 @@ exports.agentJoinHandoff = asyncHandler(async (req, res) => {
     res.type('text/xml').send(twiml.toString());
   } catch (error) {
     console.error('Error in agentJoinHandoff:', error);
-    await coefontService.getTwilioPlayElement(twiml, 'システムエラーが発生しました。');
+    // AgentSettingsからシステムエラーメッセージを取得
+    let errorMessage = 'システムエラーが発生しました。';
+    try {
+      const agentSettings = await AgentSettings.findOne({});
+      if (agentSettings) {
+        const processedMessage = agentSettings.processTemplate('systemError');
+        if (processedMessage) {
+          errorMessage = processedMessage;
+        }
+      }
+    } catch (getAgentError) {
+      console.error('[AgentJoinHandoff] Error getting systemError message:', getAgentError);
+    }
+    await coefontService.getTwilioPlayElement(twiml, errorMessage);
     twiml.hangup();
     res.type('text/xml').send(twiml.toString());
   }
@@ -1030,6 +1308,227 @@ exports.handleAgentConferenceEvents = asyncHandler(async (req, res) => {
     res.status(200).send('OK');
   } catch (error) {
     console.error('Error handling agent conference event:', error);
+    res.status(500).send('Error');
+  }
+});
+
+// @desc    Simple transfer function - transfers call directly to agent without conference
+// @internal function
+async function initiateSimpleTransfer(callId, twiml) {
+  console.log(`[SimpleTransfer] Starting simple transfer for call ${callId}`);
+  
+  try {
+    // Get call session
+    const callSession = await CallSession.findById(callId).populate('assignedAgent');
+    if (!callSession) {
+      throw new Error('CallSession not found');
+    }
+    
+    // Check if call is still active
+    if (!['ai-responding', 'in-progress', 'initiated'].includes(callSession.status)) {
+      throw new Error(`Cannot transfer call in status: ${callSession.status}`);
+    }
+    
+    // Get user's handoff phone number
+    let agentPhoneNumber = null;
+    let user = null;
+    
+    // Check if we have an assigned agent first
+    if (callSession.assignedAgent) {
+      user = callSession.assignedAgent;
+      console.log(`[SimpleTransfer] Using assigned agent: ${user._id}`);
+    } else {
+      // Get default user with handoff number
+      const User = require('../models/User');
+      user = await User.findOne({ 
+        handoffPhoneNumber: { $exists: true, $ne: null } 
+      }).sort({ createdAt: -1 }); // Get most recent user with handoff number
+      
+      if (!user) {
+        // Use mock user for development
+        user = {
+          handoffPhoneNumber: '08070239355',
+          getTwilioPhoneNumber: function() {
+            return '+818070239355';
+          }
+        };
+        console.log(`[SimpleTransfer] Using mock user for development`);
+      } else {
+        console.log(`[SimpleTransfer] Using default user: ${user._id}`);
+      }
+    }
+    
+    // Get agent phone number
+    if (typeof user.getTwilioPhoneNumber === 'function') {
+      agentPhoneNumber = user.getTwilioPhoneNumber();
+    } else if (user.handoffPhoneNumber) {
+      // Convert Japanese number to international format
+      agentPhoneNumber = user.handoffPhoneNumber.startsWith('0') 
+        ? `+81${user.handoffPhoneNumber.substring(1)}` 
+        : `+81${user.handoffPhoneNumber}`;
+    } else {
+      throw new Error('No agent phone number configured');
+    }
+    
+    // Validate phone number format
+    if (!agentPhoneNumber || !agentPhoneNumber.match(/^\+81\d{9,10}$/)) {
+      throw new Error(`Invalid phone number format: ${agentPhoneNumber}`);
+    }
+    
+    console.log(`[SimpleTransfer] Agent phone number: ${agentPhoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}`);
+    
+    // Get the Twilio phone number to use as caller ID
+    let fromNumber = process.env.TWILIO_PHONE_NUMBER;
+    
+    // If user has an assigned Twilio number, use that
+    if (user.twilioPhoneNumber && user.twilioPhoneNumberStatus === 'active') {
+      fromNumber = user.twilioPhoneNumber;
+      console.log(`[SimpleTransfer] Using user's assigned Twilio number: ${fromNumber}`);
+    } else {
+      console.log(`[SimpleTransfer] Using default Twilio number: ${fromNumber}`);
+    }
+    
+    // Update call session status
+    await CallSession.findByIdAndUpdate(callId, {
+      status: 'transferring',
+      'handoffDetails.requestedAt': new Date(),
+      'handoffDetails.handoffPhoneNumber': agentPhoneNumber,
+      'handoffDetails.handoffMethod': 'ai-triggered'
+    });
+    
+    // WebSocket notification for transfer start
+    webSocketService.broadcastCallEvent('transfer-initiated', {
+      callId,
+      agentPhoneNumber: agentPhoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
+      timestamp: new Date()
+    });
+    
+    // Use Twilio's <Dial> with <Number> for simple transfer
+    // This will connect the customer directly to the agent
+    const dial = twiml.dial({
+      callerId: fromNumber,
+      timeout: 30,
+      action: `${process.env.BASE_URL}/api/twilio/transfer/status/${callId}`,
+      method: 'POST'
+    });
+    
+    // Direct dial to agent's number - this creates a simple bridge
+    dial.number(agentPhoneNumber);
+    
+    console.log(`[SimpleTransfer] Simple transfer TwiML generated - customer will be connected directly to agent`);
+    
+    // Send transcript update
+    webSocketService.sendTranscriptUpdate(callId, {
+      speaker: 'system',
+      message: `転送中: ${agentPhoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}`,
+      timestamp: new Date()
+    });
+    
+    // Note: No return statement here as twiml is modified by reference
+    
+  } catch (error) {
+    console.error(`[SimpleTransfer] Error in simple transfer:`, error);
+    throw error; // Re-throw to be handled by caller
+  }
+}
+
+// @desc    Handle transfer status callbacks
+// @route   POST /api/twilio/transfer/status/:callId
+// @access  Public (Twilio webhook)
+exports.handleTransferStatus = asyncHandler(async (req, res) => {
+  const { callId } = req.params;
+  const { DialCallStatus, DialCallDuration, CallSid } = req.body;
+  
+  console.log(`[TransferStatus] Transfer status for call ${callId}: ${DialCallStatus}`);
+  console.log(`[TransferStatus] Request body:`, req.body);
+  
+  try {
+    let updateData = {};
+    let callResult = null;
+    
+    switch (DialCallStatus) {
+      case 'completed':
+        updateData = {
+          status: 'completed',
+          endTime: new Date(),
+          'handoffDetails.connectedAt': new Date(),
+          'handoffDetails.disconnectedAt': new Date()
+        };
+        callResult = '転送成功';
+        
+        if (DialCallDuration) {
+          updateData.duration = parseInt(DialCallDuration);
+        }
+        
+        // Clear conversation engine
+        conversationEngine.clearConversation(callId);
+        
+        console.log(`[TransferStatus] Transfer completed successfully`);
+        break;
+        
+      case 'answered':
+        updateData = {
+          status: 'human-connected',
+          'handoffDetails.connectedAt': new Date()
+        };
+        console.log(`[TransferStatus] Agent answered - transfer successful`);
+        break;
+        
+      case 'busy':
+      case 'no-answer':
+      case 'failed':
+      case 'cancelled':
+        updateData = {
+          status: 'failed',
+          endTime: new Date(),
+          error: `Transfer failed: ${DialCallStatus}`
+        };
+        callResult = `転送失敗: ${DialCallStatus}`;
+        
+        // Clear conversation engine
+        conversationEngine.clearConversation(callId);
+        
+        console.log(`[TransferStatus] Transfer failed: ${DialCallStatus}`);
+        break;
+        
+      default:
+        console.log(`[TransferStatus] Unknown status: ${DialCallStatus}`);
+    }
+    
+    if (callResult) {
+      updateData.callResult = callResult;
+    }
+    
+    // Update call session
+    const updatedCallSession = await CallSession.findByIdAndUpdate(callId, updateData, { new: true });
+    
+    // WebSocket notifications
+    webSocketService.broadcastCallEvent('transfer-status', {
+      callId,
+      status: DialCallStatus,
+      callSid: CallSid,
+      duration: DialCallDuration,
+      timestamp: new Date()
+    });
+    
+    if (DialCallStatus === 'answered') {
+      webSocketService.sendTranscriptUpdate(callId, {
+        speaker: 'system',
+        message: '担当者に接続されました。',
+        timestamp: new Date()
+      });
+    } else if (['busy', 'no-answer', 'failed', 'cancelled'].includes(DialCallStatus)) {
+      webSocketService.sendTranscriptUpdate(callId, {
+        speaker: 'system',
+        message: `転送に失敗しました: ${DialCallStatus}`,
+        timestamp: new Date()
+      });
+    }
+    
+    res.status(200).send('OK');
+    
+  } catch (error) {
+    console.error('[TransferStatus] Error handling transfer status:', error);
     res.status(500).send('Error');
   }
 });

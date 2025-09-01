@@ -60,10 +60,23 @@ const AgentSettingsSchema = new mongoose.Schema({
         default: 'ぜひ御社の{{targetDepartment}}ご担当者さまに概要をご案内できればと思いまして。'
       }
     },
+    // 新しい変数フィールド
+    selfIntroduction: {
+      type: String,
+      default: 'わたくしＡＩコールシステムの安達と申します'
+    },
+    serviceDescription: {
+      type: String,
+      default: '新規テレアポや掘り起こしなどの営業電話を人間に代わって生成AIが電話をかけるというサービスを提供している'
+    },
+    targetPerson: {
+      type: String,
+      default: '営業の担当者さま'
+    },
     customTemplates: {
       initial: {
         type: String,
-        default: 'お世話になります。{{companyName}}の{{representativeName}}と申します。{{serviceName}}のご案内でお電話しました。本日、{{targetDepartment}}のご担当者さまはいらっしゃいますでしょうか？'
+        default: 'お世話になります。{{selfIntroduction}}。弊社は{{serviceDescription}}会社でございます。是非、御社の{{targetDepartment}}にご案内できればと思いお電話をさせていただきました！本日、{{targetPerson}}はいらっしゃいますでしょうか？'
       },
       clarification: {
         type: String,
@@ -89,17 +102,44 @@ const AgentSettingsSchema = new mongoose.Schema({
         type: String,
         default: '本日はありがとうございました。失礼いたします。'
       },
-      handoff_message: {
+      sales_pitch: {
+        type: String,
+        default: 'ありがとうございます。よろしくお願いいたします。'
+      },
+      positive_response: {
+        type: String,
+        default: 'ありがとうございます。よろしくお願いいたします。'
+      },
+      transfer_explanation: {
+        type: String,
+        default: 'お忙しいところすみません。{{selfIntroduction}}。弊社は{{serviceDescription}}会社でございます。\n\nこれより直接担当者から詳細をご説明させて頂いてもよろしいでしょうか？\nお構いなければAIコールシステムから弊社の担当者に取り次ぎのうえご説明申し上げます。'
+      },
+      prepare_transfer: {
+        type: String,
+        default: 'ありがとうございます。よろしくお願いいたします。'
+      }
+    },
+    // システムメッセージテンプレート
+    systemMessages: {
+      systemError: {
+        type: String,
+        default: 'システムエラーが発生しました。申し訳ございません。'
+      },
+      agentConnection: {
         type: String,
         default: '担当者におつなぎいたします。少々お待ちください。'
       },
-      sales_pitch: {
+      noAnswer: {
         type: String,
-        default: '{{companyDescription}} {{callToAction}}'
+        default: 'お客様、お聞きになれますか？'
       },
-      sales_pitch_short: {
+      tooManyClarifications: {
         type: String,
-        default: '{{serviceDescription}} {{callToAction}}'
+        default: '申し訳ございません。音声が聞き取りづらいようでしたら、後日改めてご連絡いたします。ありがとうございました。'
+      },
+      unknown: {
+        type: String,
+        default: '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？'
       }
     }
   },
@@ -143,7 +183,15 @@ AgentSettingsSchema.index({ isAvailable: 1, priority: -1 });
 
 // テンプレートの変数を置換するメソッド
 AgentSettingsSchema.methods.processTemplate = function(templateName, additionalVars = {}) {
-  const template = this.conversationSettings.customTemplates[templateName];
+  let template = null;
+  
+  // customTemplatesまたはsystemMessagesから取得
+  if (this.conversationSettings.customTemplates && this.conversationSettings.customTemplates[templateName]) {
+    template = this.conversationSettings.customTemplates[templateName];
+  } else if (this.conversationSettings.systemMessages && this.conversationSettings.systemMessages[templateName]) {
+    template = this.conversationSettings.systemMessages[templateName];
+  }
+  
   if (!template) return null;
 
   const vars = {
@@ -152,8 +200,12 @@ AgentSettingsSchema.methods.processTemplate = function(templateName, additionalV
     representativeName: this.conversationSettings.representativeName,
     targetDepartment: this.conversationSettings.targetDepartment,
     companyDescription: this.conversationSettings.salesPitch?.companyDescription || 'AIコールシステム株式会社では、生成AIを使った新規顧客獲得テレアポ支援により、AIが一次架電と仕分けを行い、見込み度の高いお客さまだけを営業におつなぎする仕組みをご提供しています。',
-    serviceDescription: this.conversationSettings.salesPitch?.serviceDescription || '概要だけご説明させていただけますか？',
+    // serviceDescriptionを新しい変数で上書き（テンプレート用）
+    serviceDescription: this.conversationSettings.serviceDescription || this.conversationSettings.salesPitch?.serviceDescription || '新規テレアポや掘り起こしなどの営業電話を人間に代わって生成AIが電話をかけるというサービスを提供している',
     callToAction: this.conversationSettings.salesPitch?.callToAction || '御社の営業部ご担当者さまに、概要だけご説明させていただけますか？',
+    // 新しい変数を追加
+    selfIntroduction: this.conversationSettings.selfIntroduction || 'わたくしＡＩコールシステムの安達と申します',
+    targetPerson: this.conversationSettings.targetPerson || '営業の担当者さま',
     ...additionalVars
   };
 
