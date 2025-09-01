@@ -55,27 +55,16 @@ export function CallStatusModal({
       
       // 電話番号を正規化（0906... 形式に統一）
       const normalizedPhone = phoneNumber.startsWith('+81') ? '0' + phoneNumber.substring(3) : phoneNumber;
-      console.log("[CallStatusModal] 初期化:", { 
-        originalPhone: phoneNumber, 
-        normalizedPhone,
-        isOpen,
-        existingTranscriptCount: transcript.length,
-        callSid: callSid
-      });
       
       // Initialize socket connection
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
-      console.log("[CallStatusModal] バックエンド接続:", backendUrl);
       
       const newSocket = io(backendUrl, {
         transports: ["websocket"],
       });
 
       newSocket.on("connect", () => {
-        console.log("[CallStatusModal] Socket接続成功");
-        console.log("[CallStatusModal] Socket ID:", newSocket.id);
         // Join room for this specific call
-        console.log("[CallStatusModal] join-callイベント送信:", { phoneNumber: normalizedPhone });
         newSocket.emit("join-call", { phoneNumber: normalizedPhone });
         
         // 接続時に現在の通話状況を要求
@@ -83,14 +72,13 @@ export function CallStatusModal({
         
         // 少し遅延してから既存の通話情報を要求
         setTimeout(() => {
-          console.log("[CallStatusModal] 既存通話情報を要求");
           newSocket.emit("get-existing-call-data", { phoneNumber: normalizedPhone });
         }, 500);
       });
       
       // join-call成功確認
       newSocket.on("joined-call-room", (data) => {
-        console.log("[CallStatusModal] joined-call-room受信:", data);
+        // 接続確認完了
       });
 
       newSocket.on("connect_error", (error) => {
@@ -110,7 +98,6 @@ export function CallStatusModal({
 
       // Listen for bulk calls started event
       newSocket.on("bulk-calls-started", (data) => {
-        console.log("[CallStatusModal] bulk-calls-started受信:", data);
         if (data.sessions && Array.isArray(data.sessions)) {
           const session = data.sessions.find((s: any) => {
             const normalizedSessionPhone = s.phoneNumber?.startsWith('+81') 
@@ -121,7 +108,6 @@ export function CallStatusModal({
           });
           
           if (session) {
-            console.log("[CallStatusModal] Session found:", session);
             setCallSid(session.twilioCallSid || session.id);
             setCallStatus("connecting");
           }
@@ -130,7 +116,6 @@ export function CallStatusModal({
 
       // Listen for call status updates
       newSocket.on("call-status", (data) => {
-        console.log("[CallStatusModal] call-status受信:", data);
         // 電話番号のフォーマットを統一して比較
         const normalizePhone = (phone: string) => {
           if (!phone) return '';
@@ -144,23 +129,15 @@ export function CallStatusModal({
         const normalizedDataPhone = normalizePhone(data.phoneNumber);
         const normalizedTargetPhone = normalizePhone(phoneNumber);
         
-        console.log("[CallStatusModal] 電話番号比較:", {
-          data: normalizedDataPhone,
-          target: normalizedTargetPhone,
-          match: normalizedDataPhone === normalizedTargetPhone
-        });
         
         if (normalizedDataPhone === normalizedTargetPhone || data.callSid === callSid || data.callId === callSid) {
-          console.log("[CallStatusModal] ステータス更新:", data.status);
           if (data.status === "in-progress" || data.status === "calling" || data.status === "ai-responding" || data.status === "initiated" || data.status === "human-connected") {
             setCallStatus("connected");
             const newCallSid = data.callSid || data.callId || data.twilioCallSid;
             setCallSid(newCallSid);
-            console.log("[CallStatusModal] 通話中に変更, CallSid:", newCallSid);
             
             // 新しい通話では既存のトランスクリプトを取得しない
             // リアルタイムの更新のみに依存
-            console.log("[CallStatusModal] 新しい通話 - 既存トランスクリプトは取得しない");
           } else if (data.status === "completed" || data.status === "failed" || data.status === "ended" || data.status === "cancelled") {
             setCallStatus("ended");
           }
@@ -169,13 +146,6 @@ export function CallStatusModal({
 
       // Listen for transcript updates
       newSocket.on("transcript-update", (data) => {
-        console.log("[CallStatusModal] transcript-update受信:", data);
-        console.log("[CallStatusModal] 現在の状態:", { 
-          currentCallSid: callSid, 
-          currentPhoneNumber: phoneNumber,
-          transcriptCount: transcript.length 
-        });
-        
         // 電話番号を正規化して比較
         const normalizePhone = (phone: string) => {
           if (!phone) return '';
@@ -192,28 +162,20 @@ export function CallStatusModal({
         const isCurrentCall = (callSid && data.callSid === callSid) || 
                              (normalizedDataPhone === normalizedTargetPhone);
         
-        console.log("[CallStatusModal] トランスクリプト比較:", {
-          speaker: data.speaker,
-          message: data.text || data.message,
-          currentCallSid: callSid,
-          dataCallSid: data.callSid,
-          dataPhone: normalizedDataPhone,
-          targetPhone: normalizedTargetPhone,
-          phoneMatch: normalizedDataPhone === normalizedTargetPhone,
-          callSidMatch: callSid && data.callSid === callSid,
-          isCurrentCall: isCurrentCall
-        });
-        
         if (isCurrentCall) {
-          // 重複チェック用のキーを作成
-          const messageKey = `${data.speaker}-${(data.text || data.message)}-${data.timestamp || Date.now()}`;
+          // 重複チェック：秒単位で同じメッセージをチェック（ミリ秒の違いは無視）
+          const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleTimeString("ja-JP") : new Date().toLocaleTimeString("ja-JP");
+          const messageId = `${data.speaker}-${data.text || data.message}-${timestamp}`;
           
-          // 既に処理済みのメッセージかチェック
           setProcessedMessages((prevProcessed) => {
-            if (prevProcessed.has(messageKey)) {
-              console.log("[CallStatusModal] 重複メッセージをスキップ:", messageKey);
+            // 既に処理済みかチェック
+            if (prevProcessed.has(messageId)) {
               return prevProcessed;
             }
+            
+            // 処理済みとしてマーク
+            const newProcessed = new Set(prevProcessed);
+            newProcessed.add(messageId);
             
             // speakerの正しいマッピング
             let speakerType: "AI" | "Customer" | "System" = "System";
@@ -228,21 +190,29 @@ export function CallStatusModal({
             const newEntry: TranscriptEntry = {
               speaker: speakerType,
               text: data.text || data.message,
-              timestamp: data.timestamp ? new Date(data.timestamp).toLocaleTimeString("ja-JP") : new Date().toLocaleTimeString("ja-JP"),
+              timestamp: timestamp,
             };
-            console.log("[CallStatusModal] トランスクリプト追加:", newEntry);
             
-            // 初期メッセージを削除して実際のメッセージを追加
+            // トランスクリプト更新（UI表示レベルでの最終重複チェック付き）
             setTranscript((prevTranscript) => {
               const filteredTranscript = prevTranscript.filter(entry => 
                 entry.text !== "会話が開始されると、ここに表示されます"
               );
+              
+              // UI表示レベルでの最終重複チェック
+              const isDuplicateInTranscript = filteredTranscript.some(entry => 
+                entry.speaker === newEntry.speaker && 
+                entry.text === newEntry.text && 
+                entry.timestamp === newEntry.timestamp
+              );
+              
+              if (isDuplicateInTranscript) {
+                return filteredTranscript;
+              }
+              
               return [...filteredTranscript, newEntry];
             });
             
-            // 処理済みメッセージに追加
-            const newProcessed = new Set(prevProcessed);
-            newProcessed.add(messageKey);
             return newProcessed;
           });
         }
@@ -250,56 +220,8 @@ export function CallStatusModal({
 
       // Listen for conversation events
       newSocket.on("conversation-update", (data) => {
-        console.log("[CallStatusModal] conversation-update受信:", data);
-        
-        // 現在のモーダルの通話のみ表示（CallSidが一致するか、CallSidが未設定の場合は電話番号で判定）
-        const normalizePhone = (phone: string) => {
-          if (!phone) return '';
-          if (phone.startsWith('+81')) {
-            return '0' + phone.substring(3);
-          }
-          return phone;
-        };
-        
-        const normalizedDataPhone = normalizePhone(data.phoneNumber || '');
-        const normalizedTargetPhone = normalizePhone(phoneNumber);
-        
-        // より柔軟な判定: CallSidが一致するか、電話番号が一致する場合
-        const isCurrentCall = (callSid && data.callSid === callSid) || 
-                             (normalizedDataPhone === normalizedTargetPhone);
-        
-        if (isCurrentCall) {
-          // 重複チェック用のキーを作成
-          const messageKey = `${data.role}-${data.content}-${Date.now()}`;
-          
-          // 既に処理済みのメッセージかチェック
-          setProcessedMessages((prevProcessed) => {
-            if (prevProcessed.has(messageKey)) {
-              console.log("[CallStatusModal] 重複会話をスキップ:", messageKey);
-              return prevProcessed;
-            }
-            
-            const newEntry: TranscriptEntry = {
-              speaker: data.role === "assistant" ? "AI" : data.role === "customer" ? "Customer" : "System",
-              text: data.content,
-              timestamp: new Date().toLocaleTimeString("ja-JP"),
-            };
-            console.log("[CallStatusModal] 会話追加:", newEntry);
-            
-            // 初期メッセージを削除して実際のメッセージを追加
-            setTranscript((prevTranscript) => {
-              const filteredTranscript = prevTranscript.filter(entry => 
-                entry.text !== "会話が開始されると、ここに表示されます"
-              );
-              return [...filteredTranscript, newEntry];
-            });
-            
-            // 処理済みメッセージに追加
-            const newProcessed = new Set(prevProcessed);
-            newProcessed.add(messageKey);
-            return newProcessed;
-          });
-        }
+        // 重複表示を防ぐため、conversation-updateイベントは何も処理しない
+        return; // 何も処理しない
       });
 
       // Listen for transfer events
@@ -471,7 +393,7 @@ export function CallStatusModal({
           socket.emit("end-call", { callSid, phoneNumber });
         }
       } catch (error) {
-        console.error("Error ending call:", error);
+        // エラーは無視して進む
       }
     }
     
@@ -574,59 +496,46 @@ export function CallStatusModal({
                   transcript.map((entry, index) => (
                     <div
                       key={index}
-                      className={`flex ${
-                        entry.speaker === "System" ? "justify-center" :
-                        entry.speaker === "AI" ? "justify-start" : "justify-end"
+                      className={`flex items-start gap-3 p-3 rounded-lg ${
+                        entry.speaker === "AI"
+                          ? "bg-blue-50 border-l-4 border-l-blue-500"
+                          : entry.speaker === "Customer"
+                          ? "bg-green-50 border-l-4 border-l-green-500"
+                          : "bg-gray-50 border-l-4 border-l-gray-500"
                       }`}
                     >
-                      {entry.speaker === "System" ? (
-                        <div className="max-w-[80%] text-center">
-                          <div className="inline-flex items-center gap-2 px-3 py-1 bg-gray-100 rounded-full text-xs text-gray-600">
-                            <Phone className="h-3 w-3" />
-                            <span>{entry.timestamp}</span>
+                      <div className="flex-shrink-0">
+                        {entry.speaker === "AI" && (
+                          <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                            <Volume2 className="w-4 h-4 text-white" />
                           </div>
-                          <p className="mt-1 text-sm text-gray-600">{entry.text}</p>
-                        </div>
-                      ) : (
-                        <div className={`max-w-[60%] ${
-                          entry.speaker === "Customer" ? "ml-auto" : "mr-auto"
-                        }`}>
-                          <div className={`flex items-start gap-2 ${
-                            entry.speaker === "Customer" ? "flex-row-reverse" : ""
-                          }`}>
-                            <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
-                              entry.speaker === "AI" 
-                                ? "bg-blue-100" 
-                                : "bg-green-100"
-                            }`}>
-                              {entry.speaker === "AI" ? (
-                                <Volume2 className="h-5 w-5 text-blue-600" />
-                              ) : (
-                                <Mic className="h-5 w-5 text-green-600" />
-                              )}
-                            </div>
-                            <div className="flex-1">
-                              <div className={`flex items-center gap-2 mb-1 ${
-                                entry.speaker === "Customer" ? "justify-end" : ""
-                              }`}>
-                                <span className={`text-xs font-semibold ${
-                                  entry.speaker === "AI" ? "text-blue-600" : "text-green-600"
-                                }`}>
-                                  {entry.speaker === "AI" ? "AI" : "顧客"}
-                                </span>
-                                <span className="text-xs text-gray-500">{entry.timestamp}</span>
-                              </div>
-                              <div className={`rounded-2xl px-4 py-3 ${
-                                entry.speaker === "AI"
-                                  ? "bg-blue-50 text-blue-900 border border-blue-200"
-                                  : "bg-white text-gray-900 border border-gray-300"
-                              }`}>
-                                <p className="text-sm leading-relaxed">{entry.text}</p>
-                              </div>
-                            </div>
+                        )}
+                        {entry.speaker === "Customer" && (
+                          <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
+                            <Mic className="w-4 h-4 text-white" />
                           </div>
+                        )}
+                        {entry.speaker === "System" && (
+                          <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
+                            <Loader2 className="w-4 h-4 text-white" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-sm">
+                            {entry.speaker === "AI"
+                              ? "AI オペレーター"
+                              : entry.speaker === "Customer"
+                              ? "お客様"
+                              : "システム"}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {entry.timestamp}
+                          </span>
                         </div>
-                      )}
+                        <p className="text-sm text-gray-700">{entry.text}</p>
+                      </div>
                     </div>
                   ))
                 )}
