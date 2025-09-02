@@ -84,7 +84,7 @@ const AgentSettingsSchema = new mongoose.Schema({
       },
       company_confirmation: {
         type: String,
-        default: '{{companyName}}でございます。{{representativeName}}です。'
+        default: '{{companyName}}でございます。{{representativeName}}です。是非、御社の{{targetPerson}}にご案内できればと思いお電話をさせていただきました！本日、{{targetPerson}}はいらっしゃいますでしょうか？'
       },
       absent: {
         type: String,
@@ -92,11 +92,11 @@ const AgentSettingsSchema = new mongoose.Schema({
       },
       rejection: {
         type: String,
-        default: '承知いたしました。本日は突然のご連絡で失礼いたしました。よろしくお願いいたします。'
+        default: '承知しました。ご多忙のところ申し訳ございません。ご対応ありがとうございました。失礼いたします。'
       },
       website_redirect: {
         type: String,
-        default: '承知しました。御社ホームページのお問い合わせフォームですね。記載のうえ送付いたします。ありがとうございました。'
+        default: 'かしこまりました。それでは御社ホームページよりご改めてご連絡させていただきます。ご対応ありがとうございました。失礼いたします。'
       },
       closing: {
         type: String,

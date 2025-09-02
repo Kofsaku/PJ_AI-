@@ -22,13 +22,13 @@ class ConversationEngine {
       },
       // B: 聞き返し（「はい？」）
       clarification_request: {
-        keywords: ['はい？', 'もしもし？', 'えっ？', 'なんでしょう', '聞こえない', 'もう一度'],
+        keywords: ['はい？', 'もしもし？', 'えっ？', 'なんでしょう', '聞こえない', 'もう一度教えて', 'もう一度説明', '再度教えて', '聞き取れない', '聞こえませんでした', '聞こえません'],
         confidence: 0.85
       },
       // C: 社名確認（「もう一度社名を？」）
       company_confirmation: {
-        keywords: ['社名', 'どちら様', '会社名', 'お名前', 'どこの', 'どちらから'],
-        confidence: 0.85
+        keywords: ['社名', 'どちら様', '会社名', 'お名前', 'どこの', 'どちらから', 'もう一度社名を', '社名をもう一度', '会社名をもう一度', 'もう一度お聞かせ願えますか'],
+        confidence: 0.9
       },
       // D: 担当者不在
       absent: {
@@ -300,7 +300,7 @@ class ConversationEngine {
         bestMatch.nextAction = 'respond_and_end';
         break;
       
-      // B: 聞き返し（1回まで）
+      // B: 聞き返し（1回まで） - 直前のメッセージを繰り返し
       case 'clarification_request':
         state.clarificationCount++;
         console.log(`[ConversationEngine] 聞き返し回数: ${state.clarificationCount}`);
@@ -311,8 +311,21 @@ class ConversationEngine {
           bestMatch.nextAction = 'apologize_and_end';
           state.currentPhase = 'CLOSING';
         } else {
-          // 1回目は再度説明
-          bestMatch.nextAction = 'clarify';
+          // 1回目は直前のAI応答を繰り返し
+          console.log('[ConversationEngine] 直前のメッセージを繰り返し');
+          bestMatch.intent = 'repeat_last_message';  // intentを変更（重要）
+          bestMatch.nextAction = 'repeat_last_message';
+          // 直前のAI応答を保存（存在する場合）
+          if (state.conversationHistory && state.conversationHistory.length > 0) {
+            // 最後のAI応答を探す
+            for (let i = state.conversationHistory.length - 1; i >= 0; i--) {
+              if (state.conversationHistory[i].sender === 'ai') {
+                bestMatch.lastAiMessage = state.conversationHistory[i].message;
+                console.log(`[ConversationEngine] 繰り返すメッセージ: ${bestMatch.lastAiMessage}`);
+                break;
+              }
+            }
+          }
         }
         break;
       
@@ -566,6 +579,18 @@ class ConversationEngine {
       return this.getDefaultInitialResponse();
     }
     
+    // 直前のメッセージ繰り返し処理
+    if (intent === 'repeat_last_message') {
+      console.log('[ConversationEngine] 直前のメッセージを繰り返します');
+      // カスタム変数から直前のAIメッセージを取得
+      if (customVariables.lastAiMessage) {
+        console.log(`[ConversationEngine] 繰り返しメッセージ: ${customVariables.lastAiMessage}`);
+        return customVariables.lastAiMessage;
+      }
+      // フォールバック: clarificationテンプレートを使用
+      return await this.getDefaultResponse('clarification', callId);
+    }
+
     // 「不在」「結構です」への適切な応答
     if (intent === 'absent' || (state.conversationHistory.length > 0 && 
         state.conversationHistory[state.conversationHistory.length - 1].message?.includes('不在'))) {

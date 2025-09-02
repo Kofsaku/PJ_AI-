@@ -92,6 +92,7 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
     const gather = twiml.gather({
       input: 'speech',
       language: 'ja-JP',
+      speechModel: 'enhanced',
       speechTimeout: 'auto',
       timeout: 10,
       action: `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`,
@@ -233,6 +234,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         const gather = twiml.gather({
           input: 'speech',
           language: 'ja-JP',
+          speechModel: 'enhanced',
           speechTimeout: 'auto',
           timeout: 10,
           action: `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`,
@@ -265,6 +267,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         const gather = twiml.gather({
           input: 'speech',
           language: 'ja-JP',
+          speechModel: 'enhanced',
           speechTimeout: 3,  // 3秒待つ
           timeout: 5,
           action: `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`,
@@ -288,6 +291,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         const gather = twiml.gather({
           input: 'speech',
           language: 'ja-JP',
+          speechModel: 'enhanced',
           speechTimeout: 'auto',
           timeout: 10,
           action: `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`,
@@ -400,7 +404,12 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
       let aiResponse;
       try {
         console.log(`[Speech Input] Generating AI response for callId: ${callId}, intent: ${classification.intent}`);
-        aiResponse = await conversationEngine.generateResponse(callId, classification.intent);
+        // カスタム変数を準備（lastAiMessageがある場合）
+        const customVariables = {};
+        if (classification.lastAiMessage) {
+          customVariables.lastAiMessage = classification.lastAiMessage;
+        }
+        aiResponse = await conversationEngine.generateResponse(callId, classification.intent, customVariables);
         
         if (!aiResponse) {
           console.error(`[Speech Input] WARNING: Empty AI response for callId: ${callId}, intent: ${classification.intent}`);
@@ -612,6 +621,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         const gather = twiml.gather({
           input: 'speech',
           language: 'ja-JP',
+          speechModel: 'enhanced',
           speechTimeout: 'auto',  // 自動検出で自牨な会話を実現
           timeout: 10,  // 全体のタイムアウトを10秒に
           action: `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`,
