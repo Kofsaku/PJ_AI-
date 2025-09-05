@@ -34,6 +34,11 @@ const CallSessionSchema = new mongoose.Schema({
     default: Date.now 
   },
   endTime: Date,
+  endReason: {
+    type: String,
+    enum: ['normal', 'ai_initiated', 'customer_hangup', 'agent_hangup', 'transfer', 'timeout', 'system_error', 'network_error', 'manual'],
+    required: false
+  },
   assignedAgent: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'User' 

@@ -188,10 +188,10 @@ class WebSocketService {
           ? '0' + phoneNumber.substring(3) 
           : phoneNumber;
         
-        // 電話番号からアクティブな通話を検索
+        // 電話番号からアクティブな通話を検索（キュー待ちも含む）
         const activeCall = await CallSession.findOne({
           phoneNumber: { $in: [phoneNumber, normalizedPhone] },
-          status: { $in: ['calling', 'initiated', 'ai-responding', 'in-progress', 'human-connected', 'transferring'] }
+          status: { $in: ['calling', 'initiated', 'ai-responding', 'in-progress', 'human-connected', 'transferring', 'queued'] }
         }).sort({ createdAt: -1 });
         
         if (activeCall) {
@@ -303,10 +303,10 @@ class WebSocketService {
         
         console.log('[WebSocket] 既存通話データ検索:', { originalPhone: phoneNumber, normalizedPhone });
         
-        // 電話番号からアクティブな通話セッションを検索
+        // 電話番号からアクティブな通話セッションを検索（キュー待ちも含む）
         const activeCall = await CallSession.findOne({
           phoneNumber: { $in: [phoneNumber, normalizedPhone] },
-          status: { $in: ['calling', 'initiated', 'ai-responding', 'in-progress', 'human-connected', 'transferring'] }
+          status: { $in: ['calling', 'initiated', 'ai-responding', 'in-progress', 'human-connected', 'transferring', 'queued'] }
         }).sort({ createdAt: -1 });
         
         if (activeCall) {

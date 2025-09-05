@@ -5,6 +5,7 @@ const Customer = require('../models/Customer');
 const AgentSettings = require('../models/AgentSettings');
 const conversationEngine = require('../services/conversationEngine');
 const coefontService = require('../services/coefontService');
+const callTimeoutManager = require('../services/callTimeoutManager');
 
 // TwiML Voice Response helper
 const VoiceResponse = twilio.twiml.VoiceResponse;
@@ -167,6 +168,9 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
       const callIdString = callSession._id.toString();
       console.log('[Background] Initializing conversation engine');
       conversationEngine.resetConversationForNewCall(callIdString, callSession.aiConfiguration);
+      
+      // タイムアウト監視を開始
+      callTimeoutManager.startCallTimeout(callIdString, 15); // 15分でタイムアウト
     });
     
     // リダイレクト後に初期メッセージ処理は行われるため、ここでは削除

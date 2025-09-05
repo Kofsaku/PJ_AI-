@@ -39,8 +39,8 @@ router.post('/transfer/status/:callId', handleTransferStatus);
 
 // General status endpoint for Twilio callbacks
 router.post('/status', async (req, res) => {
-  const { CallStatus, CallSid, Direction, From, To, Duration } = req.body;
-  console.log(`[Twilio Status] CallSid: ${CallSid}, Status: ${CallStatus}, From: ${From}, To: ${To}`);
+  const { CallStatus, CallSid, Direction, From, To, Duration, HangupCause } = req.body;
+  console.log(`[Twilio Status] CallSid: ${CallSid}, Status: ${CallStatus}, From: ${From}, To: ${To}, HangupCause: ${HangupCause}`);
   
   try {
     // CallSidからCallSessionを検索
@@ -75,6 +75,31 @@ router.post('/status', async (req, res) => {
           if (Duration) {
             updateData.duration = parseInt(Duration);
           }
+          // HangupCauseから切断理由を判定
+          if (HangupCause) {
+            switch (HangupCause) {
+              case 'originated':
+              case 'caller_hungup':
+                updateData.endReason = 'customer_hangup';
+                break;
+              case 'callee_hungup':
+                updateData.endReason = 'agent_hangup';
+                break;
+              case 'system_hangup':
+              case 'application_hangup':
+                updateData.endReason = 'ai_initiated';
+                break;
+              case 'timeout':
+                updateData.endReason = 'timeout';
+                break;
+              default:
+                updateData.endReason = 'normal';
+                break;
+            }
+            console.log(`[Twilio Status] Hangup cause: ${HangupCause} -> endReason: ${updateData.endReason}`);
+          } else {
+            updateData.endReason = 'normal';
+          }
           // 会話エンジンをクリア
           conversationEngine.clearConversation(callSession._id.toString());
           shouldBroadcast = true;
@@ -103,6 +128,28 @@ router.post('/status', async (req, res) => {
           if (Duration) {
             updateData.duration = parseInt(Duration);
           }
+          // 失敗理由を設定
+          switch (CallStatus) {
+            case 'busy':
+              updateData.endReason = 'customer_hangup';
+              updateData.callResult = '話中';
+              break;
+            case 'no-answer':
+              updateData.endReason = 'timeout';
+              updateData.callResult = '応答なし';
+              break;
+            case 'canceled':
+            case 'cancelled':
+              updateData.endReason = 'manual';
+              updateData.callResult = 'キャンセル';
+              break;
+            case 'failed':
+            default:
+              updateData.endReason = 'system_error';
+              updateData.callResult = 'システムエラー';
+              break;
+          }
+          console.log(`[Twilio Status] Failed call status: ${CallStatus} -> endReason: ${updateData.endReason}`);
           // 会話エンジンをクリア
           conversationEngine.clearConversation(callSession._id.toString());
           shouldBroadcast = true;
@@ -127,14 +174,36 @@ router.post('/status', async (req, res) => {
         
         console.log(`[Twilio Status] Broadcasting status: ${updateData.status || CallStatus}, Phone: ${phoneNumber}`);
         
-        webSocketService.broadcastCallEvent('call-status', {
+        const eventData = {
           callId: callSession._id.toString(),
           callSid: CallSid,
           phoneNumber: phoneNumber,
           status: updateData.status || CallStatus,
           duration: Duration,
+          endReason: updateData.endReason,
+          callResult: updateData.callResult,
           timestamp: new Date()
-        });
+        };
+
+        // 通常の status イベント
+        webSocketService.broadcastCallEvent('call-status', eventData);
+
+        // 終了時は専用イベントも送信
+        if (['completed', 'failed'].includes(updateData.status)) {
+          webSocketService.broadcastCallEvent('call-terminated', eventData);
+          
+          // 詳細な終了情報をトランスクリプトに追加
+          const endMessage = updateData.status === 'completed' 
+            ? `通話終了: ${updateData.callResult || '完了'} (理由: ${updateData.endReason || '不明'})`
+            : `通話失敗: ${updateData.error} (理由: ${updateData.endReason || '不明'})`;
+            
+          webSocketService.sendTranscriptUpdate(callSession._id.toString(), {
+            speaker: 'system',
+            message: endMessage,
+            phoneNumber: phoneNumber,
+            timestamp: new Date()
+          });
+        }
       }
     } else {
       console.log(`[Twilio Status] No CallSession found for CallSid: ${CallSid}`);

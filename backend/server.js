@@ -111,6 +111,10 @@ const server = require('http').createServer(app);
 const webSocketService = require('./services/websocket');
 webSocketService.initialize(server);
 
+// Initialize call timeout manager
+const callTimeoutManager = require('./services/callTimeoutManager');
+callTimeoutManager.startCleanupTask();
+
 // Start listening with error handling
 server.listen(PORT, () => {
   console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);

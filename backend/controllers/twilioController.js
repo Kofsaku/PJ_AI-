@@ -6,6 +6,8 @@ const AgentSettings = require('../models/AgentSettings');
 const conversationEngine = require('../services/conversationEngine');
 const webSocketService = require('../services/websocket');
 const coefontService = require('../services/coefontService');
+const CallTerminationUtils = require('../utils/callTerminationUtils');
+const callTimeoutManager = require('../services/callTimeoutManager');
 
 // Twilio client
 const client = twilio(
@@ -348,6 +350,9 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
     // 音声入力があったので無音カウントをリセット
     conversationEngine.updateConversationState(callId, { continuousSilentCount: 0 });
     
+    // 通話活動を更新（タイムアウトをリセット）
+    callTimeoutManager.updateCallActivity(callId);
+    
     // 通話状態をai-respondingに更新
     await CallSession.findByIdAndUpdate(callId, {
       status: 'ai-responding'
@@ -582,17 +587,12 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         twiml.hangup();
         console.log(`[Speech Input] Hangup TwiML generated for call ${callId}`);
         
-        // 通話ステータスを更新
-        await CallSession.findByIdAndUpdate(callId, {
-          status: 'completed',
-          endTime: new Date(),
-          callResult: classification.intent === 'absent' ? '不在' : 
-                      classification.intent === 'rejection' ? 'お断り' : 
-                      classification.intent === 'website_redirect' ? 'Web誘導' : '終了'
-        });
+        // 通話を正常終了
+        const callResult = classification.intent === 'absent' ? '不在' : 
+                          classification.intent === 'rejection' ? 'お断り' : 
+                          classification.intent === 'website_redirect' ? 'Web誘導' : '完了';
         
-        // 会話エンジンをクリア
-        conversationEngine.clearConversation(callId);
+        await CallTerminationUtils.terminateCall(callId, callResult, null, 'ai_initiated');
         
       } else if (classification.nextAction === 'prepare_closing') {
         // 終話シグナル検出時の処理（「失礼します」等）
@@ -604,15 +604,8 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         twiml.pause({ length: waitTime });
         twiml.hangup();
         
-        // 通話ステータスを更新
-        await CallSession.findByIdAndUpdate(callId, {
-          status: 'completed',
-          endTime: new Date(),
-          callResult: '正常終了'
-        });
-        
-        // 会話エンジンをクリア
-        conversationEngine.clearConversation(callId);
+        // 通話を正常終了
+        await CallTerminationUtils.terminateCall(callId, '正常終了', null, 'normal');
         
       } else {
         console.log('[Speech Input] CONTINUING CONVERSATION - Setting up next Gather');
@@ -859,6 +852,18 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
         updateData.status = 'failed';
         updateData.endTime = new Date();
         updateData.error = `Call ${CallStatus}`;
+        
+        // 詳細なエラー情報をログに記録
+        console.error(`[CallStatusError] Call ${CallStatus} for session ${callId}:`);
+        console.error(`[CallStatusError] Full request body:`, JSON.stringify(req.body, null, 2));
+        
+        // Twilioエラーコードがある場合は記録
+        if (req.body.ErrorCode) {
+          updateData.error = `Call ${CallStatus} - Error ${req.body.ErrorCode}: ${req.body.ErrorMessage || 'Unknown error'}`;
+          console.error(`[CallStatusError] Twilio Error Code: ${req.body.ErrorCode}`);
+          console.error(`[CallStatusError] Twilio Error Message: ${req.body.ErrorMessage}`);
+        }
+        
         if (Duration) {
           updateData.duration = parseInt(Duration);
         }

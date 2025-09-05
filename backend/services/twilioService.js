@@ -109,9 +109,48 @@ exports.makeCall = async (phoneNumber, sessionId, userId = null) => {
       method: 'POST'
     });
     
+    console.log(`[TwilioService] Call created successfully:`);
+    console.log(`[TwilioService] Call SID: ${call.sid}`);
+    console.log(`[TwilioService] Call Status: ${call.status}`);
+    
     return call;
   } catch (error) {
     console.error('Twilio call error:', error);
+    console.error('Error details:', {
+      code: error.code,
+      message: error.message,
+      moreInfo: error.moreInfo,
+      status: error.status,
+      details: error.details
+    });
+    
+    // 特定のエラーコードに基づく詳細ログ
+    if (error.code) {
+      console.error(`[TwilioService] Specific error - Code: ${error.code}`);
+      switch (error.code) {
+        case 21215:
+          console.error('[TwilioService] Account not authorized to make calls to this number');
+          break;
+        case 21219:
+          console.error('[TwilioService] Invalid phone number format');
+          break;
+        case 21220:
+          console.error('[TwilioService] Invalid phone number');
+          break;
+        case 30006:
+          console.error('[TwilioService] Busy signal');
+          break;
+        case 30008:
+          console.error('[TwilioService] Call answered by answering machine');
+          break;
+        case 13224:
+          console.error('[TwilioService] Rate limit exceeded - too many requests');
+          break;
+        default:
+          console.error(`[TwilioService] Unknown error code: ${error.code}`);
+      }
+    }
+    
     throw error;
   }
 };

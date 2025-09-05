@@ -56,6 +56,7 @@ const statusColors = {
   成功: "bg-green-500",
   要フォロー: "bg-purple-500",
   拒否: "bg-red-500",
+  お断り: "bg-red-600",
   通話中: "bg-blue-500",
 };
 
@@ -286,14 +287,19 @@ export default function DashboardPage() {
 
   // Handle status change
   const handleStatusChange = async (customerId: string, newStatus: string) => {
+    if (isUpdatingStatus === customerId) return; // 重複更新を防ぐ
+    
     setIsUpdatingStatus(customerId);
     try {
-      const response = await fetch(`/api/customers/${customerId}/status`, {
+      const response = await fetch(`/api/customers/${customerId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ 
+          result: newStatus,
+          callResult: newStatus 
+        }),
       });
 
       if (!response.ok) throw new Error('Failed to update status');
@@ -309,9 +315,10 @@ export default function DashboardPage() {
 
       toast({
         title: "ステータス更新",
-        description: "ステータスが正常に更新されました",
+        description: `ステータスを「${newStatus}」に変更しました`,
       });
     } catch (error) {
+      console.error('Status update error:', error);
       toast({
         title: "エラー",
         description: "ステータスの更新に失敗しました",
@@ -415,6 +422,7 @@ export default function DashboardPage() {
     }
   };
 
+
   // WebSocket connection for real-time call status
   useEffect(() => {
     const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
@@ -446,11 +454,17 @@ export default function DashboardPage() {
       setIsBulkCallActive(true);
       setBulkCallQueue(data.totalCalls || 0);
       
-      // queued状態のセッションは通話中ではない
+      // queued状態のセッションの顧客IDを識別
       if (data.sessions) {
         const queuedIds = data.sessions
           .filter((s: any) => s.status === 'queued')
           .map((s: any) => {
+            // まずdataから直接customerIdを取得
+            if (s.customerId) {
+              return s.customerId;
+            }
+            
+            // 電話番号から顧客を検索
             const phoneNumber = s.phoneNumber?.startsWith('+81') 
               ? '0' + s.phoneNumber.substring(3) 
               : s.phoneNumber;
@@ -459,12 +473,17 @@ export default function DashboardPage() {
           })
           .filter(Boolean);
         
-        // キュー待ちの顧客は通話中から除外
+        console.log("[Dashboard] Queued customer IDs:", queuedIds);
+        
+        // キュー待ちの顧客は通話中から除外（一旦クリアしてからキューに入れる）
         setCallingSessions(prev => {
           const newSet = new Set(prev);
           queuedIds.forEach((id: string) => newSet.delete(id));
           return newSet;
         });
+        
+        // 顧客リストに「キュー待ち」状態を視覚的に反映させるため、
+        // 今回は通話中状態の管理のみとし、別のステータス表示は将来的に検討
       }
     });
 
@@ -486,7 +505,15 @@ export default function DashboardPage() {
         ? '0' + data.phoneNumber.substring(3) 
         : data.phoneNumber;
       
-      let customerId = phoneToCustomerMap.get(phoneNumber);
+      // まずdataから直接customerIdを取得を試行
+      let customerId = data.customerId;
+      
+      // customerIdがない場合はマッピングから取得
+      if (!customerId) {
+        customerId = phoneToCustomerMap.get(phoneNumber);
+      }
+      
+      // それでもない場合は顧客配列から検索
       if (!customerId) {
         const customer = customers.find(c => c.phone === phoneNumber);
         if (customer) {
@@ -497,6 +524,8 @@ export default function DashboardPage() {
       if (customerId) {
         console.log(`[Dashboard] Setting customer ${customerId} as calling (initiated)`);
         setCallingSessions(prev => new Set(prev).add(customerId));
+      } else {
+        console.error("[Dashboard] Failed to identify customer for phone:", phoneNumber);
       }
     });
 
@@ -507,7 +536,15 @@ export default function DashboardPage() {
         ? '0' + data.phoneNumber.substring(3) 
         : data.phoneNumber;
       
-      let customerId = phoneToCustomerMap.get(phoneNumber);
+      // まずdataから直接customerIdを取得を試行
+      let customerId = data.customerId;
+      
+      // customerIdがない場合はマッピングから取得
+      if (!customerId) {
+        customerId = phoneToCustomerMap.get(phoneNumber);
+      }
+      
+      // それでもない場合は顧客配列から検索
       if (!customerId) {
         const customer = customers.find(c => c.phone === phoneNumber);
         if (customer) {
@@ -522,6 +559,8 @@ export default function DashboardPage() {
           newSet.delete(customerId);
           return newSet;
         });
+      } else {
+        console.error("[Dashboard] Failed to identify customer for phone:", phoneNumber);
       }
     });
 
@@ -532,16 +571,16 @@ export default function DashboardPage() {
         ? '0' + data.phoneNumber.substring(3) 
         : data.phoneNumber;
       
-      // phoneToCustomerMapから顧客IDを取得、またはphoneNumberで顧客を検索
-      let customerId = phoneToCustomerMap.get(phoneNumber);
+      // まずdataから直接customerIdを取得を試行
+      let customerId = data.customerId;
       
-      // dataにcustomerIdが含まれている場合はそれを使用
-      if (!customerId && data.customerId) {
-        customerId = data.customerId;
+      // customerIdがない場合はマッピングから取得
+      if (!customerId) {
+        customerId = phoneToCustomerMap.get(phoneNumber);
       }
       
+      // それでもない場合は顧客配列から検索
       if (!customerId) {
-        // マップにない場合は、customers配列から検索
         const customer = customers.find(c => c.phone === phoneNumber);
         if (customer) {
           customerId = customer._id || customer.id?.toString();
@@ -587,6 +626,13 @@ export default function DashboardPage() {
             return newSet;
           });
         }
+      } else if (!customerId) {
+        console.error("[Dashboard] Failed to identify customer for call-status:", {
+          phoneNumber: data.phoneNumber,
+          normalizedPhone: phoneNumber,
+          dataCustomerId: data.customerId,
+          status: data.status
+        });
       }
     });
 
@@ -871,6 +917,7 @@ export default function DashboardPage() {
                 <SelectItem value="成功">成功</SelectItem>
                 <SelectItem value="要フォロー">要フォロー</SelectItem>
                 <SelectItem value="拒否">拒否</SelectItem>
+                <SelectItem value="お断り">お断り</SelectItem>
               </SelectContent>
             </Select>
 
@@ -992,6 +1039,9 @@ export default function DashboardPage() {
                               </SelectItem>
                               <SelectItem value="拒否">
                                 <Badge className="bg-red-500 text-white">拒否</Badge>
+                              </SelectItem>
+                              <SelectItem value="お断り">
+                                <Badge className="bg-red-600 text-white">お断り</Badge>
                               </SelectItem>
                             </SelectContent>
                           </Select>

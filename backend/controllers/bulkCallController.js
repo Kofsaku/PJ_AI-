@@ -19,6 +19,7 @@ class CallQueueManager {
     this.isProcessing = false;
     this.timeoutHandlers = new Map();
     this.callCompletionHandlers = new Map(); // 通話完了待機用
+    this.recentCalls = new Map(); // 最近の発信記録 {phoneNumber: timestamp}
   }
 
   // キューに通話を追加
@@ -30,6 +31,26 @@ class CallQueueManager {
     }
   }
 
+  // 一括でキューに追加（新規メソッド）
+  addBulkToQueue(callDataArray) {
+    if (!Array.isArray(callDataArray) || callDataArray.length === 0) {
+      console.log('[CallQueue] No data to add to queue');
+      return;
+    }
+    
+    const previousSize = this.queue.length;
+    this.queue.push(...callDataArray);
+    console.log(`[CallQueue] Bulk added ${callDataArray.length} calls. Queue size: ${previousSize} -> ${this.queue.length}`);
+    
+    // 処理中でない場合は処理を開始
+    if (!this.isProcessing) {
+      console.log('[CallQueue] Starting queue processing...');
+      this.processNextCall();
+    } else {
+      console.log('[CallQueue] Already processing, new calls will be processed after current call');
+    }
+  }
+
   // 次の通話を処理
   async processNextCall() {
     if (this.isProcessing) {
@@ -38,8 +59,9 @@ class CallQueueManager {
     }
 
     if (this.queue.length === 0) {
-      console.log('[CallQueue] No more calls in queue');
+      console.log('[CallQueue] No more calls in queue - all calls completed');
       this.currentCall = null;
+      this.isProcessing = false;
       return;
     }
 
@@ -47,7 +69,9 @@ class CallQueueManager {
     const callData = this.queue.shift();
     
     try {
-      console.log(`[CallQueue] Starting call for: ${callData.phoneNumber}. Remaining in queue: ${this.queue.length}`);
+      console.log(`[CallQueue] ========== Processing Call ${this.queue.length + 1} ==========`);
+      console.log(`[CallQueue] Phone: ${callData.phoneNumber}`);
+      console.log(`[CallQueue] Remaining in queue: ${this.queue.length}`);
       this.currentCall = callData;
       
       // 通話を開始して完了を待つ
@@ -58,13 +82,40 @@ class CallQueueManager {
       
     } catch (error) {
       console.error('[CallQueue] Error processing call:', error);
+      // エラーが発生した通話のセッションを失敗状態に更新
+      try {
+        if (callData && callData.session) {
+          callData.session.status = 'failed';
+          callData.session.endTime = new Date();
+          callData.session.error = error.message;
+          await callData.session.save();
+          
+          webSocketService.broadcastCallEvent('call-failed', {
+            sessionId: callData.session._id,
+            phoneNumber: callData.phoneNumber,
+            error: error.message
+          });
+        }
+      } catch (updateError) {
+        console.error('[CallQueue] Failed to update error status:', updateError);
+      }
     } finally {
       // 通話が完了したら次の通話まで3秒待機
-      console.log('[CallQueue] Call completed, waiting 3 seconds before next call...');
+      console.log(`[CallQueue] Call completed. Queue has ${this.queue.length} calls remaining`);
+      
+      if (this.queue.length > 0) {
+        console.log('[CallQueue] Waiting 3 seconds before next call...');
+      } else {
+        console.log('[CallQueue] No more calls in queue');
+      }
+      
       setTimeout(() => {
         this.isProcessing = false;
         this.currentCall = null;
-        this.processNextCall();
+        // キューに残りがある限り処理を継続
+        if (this.queue.length > 0) {
+          this.processNextCall();
+        }
       }, CALL_TIMEOUT.BETWEEN_CALLS);
     }
   }
@@ -72,12 +123,19 @@ class CallQueueManager {
   // 通話完了を待つ
   waitForCallCompletion(sessionId) {
     return new Promise((resolve) => {
+      const sessionIdStr = sessionId.toString();
+      
       const checkCompletion = async () => {
-        const session = await CallSession.findById(sessionId);
-        if (!session || ['completed', 'failed', 'cancelled'].includes(session.status)) {
-          console.log(`[CallQueue] Call ${sessionId} completed with status: ${session?.status}`);
-          clearInterval(intervalId);
-          resolve();
+        try {
+          const session = await CallSession.findById(sessionId);
+          if (!session || ['completed', 'failed', 'cancelled'].includes(session.status)) {
+            console.log(`[CallQueue] Call ${sessionId} completed with status: ${session?.status}`);
+            this.cleanupCompletionHandler(sessionIdStr);
+            resolve();
+          }
+        } catch (dbError) {
+          console.error(`[CallQueue] Database error while checking completion for ${sessionId}:`, dbError);
+          // DB接続エラーの場合は一時的にスキップし、次回チェックを続行
         }
       };
       
@@ -85,14 +143,28 @@ class CallQueueManager {
       const intervalId = setInterval(checkCompletion, 1000);
       
       // 最大待機時間後は強制的に次へ
-      setTimeout(() => {
-        clearInterval(intervalId);
+      const timeoutId = setTimeout(() => {
         console.log(`[CallQueue] Call ${sessionId} timeout, moving to next`);
+        this.cleanupCompletionHandler(sessionIdStr);
         resolve();
       }, CALL_TIMEOUT.MAX_DURATION + 10000); // 少し余裕を持たせる
       
-      this.callCompletionHandlers.set(sessionId.toString(), intervalId);
+      // 両方のハンドラーを保存
+      this.callCompletionHandlers.set(sessionIdStr, {
+        intervalId,
+        timeoutId
+      });
     });
+  }
+
+  // 完了待機ハンドラーのクリーンアップ
+  cleanupCompletionHandler(sessionIdStr) {
+    const handlers = this.callCompletionHandlers.get(sessionIdStr);
+    if (handlers) {
+      clearInterval(handlers.intervalId);
+      clearTimeout(handlers.timeoutId);
+      this.callCompletionHandlers.delete(sessionIdStr);
+    }
   }
 
   // 通話を開始
@@ -100,6 +172,27 @@ class CallQueueManager {
     const { phoneNumber, session, userId } = callData;
     
     try {
+      // 同一番号への短時間発信チェック
+      const lastCallTime = this.recentCalls.get(phoneNumber);
+      const now = Date.now();
+      const MIN_INTERVAL = 30000; // 30秒間隔を強制
+      
+      if (lastCallTime && (now - lastCallTime) < MIN_INTERVAL) {
+        const waitTime = MIN_INTERVAL - (now - lastCallTime);
+        console.log(`[CallQueue] Same number called recently. Waiting ${Math.ceil(waitTime/1000)} seconds for ${phoneNumber}`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+      
+      // 発信記録を更新
+      this.recentCalls.set(phoneNumber, Date.now());
+      
+      // 古い記録をクリーンアップ（1時間以上前の記録を削除）
+      for (const [phone, timestamp] of this.recentCalls.entries()) {
+        if (Date.now() - timestamp > 3600000) { // 1時間
+          this.recentCalls.delete(phone);
+        }
+      }
+      
       // Twilioで通話を開始
       const call = await twilioService.makeCall(phoneNumber, session._id, userId);
       
@@ -111,6 +204,7 @@ class CallQueueManager {
       webSocketService.broadcastCallEvent('call-initiated', {
         sessionId: session._id,
         phoneNumber: phoneNumber,
+        customerId: session.customerId, // 顧客IDを追加
         status: 'calling'
       });
       
@@ -205,8 +299,9 @@ class CallQueueManager {
     this.timeoutHandlers.clear();
     
     // 全ての完了待機ハンドラーをクリア
-    for (const [sessionId, intervalId] of this.callCompletionHandlers) {
-      clearInterval(intervalId);
+    for (const [sessionId, handlers] of this.callCompletionHandlers) {
+      if (handlers.intervalId) clearInterval(handlers.intervalId);
+      if (handlers.timeoutId) clearTimeout(handlers.timeoutId);
     }
     this.callCompletionHandlers.clear();
     
@@ -248,6 +343,7 @@ class CallQueueManager {
       webSocketService.broadcastCallEvent('call-terminated', {
         sessionId: session._id,
         phoneNumber: session.phoneNumber,
+        customerId: session.customerId, // 顧客IDを追加
         reason: reason
       });
       
@@ -324,21 +420,17 @@ exports.initiateBulkCalls = async (req, res) => {
       });
     }
     
-    // 全てのセッションを作成後、最初の通話だけをキューに追加
-    // これにより同時実行を防ぐ
+    // 全てのセッションを作成後、一括でキューに追加（修正済み）
     if (queueData.length > 0) {
-      console.log(`[BulkCall] Adding ${queueData.length} calls to queue sequentially`);
+      console.log(`[BulkCall] ========================================`);
+      console.log(`[BulkCall] Adding ${queueData.length} calls to queue`);
+      console.log(`[BulkCall] Phone numbers: ${queueData.map(d => d.phoneNumber).join(', ')}`);
       
-      // 最初の通話をキューに追加
-      callQueueManager.addToQueue(queueData[0]);
+      // 全ての通話データを一括でキューに追加
+      callQueueManager.addBulkToQueue(queueData);
       
-      // 残りの通話は順次キューに追加される仕組み
-      for (let i = 1; i < queueData.length; i++) {
-        // 少し遅延を入れてキューに追加
-        setTimeout(() => {
-          callQueueManager.addToQueue(queueData[i]);
-        }, i * 100); // 100msずつ遅延
-      }
+      console.log(`[BulkCall] All calls added to queue successfully`);
+      console.log(`[BulkCall] ========================================`);
     }
 
     // WebSocketで通知
@@ -347,6 +439,7 @@ exports.initiateBulkCalls = async (req, res) => {
       sessions: createdSessions.map(s => ({
         id: s._id,
         phoneNumber: s.phoneNumber,
+        customerId: s.customerId, // 顧客IDを追加
         status: s.status
       }))
     });
@@ -411,6 +504,7 @@ exports.handleCallStatusUpdate = async (req, res) => {
     webSocketService.broadcastCallEvent('call-status-update', {
       sessionId: session._id,
       phoneNumber: session.phoneNumber,
+      customerId: session.customerId, // 顧客IDを追加
       status: session.status,
       callResult: session.callResult
     });
