@@ -4,18 +4,19 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 
 export default function CompanyRegister() {
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
+  const searchParams = useSearchParams()
   const [formData, setFormData] = useState({
     name: "",
-    address: "",
     phone: "",
     email: "",
-    url: ""
+    url: "",
+    postalCode: "",
+    address: ""
   })
 
   useEffect(() => {
@@ -27,10 +28,26 @@ export default function CompanyRegister() {
     const user = JSON.parse(userData);
     if (user.role !== 'admin') {
       router.push('/admin/login');
+      return;
     }
-  }, [router])
 
-  const handleSubmit = async (e: React.FormEvent) => {
+    // URLパラメータから初期値を設定（確認画面から戻ってきた場合）
+    const params = {
+      name: searchParams.get('name') || '',
+      phone: searchParams.get('phone') || '',
+      email: searchParams.get('email') || '',
+      url: searchParams.get('url') || '',
+      postalCode: searchParams.get('postalCode') || '',
+      address: searchParams.get('address') || ''
+    };
+
+    // パラメータが存在する場合のみformDataを更新
+    if (params.name || params.phone || params.address) {
+      setFormData(params);
+    }
+  }, [router, searchParams])
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!formData.name || !formData.address || !formData.phone) {
@@ -38,31 +55,9 @@ export default function CompanyRegister() {
       return;
     }
 
-    setLoading(true);
-    
-    try {
-      const response = await fetch('/api/companies', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        toast.success('企業を登録しました');
-        router.push('/admin/companies');
-      } else {
-        toast.error(data.error || '登録に失敗しました');
-      }
-    } catch (error) {
-      console.error('Error creating company:', error);
-      toast.error('登録に失敗しました');
-    } finally {
-      setLoading(false);
-    }
+    // URLパラメータとして確認画面に遷移
+    const params = new URLSearchParams(formData);
+    router.push(`/admin/company-management/confirm?${params.toString()}`);
   }
 
   return (
@@ -74,23 +69,12 @@ export default function CompanyRegister() {
         
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <Label htmlFor="name">企業名 *</Label>
+            <Label htmlFor="name">事業者名 *</Label>
             <Input
               id="name"
               placeholder="株式会社○○"
               value={formData.name}
               onChange={(e) => setFormData({...formData, name: e.target.value})}
-              required
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="address">住所 *</Label>
-            <Input
-              id="address"
-              placeholder="東京都新宿区..."
-              value={formData.address}
-              onChange={(e) => setFormData({...formData, address: e.target.value})}
               required
             />
           </div>
@@ -128,6 +112,27 @@ export default function CompanyRegister() {
             />
           </div>
 
+          <div>
+            <Label htmlFor="postalCode">郵便番号</Label>
+            <Input
+              id="postalCode"
+              placeholder="123-4567"
+              value={formData.postalCode}
+              onChange={(e) => setFormData({...formData, postalCode: e.target.value})}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="address">住所 *</Label>
+            <Input
+              id="address"
+              placeholder="東京都新宿区..."
+              value={formData.address}
+              onChange={(e) => setFormData({...formData, address: e.target.value})}
+              required
+            />
+          </div>
+
           <div className="pt-4 flex gap-4">
             <Button 
               type="button" 
@@ -140,9 +145,8 @@ export default function CompanyRegister() {
             <Button 
               type="submit" 
               className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
-              disabled={loading}
             >
-              {loading ? "登録中..." : "企業を登録する"}
+              確認画面へ
             </Button>
           </div>
         </form>

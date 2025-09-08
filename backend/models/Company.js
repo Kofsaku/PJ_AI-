@@ -37,6 +37,11 @@ const companySchema = new mongoose.Schema({
     trim: true,
     lowercase: true
   },
+  postalCode: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   lastCall: {
     type: Date,
     default: null

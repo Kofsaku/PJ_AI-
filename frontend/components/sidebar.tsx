@@ -76,9 +76,9 @@ const navigation: NavigationItem[] = [
   { name: "ユーザー管理", href: "/admin/users" },
   { name: "企業管理", href: "#", children: [
     { name: "新規登録", href: "/admin/company-management/register" },
-    { name: "ダッシュボード", href: "/admin/company-management/dashboard" },
-    { name: "確認", href: "/admin/company-management/confirm" },
-    { name: "完了", href: "/admin/company-management/complete" },
+    // { name: "ダッシュボード", href: "/admin/company-management/dashboard" },
+    // { name: "確認", href: "/admin/company-management/confirm" },
+    // { name: "完了", href: "/admin/company-management/complete" },
   ]},
 ]
 
@@ -190,7 +190,7 @@ const navigation: NavigationItem[] = [
                           key={`${child.name}-${index}`}
                           href={child.href}
                           className={cn(
-                            "block px-3 py-2 text-white hover:bg-cyan-500 rounded text-sm",
+                            "block px-3 py-2 text-white hover:bg-cyan-500 rounded",
                             pathname === child.href && "bg-cyan-500"
                           )}
                         >
