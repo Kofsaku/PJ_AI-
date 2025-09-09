@@ -24,6 +24,7 @@ export default function CompanyEdit({ params }: PageProps) {
     phone: "",
     email: "",
     url: "",
+    postalCode: "",
     status: "active"
   })
 
@@ -43,16 +44,28 @@ export default function CompanyEdit({ params }: PageProps) {
 
   const fetchCompany = async () => {
     try {
-      const response = await fetch(`/api/companies/${id}`);
+      const response = await fetch(`/api/companies/${id}`, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
       const data = await response.json();
-      if (data.success) {
+      console.log('Edit page API Response:', data); // デバッグ用
+      
+      if (data.success && data.data) {
+        // 新しいレスポンス構造に対応
+        const company = data.data.company || data.data;
+        
         setFormData({
-          name: data.data.name || "",
-          address: data.data.address || "",
-          phone: data.data.phone || "",
-          email: data.data.email || "",
-          url: data.data.url || "",
-          status: data.data.status || "active"
+          name: company.name || "",
+          address: company.address || "",
+          phone: company.phone || "",
+          email: company.email || "",
+          url: company.url || "",
+          postalCode: company.postalCode || "",
+          status: company.status || "active"
         });
       } else {
         toast.error('企業データの取得に失敗しました');
@@ -132,17 +145,6 @@ export default function CompanyEdit({ params }: PageProps) {
           </div>
 
           <div>
-            <Label htmlFor="address">住所 *</Label>
-            <Input
-              id="address"
-              placeholder="東京都新宿区..."
-              value={formData.address}
-              onChange={(e) => setFormData({...formData, address: e.target.value})}
-              required
-            />
-          </div>
-
-          <div>
             <Label htmlFor="phone">電話番号 *</Label>
             <Input
               id="phone"
@@ -172,6 +174,27 @@ export default function CompanyEdit({ params }: PageProps) {
               placeholder="https://example.com"
               value={formData.url}
               onChange={(e) => setFormData({...formData, url: e.target.value})}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="postalCode">郵便番号</Label>
+            <Input
+              id="postalCode"
+              placeholder="100-0001"
+              value={formData.postalCode}
+              onChange={(e) => setFormData({...formData, postalCode: e.target.value})}
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="address">住所 *</Label>
+            <Input
+              id="address"
+              placeholder="東京都新宿区..."
+              value={formData.address}
+              onChange={(e) => setFormData({...formData, address: e.target.value})}
+              required
             />
           </div>
 

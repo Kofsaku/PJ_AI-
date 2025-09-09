@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Search, Filter, Plus, ChevronLeft, ChevronRight, Trash2, Edit } from 'lucide-react'
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import Link from "next/link"
 
 interface Company {
   _id: string;
@@ -191,7 +192,14 @@ export default function CompanyList() {
                     />
                   </td>
                   <td className="p-3 text-sm font-mono">{company.companyId}</td>
-                  <td className="p-3 text-sm font-medium">{company.name}</td>
+                  <td className="p-3 text-sm font-medium">
+                    <Link 
+                      href={`/admin/companies/${company._id}`}
+                      className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                    >
+                      {company.name}
+                    </Link>
+                  </td>
                   <td className="p-3 text-sm text-gray-600">{company.address}</td>
                   <td className="p-3 text-sm">
                     {company.url && (
