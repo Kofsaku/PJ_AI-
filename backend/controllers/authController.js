@@ -39,6 +39,9 @@ exports.register = asyncHandler(async (req, res, next) => {
     });
   }
 
+  // Check if this is the first user for this company
+  const existingUsers = await User.countDocuments({ companyId });
+  
   // Create user
   const user = await User.create({
     companyId,
@@ -52,6 +55,7 @@ exports.register = asyncHandler(async (req, res, next) => {
     businessType,
     employees,
     description,
+    isCompanyAdmin: existingUsers === 0, // 最初のユーザーを企業管理者にする
   });
 
   // Create token

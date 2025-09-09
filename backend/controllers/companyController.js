@@ -10,17 +10,57 @@ exports.getAllCompanies = asyncHandler(async (req, res) => {
 });
 
 exports.getCompanyById = asyncHandler(async (req, res) => {
+  console.log('Getting company by ID:', req.params.id);
+  
   const company = await Company.findById(req.params.id);
   if (!company) {
+    console.log('Company not found');
     return res.status(404).json({
       success: false,
       error: 'Company not found'
     });
   }
-  res.status(200).json({
+
+  console.log('Company found:', company.name);
+
+  // Get users associated with this company
+  const User = require('../models/User');
+  const users = await User.find({ companyId: company.companyId })
+    .select('firstName lastName email phone createdAt')
+    .sort({ createdAt: -1 });
+
+  console.log(`Found ${users.length} users for company ${company.companyId}`);
+
+  const userList = users.map(user => ({
+    firstName: user.firstName,
+    lastName: user.lastName,
+    fullName: `${user.firstName} ${user.lastName}`,
+    email: user.email,
+    phone: user.phone,
+    createdAt: user.createdAt
+  }));
+
+  const responseData = {
     success: true,
-    data: company
+    data: {
+      company: company,
+      users: {
+        totalCount: users.length,
+        userList: userList
+      }
+    }
+  };
+
+  console.log('Sending response:', JSON.stringify(responseData, null, 2));
+  
+  // キャッシュを無効にする
+  res.set({
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
   });
+
+  res.status(200).json(responseData);
 });
 
 exports.getCompanyByCompanyId = asyncHandler(async (req, res) => {
@@ -31,14 +71,25 @@ exports.getCompanyByCompanyId = asyncHandler(async (req, res) => {
       error: 'Company not found'
     });
   }
+
+  // Check if company already has an admin user
+  const User = require('../models/User');
+  const existingAdmin = await User.findOne({ 
+    companyId: req.params.companyId, 
+    isCompanyAdmin: true 
+  });
+
   res.status(200).json({
     success: true,
-    data: company
+    data: {
+      ...company.toObject(),
+      hasAdmin: !!existingAdmin
+    }
   });
 });
 
 exports.createCompany = asyncHandler(async (req, res) => {
-  const { name, address, url, phone, email } = req.body;
+  const { name, address, url, phone, email, postalCode } = req.body;
   
   const existingCompany = await Company.findOne({ 
     $or: [
@@ -60,6 +111,7 @@ exports.createCompany = asyncHandler(async (req, res) => {
     url: url || '',
     phone,
     email: email || '',
+    postalCode: postalCode || '',
     createdBy: req.user?.id || 'admin'
   });
 

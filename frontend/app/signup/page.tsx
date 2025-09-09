@@ -22,15 +22,19 @@ import { env } from "process";
 type FormData = {
   companyId: string;
   companyName: string;
-  email: string;
   password: string;
   confirmPassword: string;
+  businessName: string;
+  businessPhone: string;
+  email: string;
+  postalCode: string;
+  address: string;
+  businessType1: string;
+  businessType2: string;
+  employees: string;
+  annualRevenue: string;
   firstName: string;
   lastName: string;
-  phone: string;
-  address: string;
-  businessType: string;
-  employees: string;
   description: string;
 };
 
@@ -41,15 +45,19 @@ export default function SignupPage() {
   const [formData, setFormData] = useState<FormData>({
     companyId: "",
     companyName: "",
-    email: "",
     password: "",
     confirmPassword: "",
+    businessName: "",
+    businessPhone: "",
+    email: "",
+    postalCode: "",
+    address: "",
+    businessType1: "",
+    businessType2: "",
+    employees: "",
+    annualRevenue: "",
     firstName: "",
     lastName: "",
-    phone: "",
-    address: "",
-    businessType: "",
-    employees: "",
     description: "",
   });
   const [companyValidated, setCompanyValidated] = useState(false);
@@ -72,26 +80,34 @@ export default function SignupPage() {
     }
 
     if (step === 2) {
+
+
+      if (!formData.businessName.trim()) {
+        newErrors.businessName = "事業者名は必須です";
+      }
+
+      if (!formData.businessPhone.trim()) {
+        newErrors.businessPhone = "事業者電話番号は必須です";
+      } else if (!/^[0-9-]+$/.test(formData.businessPhone)) {
+        newErrors.businessPhone = "有効な電話番号を入力してください";
+      }
+
       if (!formData.email.trim()) {
         newErrors.email = "メールアドレスは必須です";
       } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
         newErrors.email = "有効なメールアドレスを入力してください";
       }
 
-      if (!formData.password) {
-        newErrors.password = "パスワードは必須です";
-      } else if (formData.password.length < 8) {
-        newErrors.password = "パスワードは8文字以上必要です";
+      if (!formData.address.trim()) {
+        newErrors.address = "住所は必須です";
       }
 
-      if (formData.password !== formData.confirmPassword) {
-        newErrors.confirmPassword = "パスワードが一致しません";
+      if (!formData.businessType1.trim()) {
+        newErrors.businessType1 = "業種1は必須です";
       }
 
-      if (!formData.phone.trim()) {
-        newErrors.phone = "電話番号は必須です";
-      } else if (!/^[0-9-]+$/.test(formData.phone)) {
-        newErrors.phone = "有効な電話番号を入力してください";
+      if (!formData.employees.trim()) {
+        newErrors.employees = "社員数は必須です";
       }
     }
 
@@ -101,6 +117,14 @@ export default function SignupPage() {
       }
       if (!formData.firstName.trim()) {
         newErrors.firstName = "名は必須です";
+      }
+      if (!formData.password) {
+        newErrors.password = "パスワードは必須です";
+      } else if (formData.password.length < 8) {
+        newErrors.password = "パスワードは8文字以上必要です";
+      }
+      if (formData.password !== formData.confirmPassword) {
+        newErrors.confirmPassword = "パスワードが一致しません";
       }
     }
 
@@ -173,7 +197,15 @@ export default function SignupPage() {
     // Reset company validation when company ID changes
     if (field === 'companyId') {
       setCompanyValidated(false);
-      setFormData(prev => ({ ...prev, companyName: '' }));
+      setFormData(prev => ({ 
+        ...prev, 
+        companyName: '',
+        businessName: '',
+        businessPhone: '',
+        email: '',
+        postalCode: '',
+        address: ''
+      }));
     }
   };
 
@@ -189,7 +221,15 @@ export default function SignupPage() {
       
       if (data.success) {
         setCompanyValidated(true);
-        setFormData(prev => ({ ...prev, companyName: data.data.name }));
+        setFormData(prev => ({ 
+          ...prev, 
+          companyName: data.data.name,
+          businessName: data.data.name, // 事業者名にも同じ名前を設定
+          businessPhone: data.data.phone || '', // 事業者電話番号を設定
+          email: data.data.email || '', // メールアドレスを設定
+          postalCode: data.data.postalCode || '', // 郵便番号を設定
+          address: data.data.address || '' // 住所を設定
+        }));
         setErrors(prev => ({ ...prev, companyId: undefined }));
         
         // 管理者が既に存在するかチェック
@@ -215,20 +255,29 @@ export default function SignupPage() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold mb-4">2. 会員登録</h1>
           <div className="flex items-center space-x-4">
-            {[1, 2, hasExistingAdmin ? null : 3].filter(Boolean).map((i, index, array) => (
-              <div key={i} className="flex items-center">
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    i <= step
-                      ? "bg-orange-500 text-white"
-                      : "bg-gray-300 text-gray-600"
-                  }`}
-                >
-                  {i}
+            {[1, 2, 3].map((i, index, array) => {
+              // 既存管理者がいる場合は3番目のステップを表示しない
+              if (i === 3 && hasExistingAdmin) {
+                return null;
+              }
+              return (
+                <div key={i} className="flex items-center">
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      i <= step
+                        ? "bg-orange-500 text-white"
+                        : "bg-gray-300 text-gray-600"
+                    }`}
+                  >
+                    {i}
+                  </div>
+                  {/* 最後の要素でない、または次の要素が表示される場合のみ線を表示 */}
+                  {index < array.length - 1 && 
+                   !(i === 2 && hasExistingAdmin) && 
+                   <div className="w-12 h-0.5 bg-gray-300 mx-2" />}
                 </div>
-                {index < array.length - 1 && <div className="w-12 h-0.5 bg-gray-300 mx-2" />}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -243,117 +292,92 @@ export default function SignupPage() {
         <Card>
           <CardHeader>
             <CardTitle>
-              {step === 1 && "企業情報を入力"}
-              {step === 2 && "アカウント情報"}
+              {step === 1 && "企業情報を探す"}
+              {step === 2 && "企業情報を入力"}
               {step === 3 && "管理者アカウント作成"}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             {step === 1 && (
               <>
-                <div className="space-y-2">
-                  <Label htmlFor="companyId">企業ID</Label>
-                  <div className="flex gap-2">
+                <div className="text-center">
+                  <p className="text-gray-600 mb-6">企業IDを入力してください。</p>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="companyId">企業ID</Label>
                     <Input
                       id="companyId"
                       value={formData.companyId}
                       onChange={(e) =>
                         updateFormData("companyId", e.target.value)
                       }
-                      placeholder="企業IDを入力"
-                      className={errors.companyId ? "border-red-500" : ""}
+                      placeholder="XXXXXX"
+                      className={`text-center ${errors.companyId ? "border-red-500" : ""}`}
                     />
-                    <Button
-                      type="button"
-                      onClick={validateCompanyId}
-                      variant="outline"
-                    >
-                      確認
-                    </Button>
+                    {errors.companyId && (
+                      <p className="text-sm text-red-500 text-center">{errors.companyId}</p>
+                    )}
+                    {companyValidated && (
+                      <p className="text-sm text-green-600 text-center">✓ 企業確認済み: {formData.companyName}</p>
+                    )}
                   </div>
-                  {errors.companyId && (
-                    <p className="text-sm text-red-500">{errors.companyId}</p>
-                  )}
-                  {companyValidated && (
-                    <p className="text-sm text-green-600">✓ 企業確認済み: {formData.companyName}</p>
-                  )}
+                  <Button
+                    type="button"
+                    onClick={validateCompanyId}
+                    className="w-full bg-orange-500 hover:bg-orange-600 text-white"
+                  >
+                    検索する
+                  </Button>
                 </div>
                 {companyValidated && (
-                  <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="p-4 bg-gray-50 rounded-lg text-center">
                     <p className="text-sm text-gray-600">所属企業</p>
                     <p className="font-medium">{formData.companyName}</p>
                   </div>
                 )}
-                <div className="space-y-2">
-                  <Label htmlFor="businessType">業種</Label>
-                  <Select
-                    value={formData.businessType}
-                    onValueChange={(value) =>
-                      updateFormData("businessType", value)
-                    }
-                  >
-                    <SelectTrigger
-                      className={errors.businessType ? "border-red-500" : ""}
-                    >
-                      <SelectValue placeholder="業種を選択" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="it">IT・通信</SelectItem>
-                      <SelectItem value="manufacturing">製造業</SelectItem>
-                      <SelectItem value="retail">小売業</SelectItem>
-                      <SelectItem value="service">サービス業</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {errors.businessType && (
-                    <p className="text-sm text-red-500">
-                      {errors.businessType}
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="employees">従業員数</Label>
-                  <Select
-                    value={formData.employees}
-                    onValueChange={(value) =>
-                      updateFormData("employees", value)
-                    }
-                  >
-                    <SelectTrigger
-                      className={errors.employees ? "border-red-500" : ""}
-                    >
-                      <SelectValue placeholder="従業員数を選択" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1-10">1-10名</SelectItem>
-                      <SelectItem value="11-50">11-50名</SelectItem>
-                      <SelectItem value="51-100">51-100名</SelectItem>
-                      <SelectItem value="100+">100名以上</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {errors.employees && (
-                    <p className="text-sm text-red-500">{errors.employees}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="address">住所</Label>
-                  <Input
-                    id="address"
-                    value={formData.address}
-                    onChange={(e) => updateFormData("address", e.target.value)}
-                    placeholder="東京都渋谷区..."
-                    className={errors.address ? "border-red-500" : ""}
-                  />
-                  {errors.address && (
-                    <p className="text-sm text-red-500">{errors.address}</p>
-                  )}
-                </div>
               </>
             )}
 
             {step === 2 && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="email">メールアドレス</Label>
+                  <Label htmlFor="companyId">企業ID</Label>
+                  <Input
+                    id="companyId"
+                    value={formData.companyId}
+                    disabled
+                    className="bg-gray-100"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="businessName">事業者名 *</Label>
+                  <Input
+                    id="businessName"
+                    value={formData.businessName}
+                    onChange={(e) => updateFormData("businessName", e.target.value)}
+                    placeholder="株式会社○○"
+                    className={errors.businessName ? "border-red-500" : ""}
+                  />
+                  {errors.businessName && (
+                    <p className="text-sm text-red-500">{errors.businessName}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="businessPhone">事業者電話番号 *</Label>
+                  <Input
+                    id="businessPhone"
+                    value={formData.businessPhone}
+                    onChange={(e) => updateFormData("businessPhone", e.target.value)}
+                    placeholder="03-1234-5678"
+                    className={errors.businessPhone ? "border-red-500" : ""}
+                  />
+                  {errors.businessPhone && (
+                    <p className="text-sm text-red-500">{errors.businessPhone}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">メールアドレス *</Label>
                   <Input
                     id="email"
                     type="email"
@@ -367,7 +391,182 @@ export default function SignupPage() {
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password">パスワード</Label>
+                  <Label htmlFor="postalCode">郵便番号</Label>
+                  <Input
+                    id="postalCode"
+                    value={formData.postalCode}
+                    onChange={(e) => updateFormData("postalCode", e.target.value)}
+                    placeholder="100-0001"
+                    className={errors.postalCode ? "border-red-500" : ""}
+                  />
+                  {errors.postalCode && (
+                    <p className="text-sm text-red-500">{errors.postalCode}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="address">住所 *</Label>
+                  <Input
+                    id="address"
+                    value={formData.address}
+                    onChange={(e) => updateFormData("address", e.target.value)}
+                    placeholder="東京都渋谷区..."
+                    className={errors.address ? "border-red-500" : ""}
+                  />
+                  {errors.address && (
+                    <p className="text-sm text-red-500">{errors.address}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="businessType1">業種1 *</Label>
+                  <Select
+                    value={formData.businessType1}
+                    onValueChange={(value) =>
+                      updateFormData("businessType1", value)
+                    }
+                  >
+                    <SelectTrigger
+                      className={errors.businessType1 ? "border-red-500" : ""}
+                    >
+                      <SelectValue placeholder="業種を選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="it">IT・通信</SelectItem>
+                      <SelectItem value="manufacturing">製造業</SelectItem>
+                      <SelectItem value="retail">小売業</SelectItem>
+                      <SelectItem value="service">サービス業</SelectItem>
+                      <SelectItem value="construction">建設業</SelectItem>
+                      <SelectItem value="finance">金融業</SelectItem>
+                      <SelectItem value="healthcare">医療・福祉</SelectItem>
+                      <SelectItem value="education">教育</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.businessType1 && (
+                    <p className="text-sm text-red-500">
+                      {errors.businessType1}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="businessType2">業種2</Label>
+                  <Select
+                    value={formData.businessType2}
+                    onValueChange={(value) =>
+                      updateFormData("businessType2", value)
+                    }
+                  >
+                    <SelectTrigger
+                      className={errors.businessType2 ? "border-red-500" : ""}
+                    >
+                      <SelectValue placeholder="業種を選択（任意）" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">選択しない</SelectItem>
+                      <SelectItem value="it">IT・通信</SelectItem>
+                      <SelectItem value="manufacturing">製造業</SelectItem>
+                      <SelectItem value="retail">小売業</SelectItem>
+                      <SelectItem value="service">サービス業</SelectItem>
+                      <SelectItem value="construction">建設業</SelectItem>
+                      <SelectItem value="finance">金融業</SelectItem>
+                      <SelectItem value="healthcare">医療・福祉</SelectItem>
+                      <SelectItem value="education">教育</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.businessType2 && (
+                    <p className="text-sm text-red-500">{errors.businessType2}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="employees">社員数 *</Label>
+                  <Select
+                    value={formData.employees}
+                    onValueChange={(value) =>
+                      updateFormData("employees", value)
+                    }
+                  >
+                    <SelectTrigger
+                      className={errors.employees ? "border-red-500" : ""}
+                    >
+                      <SelectValue placeholder="社員数を選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1-10">1-10名</SelectItem>
+                      <SelectItem value="11-50">11-50名</SelectItem>
+                      <SelectItem value="51-100">51-100名</SelectItem>
+                      <SelectItem value="101-300">101-300名</SelectItem>
+                      <SelectItem value="301-1000">301-1000名</SelectItem>
+                      <SelectItem value="1000+">1000名以上</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.employees && (
+                    <p className="text-sm text-red-500">{errors.employees}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="annualRevenue">年間売上</Label>
+                  <Select
+                    value={formData.annualRevenue}
+                    onValueChange={(value) =>
+                      updateFormData("annualRevenue", value)
+                    }
+                  >
+                    <SelectTrigger
+                      className={errors.annualRevenue ? "border-red-500" : ""}
+                    >
+                      <SelectValue placeholder="年間売上を選択（任意）" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">選択しない</SelectItem>
+                      <SelectItem value="under-10M">1000万円未満</SelectItem>
+                      <SelectItem value="10M-50M">1000万円〜5000万円</SelectItem>
+                      <SelectItem value="50M-100M">5000万円〜1億円</SelectItem>
+                      <SelectItem value="100M-500M">1億円〜5億円</SelectItem>
+                      <SelectItem value="500M-1B">5億円〜10億円</SelectItem>
+                      <SelectItem value="1B+">10億円以上</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.annualRevenue && (
+                    <p className="text-sm text-red-500">{errors.annualRevenue}</p>
+                  )}
+                </div>
+              </>
+            )}
+
+            {step === 3 && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">姓 *</Label>
+                    <Input
+                      id="lastName"
+                      value={formData.lastName}
+                      onChange={(e) =>
+                        updateFormData("lastName", e.target.value)
+                      }
+                      placeholder="田中"
+                      className={errors.lastName ? "border-red-500" : ""}
+                    />
+                    {errors.lastName && (
+                      <p className="text-sm text-red-500">{errors.lastName}</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">名 *</Label>
+                    <Input
+                      id="firstName"
+                      value={formData.firstName}
+                      onChange={(e) =>
+                        updateFormData("firstName", e.target.value)
+                      }
+                      placeholder="太郎"
+                      className={errors.firstName ? "border-red-500" : ""}
+                    />
+                    {errors.firstName && (
+                      <p className="text-sm text-red-500">{errors.firstName}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">パスワード *</Label>
                   <Input
                     id="password"
                     type="password"
@@ -381,7 +580,7 @@ export default function SignupPage() {
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">パスワード確認</Label>
+                  <Label htmlFor="confirmPassword">パスワード確認 *</Label>
                   <Input
                     id="confirmPassword"
                     type="password"
@@ -397,56 +596,6 @@ export default function SignupPage() {
                       {errors.confirmPassword}
                     </p>
                   )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">電話番号</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => updateFormData("phone", e.target.value)}
-                    placeholder="03-1234-5678"
-                    className={errors.phone ? "border-red-500" : ""}
-                  />
-                  {errors.phone && (
-                    <p className="text-sm text-red-500">{errors.phone}</p>
-                  )}
-                </div>
-              </>
-            )}
-
-            {step === 3 && (
-              <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName">姓</Label>
-                    <Input
-                      id="lastName"
-                      value={formData.lastName}
-                      onChange={(e) =>
-                        updateFormData("lastName", e.target.value)
-                      }
-                      placeholder="田中"
-                      className={errors.lastName ? "border-red-500" : ""}
-                    />
-                    {errors.lastName && (
-                      <p className="text-sm text-red-500">{errors.lastName}</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName">名</Label>
-                    <Input
-                      id="firstName"
-                      value={formData.firstName}
-                      onChange={(e) =>
-                        updateFormData("firstName", e.target.value)
-                      }
-                      placeholder="太郎"
-                      className={errors.firstName ? "border-red-500" : ""}
-                    />
-                    {errors.firstName && (
-                      <p className="text-sm text-red-500">{errors.firstName}</p>
-                    )}
-                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="description">備考</Label>
@@ -469,22 +618,24 @@ export default function SignupPage() {
                   戻る
                 </Button>
               )}
-              <Button
-                onClick={handleNext}
-                className="bg-orange-500 hover:bg-orange-600 ml-auto"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    処理中...
-                  </>
-                ) : (step === 3 || (step === 2 && hasExistingAdmin)) ? (
-                  "登録完了"
-                ) : (
-                  "次へ"
-                )}
-              </Button>
+              {step !== 1 && (
+                <Button
+                  onClick={handleNext}
+                  className="bg-orange-500 hover:bg-orange-600 ml-auto"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      処理中...
+                    </>
+                  ) : (step === 3 || (step === 2 && hasExistingAdmin)) ? (
+                    "登録完了"
+                  ) : (
+                    "次へ"
+                  )}
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
