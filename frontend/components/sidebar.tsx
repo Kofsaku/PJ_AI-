@@ -49,12 +49,8 @@ export function Sidebar() {
   const handleLogout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('userData')
-    // Redirect based on current location
-    if (pathname.startsWith('/admin')) {
-      router.push("/admin/login")
-    } else {
-      router.push("/login")
-    }
+    // Always redirect to /login regardless of current location
+    router.push("/login")
   }
 
 

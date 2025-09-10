@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -35,10 +34,22 @@ type FormData = {
   annualRevenue: string;
   firstName: string;
   lastName: string;
-  description: string;
+  verificationEmail: string;
+  verificationCode: string;
 };
 
 type FormErrors = Partial<Record<keyof FormData, string>>;
+
+type VerificationStep = 'email' | 'code' | 'completed';
+
+type EmailVerificationState = {
+  step: VerificationStep;
+  token: string;
+  countdown: number;
+  resendCooldown: number;
+  isLoading: boolean;
+  error: string | null;
+};
 
 export default function SignupPage() {
   const [step, setStep] = useState(1);
@@ -58,14 +69,219 @@ export default function SignupPage() {
     annualRevenue: "",
     firstName: "",
     lastName: "",
-    description: "",
+    verificationEmail: "",
+    verificationCode: "",
   });
   const [companyValidated, setCompanyValidated] = useState(false);
   const [hasExistingAdmin, setHasExistingAdmin] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  
+  // メール認証関連の状態
+  const [emailVerification, setEmailVerification] = useState<EmailVerificationState>({
+    step: 'email',
+    token: '',
+    countdown: 600, // 10分
+    resendCooldown: 0,
+    isLoading: false,
+    error: null
+  });
+  
   const router = useRouter();
+
+  // カウントダウンタイマーの実装
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+
+    if (emailVerification.countdown > 0) {
+      interval = setInterval(() => {
+        setEmailVerification(prev => {
+          const newCountdown = prev.countdown - 1;
+          if (newCountdown <= 0) {
+            return { ...prev, countdown: 0 };
+          }
+          return { ...prev, countdown: newCountdown };
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [emailVerification.countdown]);
+
+  // 再送信クールダウンの実装
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+
+    if (emailVerification.resendCooldown > 0) {
+      interval = setInterval(() => {
+        setEmailVerification(prev => {
+          const newCooldown = prev.resendCooldown - 1;
+          if (newCooldown <= 0) {
+            return { ...prev, resendCooldown: 0 };
+          }
+          return { ...prev, resendCooldown: newCooldown };
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [emailVerification.resendCooldown]);
+
+  // メール認証コード送信関数
+  const sendVerificationCode = async () => {
+    if (!validateStep(3)) return;
+
+    setEmailVerification(prev => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      const response = await fetch('/api/auth/send-verification-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: formData.verificationEmail,
+          companyId: formData.companyId,
+          companyName: formData.companyName,
+          businessName: formData.businessName,
+          businessPhone: formData.businessPhone,
+          address: formData.address,
+          businessType: formData.businessType1,
+          employees: formData.employees,
+          description: formData.annualRevenue || ''
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || '認証コードの送信に失敗しました');
+      }
+
+      setEmailVerification(prev => ({
+        ...prev,
+        step: 'code',
+        token: data.token,
+        countdown: 600, // 10分
+        resendCooldown: 60 // 1分
+      }));
+
+      // ステップ4に進む
+      setStep(4);
+    } catch (error) {
+      setEmailVerification(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : '認証コード送信中にエラーが発生しました'
+      }));
+      setSubmitError(error instanceof Error ? error.message : '認証コード送信中にエラーが発生しました');
+    } finally {
+      setEmailVerification(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // 認証コード検証関数
+  const verifyEmailCode = async () => {
+    if (!validateStep(4)) return;
+
+    setEmailVerification(prev => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      const response = await fetch('/api/auth/verify-email-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: formData.verificationEmail,
+          verificationCode: formData.verificationCode,
+          token: emailVerification.token
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || '認証コードの検証に失敗しました');
+      }
+
+      setEmailVerification(prev => ({
+        ...prev,
+        step: 'completed',
+        token: data.data.tempToken
+      }));
+
+      // メールアドレスをformDataのemailにコピー
+      setFormData(prev => ({ ...prev, email: formData.verificationEmail }));
+
+      // ステップ5に進む
+      setStep(5);
+    } catch (error) {
+      setEmailVerification(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : '認証コード検証中にエラーが発生しました'
+      }));
+      setSubmitError(error instanceof Error ? error.message : '認証コード検証中にエラーが発生しました');
+    } finally {
+      setEmailVerification(prev => ({ ...prev, isLoading: false }));
+    }
+  };
+
+  // 認証コード再送信関数
+  const resendVerificationCode = async () => {
+    if (emailVerification.resendCooldown > 0) return;
+
+    setEmailVerification(prev => ({ ...prev, isLoading: true, error: null }));
+
+    try {
+      const response = await fetch('/api/auth/send-verification-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: formData.verificationEmail,
+          companyId: formData.companyId,
+          companyName: formData.companyName,
+          businessName: formData.businessName,
+          businessPhone: formData.businessPhone,
+          address: formData.address,
+          businessType: formData.businessType1,
+          employees: formData.employees,
+          description: formData.annualRevenue || ''
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || '認証コードの再送信に失敗しました');
+      }
+
+      setEmailVerification(prev => ({
+        ...prev,
+        token: data.token,
+        countdown: 600, // 10分
+        resendCooldown: 60 // 1分
+      }));
+    } catch (error) {
+      setEmailVerification(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : '認証コード再送信中にエラーが発生しました'
+      }));
+      setSubmitError(error instanceof Error ? error.message : '認証コード再送信中にエラーが発生しました');
+    } finally {
+      setEmailVerification(prev => ({ ...prev, isLoading: false }));
+    }
+  };
 
   const validateStep = (step: number): boolean => {
     const newErrors: FormErrors = {};
@@ -80,8 +296,6 @@ export default function SignupPage() {
     }
 
     if (step === 2) {
-
-
       if (!formData.businessName.trim()) {
         newErrors.businessName = "事業者名は必須です";
       }
@@ -112,6 +326,22 @@ export default function SignupPage() {
     }
 
     if (step === 3) {
+      if (!formData.verificationEmail.trim()) {
+        newErrors.verificationEmail = "メールアドレスは必須です";
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.verificationEmail)) {
+        newErrors.verificationEmail = "有効なメールアドレスを入力してください";
+      }
+    }
+
+    if (step === 4) {
+      if (!formData.verificationCode.trim()) {
+        newErrors.verificationCode = "認証コードは必須です";
+      } else if (!/^[A-Za-z0-9]{6}$/.test(formData.verificationCode)) {
+        newErrors.verificationCode = "認証コードは6桁の英数字で入力してください";
+      }
+    }
+
+    if (step === 5) {
       if (!formData.lastName.trim()) {
         newErrors.lastName = "姓は必須です";
       }
@@ -135,13 +365,7 @@ export default function SignupPage() {
   const handleNext = () => {
     if (!validateStep(step)) return;
 
-    // 既存管理者がいる場合はステップ3をスキップ
-    if (step === 2 && hasExistingAdmin) {
-      handleSubmit();
-      return;
-    }
-
-    if (step < 3) {
+    if (step < 5) {
       setStep(step + 1);
     } else {
       handleSubmit();
@@ -160,24 +384,49 @@ export default function SignupPage() {
     setSubmitError(null);
 
     try {
+      // メール認証が完了しているか確認
+      if (emailVerification.step !== 'completed' || !emailVerification.token) {
+        setSubmitError('メール認証が完了していません');
+        return;
+      }
+
       const response = await fetch(
-        '/api/auth/signup',
+        '/api/auth/complete-registration',
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(formData),
+          body: JSON.stringify({
+            firstName: formData.firstName.trim(),
+            lastName: formData.lastName.trim(),
+            password: formData.password.trim(),
+            tempToken: emailVerification.token
+          }),
         }
       );
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || "登録に失敗しました");
+        console.error('Registration failed:', data);
+        let errorMessage = data.error || "登録に失敗しました";
+        throw new Error(errorMessage);
       }
 
-      router.push("/dashboard");
+      console.log('Registration completed successfully!');
+      
+      // トークンとユーザーデータをlocalStorageに保存
+      localStorage.setItem('token', data.token);
+      // roleを"user"に設定して保存（サイドバー表示のため）
+      const userData = {
+        ...data.data,
+        role: 'user'
+      };
+      localStorage.setItem('userData', JSON.stringify(userData));
+      
+      // 登録完了ページへリダイレクト
+      router.push("/signup/registration-complete");
     } catch (error) {
       console.error("Registration error:", error);
       setSubmitError(
@@ -186,7 +435,7 @@ export default function SignupPage() {
     } finally {
       setIsSubmitting(false);
     }
-  };
+  };;
 
   const updateFormData = (field: keyof FormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -225,10 +474,13 @@ export default function SignupPage() {
           ...prev, 
           companyName: data.data.name,
           businessName: data.data.name, // 事業者名にも同じ名前を設定
-          businessPhone: data.data.phone || '', // 事業者電話番号を設定
-          email: data.data.email || '', // メールアドレスを設定
-          postalCode: data.data.postalCode || '', // 郵便番号を設定
-          address: data.data.address || '' // 住所を設定
+          businessPhone: data.data.phone || '', // 空文字でなく確実に設定
+          email: data.data.email || '', // 空文字でなく確実に設定
+          postalCode: data.data.postalCode || '', // 空文字でなく確実に設定
+          address: data.data.address || '', // 空文字でなく確実に設定
+          // businessType1とemployeesは空文字列で初期化（ユーザーが選択する必要がある）
+          businessType1: '', // ユーザーに選択させる
+          employees: '' // ユーザーに選択させる
         }));
         setErrors(prev => ({ ...prev, companyId: undefined }));
         
@@ -252,34 +504,6 @@ export default function SignupPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-2xl">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold mb-4">2. 会員登録</h1>
-          <div className="flex items-center space-x-4">
-            {[1, 2, 3].map((i, index, array) => {
-              // 既存管理者がいる場合は3番目のステップを表示しない
-              if (i === 3 && hasExistingAdmin) {
-                return null;
-              }
-              return (
-                <div key={i} className="flex items-center">
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      i <= step
-                        ? "bg-orange-500 text-white"
-                        : "bg-gray-300 text-gray-600"
-                    }`}
-                  >
-                    {i}
-                  </div>
-                  {/* 最後の要素でない、または次の要素が表示される場合のみ線を表示 */}
-                  {index < array.length - 1 && 
-                   !(i === 2 && hasExistingAdmin) && 
-                   <div className="w-12 h-0.5 bg-gray-300 mx-2" />}
-                </div>
-              );
-            })}
-          </div>
-        </div>
 
         {submitError && (
           <Alert variant="destructive" className="mb-4">
@@ -294,7 +518,9 @@ export default function SignupPage() {
             <CardTitle>
               {step === 1 && "企業情報を探す"}
               {step === 2 && "企業情報を入力"}
-              {step === 3 && "管理者アカウント作成"}
+              {step === 3 && "新規アカウント作成"}
+              {step === 4 && "認証コードの入力"}
+              {step === 5 && "アカウント情報入力"}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -434,10 +660,6 @@ export default function SignupPage() {
                       <SelectItem value="manufacturing">製造業</SelectItem>
                       <SelectItem value="retail">小売業</SelectItem>
                       <SelectItem value="service">サービス業</SelectItem>
-                      <SelectItem value="construction">建設業</SelectItem>
-                      <SelectItem value="finance">金融業</SelectItem>
-                      <SelectItem value="healthcare">医療・福祉</SelectItem>
-                      <SelectItem value="education">教育</SelectItem>
                     </SelectContent>
                   </Select>
                   {errors.businessType1 && (
@@ -492,9 +714,7 @@ export default function SignupPage() {
                       <SelectItem value="1-10">1-10名</SelectItem>
                       <SelectItem value="11-50">11-50名</SelectItem>
                       <SelectItem value="51-100">51-100名</SelectItem>
-                      <SelectItem value="101-300">101-300名</SelectItem>
-                      <SelectItem value="301-1000">301-1000名</SelectItem>
-                      <SelectItem value="1000+">1000名以上</SelectItem>
+                      <SelectItem value="100+">100名以上</SelectItem>
                     </SelectContent>
                   </Select>
                   {errors.employees && (
@@ -532,6 +752,70 @@ export default function SignupPage() {
             )}
 
             {step === 3 && (
+              <>
+                <div className="text-center mb-6">
+                  <p className="text-gray-600">メールアドレスを入力してください。</p>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="verificationEmail">メールアドレス</Label>
+                    <Input
+                      id="verificationEmail"
+                      type="email"
+                      value={formData.verificationEmail}
+                      onChange={(e) =>
+                        updateFormData("verificationEmail", e.target.value)
+                      }
+                      placeholder="xxxxxxx@aicall.com"
+                      className={`text-center ${errors.verificationEmail ? "border-red-500" : ""}`}
+                    />
+                    {errors.verificationEmail && (
+                      <p className="text-sm text-red-500 text-center">{errors.verificationEmail}</p>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {step === 4 && (
+              <>
+                <div className="text-center mb-6">
+                  <p className="text-gray-600 mb-2">
+                    {formData.verificationEmail}に認証コードを送信しました。
+                  </p>
+                  <p className="text-gray-600">
+                    下記に認証コードを入力してください。
+                  </p>
+                </div>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="verificationCode">認証コード</Label>
+                    <Input
+                      id="verificationCode"
+                      value={formData.verificationCode}
+                      onChange={(e) =>
+                        updateFormData("verificationCode", e.target.value.toUpperCase())
+                      }
+                      placeholder="XXXXXX"
+                      maxLength={6}
+                      className={`text-center text-lg tracking-widest ${errors.verificationCode ? "border-red-500" : ""}`}
+                    />
+                    {errors.verificationCode && (
+                      <p className="text-sm text-red-500 text-center">{errors.verificationCode}</p>
+                    )}
+                  </div>
+                  {emailVerification.countdown > 0 && (
+                    <div className="text-center">
+                      <p className="text-sm text-gray-500">
+                        有効期限: {Math.floor(emailVerification.countdown / 60)}:{(emailVerification.countdown % 60).toString().padStart(2, '0')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {step === 5 && (
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -597,45 +881,54 @@ export default function SignupPage() {
                     </p>
                   )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="description">備考</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) =>
-                      updateFormData("description", e.target.value)
-                    }
-                    placeholder="その他の情報があれば入力してください"
-                    rows={4}
-                  />
-                </div>
               </>
             )}
 
-            <div className="flex justify-between pt-4">
-              {step > 1 && (
-                <Button variant="outline" onClick={handleBack}>
-                  戻る
-                </Button>
-              )}
-              {step !== 1 && (
+            <div className="flex flex-col space-y-3 pt-4">
+              {step === 4 && (
                 <Button
-                  onClick={handleNext}
-                  className="bg-orange-500 hover:bg-orange-600 ml-auto"
-                  disabled={isSubmitting}
+                  variant="outline"
+                  onClick={resendVerificationCode}
+                  disabled={emailVerification.resendCooldown > 0 || emailVerification.isLoading}
+                  className="w-full"
                 >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      処理中...
-                    </>
-                  ) : (step === 3 || (step === 2 && hasExistingAdmin)) ? (
-                    "登録完了"
+                  {emailVerification.resendCooldown > 0 ? (
+                    `認証コードを再発行する (${emailVerification.resendCooldown}秒)`
                   ) : (
-                    "次へ"
+                    "認証コードを再発行する"
                   )}
                 </Button>
               )}
+              
+              <div className="flex justify-between">
+                {step > 1 && (
+                  <Button variant="outline" onClick={handleBack}>
+                    戻る
+                  </Button>
+                )}
+                {step !== 1 && (
+                  <Button
+                    onClick={step === 3 ? sendVerificationCode : step === 4 ? verifyEmailCode : handleNext}
+                    className="bg-orange-500 hover:bg-orange-600 ml-auto"
+                    disabled={isSubmitting || emailVerification.isLoading}
+                  >
+                    {(isSubmitting || emailVerification.isLoading) ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        処理中...
+                      </>
+                    ) : step === 3 ? (
+                      "メール認証をする"
+                    ) : step === 4 ? (
+                      "認証する"
+                    ) : step === 5 ? (
+                      "登録完了"
+                    ) : (
+                      "次へ"
+                    )}
+                  </Button>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

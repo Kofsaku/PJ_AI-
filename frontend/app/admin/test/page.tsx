@@ -45,7 +45,7 @@ export default function TestPage() {
     localStorage.removeItem('token');
     localStorage.removeItem('userData');
     alert('ストレージをクリアしました。ログインページに移動してください。');
-    window.location.href = '/admin/login';
+    window.location.href = '/login';
   };
 
   return (

@@ -1,0 +1,16 @@
+{
+  "name": "ai-call-system",
+  "version": "1.0.0",
+  "description": "AI-powered call system with frontend and backend",
+  "scripts": {
+    "check-config": "node scripts/check-startup-config.js",
+    "startup-hook": "./.claude/hooks/startup.sh",
+    "start-backend": "cd backend && npm start",
+    "start-frontend": "cd frontend && npm run dev",
+    "dev": "npm run check-config && echo 'Start backend first: npm run start-backend' && echo 'Then frontend: npm run start-frontend'",
+    "install-all": "cd backend && npm install && cd ../frontend && npm install"
+  },
+  "keywords": ["ai", "call", "system", "twilio", "voice"],
+  "author": "AI Call System",
+  "license": "MIT"
+}
