@@ -93,7 +93,13 @@ export default function CustomerDetailPage() {
   useEffect(() => {
     const fetchCustomer = async () => {
       try {
-        const response = await fetch(`/api/customers/${customerId}`)
+        const token = localStorage.getItem('token');
+        const response = await fetch(`/api/customers/${customerId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        })
         if (!response.ok) throw new Error("Failed to fetch customer")
         
         const data = await response.json()
@@ -158,7 +164,13 @@ export default function CustomerDetailPage() {
   // 通話履歴を取得
   const fetchCallHistory = async () => {
     try {
-      const response = await fetch(`/api/customers/${customerId}/call-history`)
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/customers/${customerId}/call-history`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
       if (response.ok) {
         const history = await response.json()
         setCallHistory(history)
@@ -210,10 +222,12 @@ export default function CustomerDetailPage() {
         notes: formData.notes
       }
 
+      const token = localStorage.getItem('token');
       const response = await fetch(`/api/customers/${customerId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(customerData),
       })
@@ -249,8 +263,13 @@ export default function CustomerDetailPage() {
     }
 
     try {
+      const token = localStorage.getItem('token');
       const response = await fetch(`/api/customers/${customerId}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       })
 
       if (!response.ok) {

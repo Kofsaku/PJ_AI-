@@ -4,9 +4,17 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5001'
 const API_BASE_URL = `${BACKEND_URL}/api/customers`
 
 // GET all customers
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const response = await fetch(API_BASE_URL)
+    const token = request.headers.get('authorization')?.replace('Bearer ', '')
+    
+    const response = await fetch(API_BASE_URL, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    })
+    
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
@@ -21,14 +29,16 @@ export async function GET() {
 }
 
 // POST new customer
-export async function POST(request) {
+export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    const token = request.headers.get('authorization')?.replace('Bearer ', '')
     
     const response = await fetch(API_BASE_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify(body),
     })
@@ -48,14 +58,16 @@ export async function POST(request) {
 }
 
 // DELETE customers
-export async function DELETE(request) {
+export async function DELETE(request: NextRequest) {
   try {
     const { ids } = await request.json()
+    const token = request.headers.get('authorization')?.replace('Bearer ', '')
     
     const response = await fetch(API_BASE_URL, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify({ ids }),
     })

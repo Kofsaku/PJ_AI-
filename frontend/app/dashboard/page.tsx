@@ -95,7 +95,13 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchCustomers = async () => {
       try {
-        const response = await fetch("/api/customers");
+        const token = localStorage.getItem('token');
+        const response = await fetch("/api/customers", {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
         if (!response.ok) throw new Error("Failed to fetch customers");
         const data = await response.json();
         setCustomers(data);
@@ -145,10 +151,12 @@ export default function DashboardPage() {
       const formattedData = parsedData.map(formatCustomerForImport);
       
       // Send to API directly without showing dialog
+      const token = localStorage.getItem('token');
       const response = await fetch("/api/customers/import", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
         },
         body: JSON.stringify({ customers: formattedData }),
       });
@@ -162,7 +170,12 @@ export default function DashboardPage() {
       });
 
       // Refresh customer list
-      const refreshResponse = await fetch("/api/customers");
+      const refreshResponse = await fetch("/api/customers", {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
       const data = await refreshResponse.json();
       setCustomers(data);
       
@@ -250,7 +263,13 @@ export default function DashboardPage() {
       });
 
       // Refresh customer list
-      const refreshResponse = await fetch("/api/customers");
+      const token = localStorage.getItem('token');
+      const refreshResponse = await fetch("/api/customers", {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
       const data = await refreshResponse.json();
       setCustomers(data);
     } catch (error) {
@@ -291,10 +310,12 @@ export default function DashboardPage() {
     
     setIsUpdatingStatus(customerId);
     try {
+      const token = localStorage.getItem('token');
       const response = await fetch(`/api/customers/${customerId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ 
           result: newStatus,

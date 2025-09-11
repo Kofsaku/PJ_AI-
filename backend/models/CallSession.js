@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const CallSessionSchema = new mongoose.Schema({
+  companyId: {
+    type: String,
+    required: true,
+    index: true
+  },
   customerId: { 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'Customer', 

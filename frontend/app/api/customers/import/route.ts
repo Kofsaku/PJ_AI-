@@ -6,12 +6,14 @@ const API_BASE_URL = `${BACKEND_URL}/api/customers/import`
 export async function POST(request: Request) {
   try {
     const body = await request.json()
+    const token = request.headers.get('authorization')?.replace('Bearer ', '')
     
     // Forward the JSON data to your MERN backend
     const response = await fetch(API_BASE_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
       },
       body: JSON.stringify(body),
     })

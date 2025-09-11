@@ -6,35 +6,50 @@ const multer = require('multer');
 const csvParser = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
+const { protect } = require('../middlewares/authMiddleware');
 
 // Configure multer for file uploads
 const upload = multer({ dest: 'uploads/' });
 
 // Create a new customer
-router.post('/', async (req, res) => {
+router.post('/', protect, async (req, res) => {
   try {
-    const customer = new Customer(req.body);
+    console.log('[Customer API] POST request from user:', req.user.email, 'companyId:', req.user.companyId);
+    const customer = new Customer({
+      ...req.body,
+      companyId: req.user.companyId
+    });
     await customer.save();
+    console.log('[Customer API] Created customer with companyId:', customer.companyId);
     res.status(201).send(customer);
   } catch (error) {
+    console.error('[Customer API] Create error:', error);
     res.status(400).send(error);
   }
 });
 
 // Get all customers
-router.get('/', async (req, res) => {
+router.get('/', protect, async (req, res) => {
   try {
-    const customers = await Customer.find();
+    console.log('[Customer API] GET request from user:', req.user.email, 'companyId:', req.user.companyId);
+    const customers = await Customer.find({ 
+      companyId: req.user.companyId 
+    });
+    console.log('[Customer API] Found', customers.length, 'customers for companyId:', req.user.companyId);
     res.send(customers);
   } catch (error) {
+    console.error('[Customer API] Error:', error);
     res.status(500).send(error);
   }
 });
 
 // Get a specific customer
-router.get('/:id', async (req, res) => {
+router.get('/:id', protect, async (req, res) => {
   try {
-    const customer = await Customer.findById(req.params.id);
+    const customer = await Customer.findOne({ 
+      _id: req.params.id, 
+      companyId: req.user.companyId 
+    });
     if (!customer) {
       return res.status(404).send();
     }
@@ -45,12 +60,15 @@ router.get('/:id', async (req, res) => {
 });
 
 // Get customer's call history
-router.get('/:id/call-history', async (req, res) => {
+router.get('/:id/call-history', protect, async (req, res) => {
   try {
     const customerId = req.params.id;
     
-    // Get customer to validate existence
-    const customer = await Customer.findById(customerId);
+    // Get customer to validate existence and ownership
+    const customer = await Customer.findOne({ 
+      _id: customerId, 
+      companyId: req.user.companyId 
+    });
     if (!customer) {
       return res.status(404).send({ error: 'Customer not found' });
     }
@@ -71,7 +89,7 @@ router.get('/:id/call-history', async (req, res) => {
 });
 
 // Update a customer
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', protect, async (req, res) => {
   const updates = Object.keys(req.body);
   const allowedUpdates = ['customer', 'date', 'time', 'duration', 'result', 'callResult', 'notes', 'address', 'email', 'phone', 'company', 'position', 'zipCode'];
   const isValidOperation = updates.every(update => allowedUpdates.includes(update));
@@ -81,7 +99,11 @@ router.patch('/:id', async (req, res) => {
   }
 
   try {
-    const customer = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const customer = await Customer.findOneAndUpdate(
+      { _id: req.params.id, companyId: req.user.companyId },
+      req.body,
+      { new: true, runValidators: true }
+    );
     if (!customer) {
       return res.status(404).send();
     }
@@ -92,9 +114,12 @@ router.patch('/:id', async (req, res) => {
 });
 
 // Delete a customer
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', protect, async (req, res) => {
   try {
-    const customer = await Customer.findByIdAndDelete(req.params.id);
+    const customer = await Customer.findOneAndDelete({
+      _id: req.params.id, 
+      companyId: req.user.companyId 
+    });
     if (!customer) {
       return res.status(404).send();
     }
@@ -105,7 +130,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Import customers from CSV (file upload)
-router.post('/import/file', upload.single('file'), async (req, res) => {
+router.post('/import/file', protect, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).send('No file uploaded');
@@ -120,8 +145,13 @@ router.post('/import/file', upload.single('file'), async (req, res) => {
       .on('data', (data) => results.push(data))
       .on('end', async () => {
         try {
+          // Add companyId to all records
+          const recordsWithCompanyId = results.map(record => ({
+            ...record,
+            companyId: req.user.companyId
+          }));
           // Insert all records into the database
-          await Customer.insertMany(results);
+          await Customer.insertMany(recordsWithCompanyId);
           
           // Delete the temporary file
           fs.unlinkSync(filePath);
@@ -138,7 +168,7 @@ router.post('/import/file', upload.single('file'), async (req, res) => {
 });
 
 // Import customers from JSON (parsed CSV data)
-router.post('/import', async (req, res) => {
+router.post('/import', protect, async (req, res) => {
   try {
     const { customers } = req.body;
     
@@ -148,6 +178,7 @@ router.post('/import', async (req, res) => {
 
     // Validate and format customer data
     const validatedCustomers = customers.map(customer => ({
+      companyId: req.user.companyId,
       customer: customer.customer || 'Unknown',
       date: customer.date || new Date().toISOString().split('T')[0],
       time: customer.time || '00:00',
