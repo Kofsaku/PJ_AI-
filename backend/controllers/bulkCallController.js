@@ -279,7 +279,7 @@ class CallQueueManager {
       try {
         callData.session.status = 'cancelled';
         callData.session.endTime = new Date();
-        callData.session.callResult = 'キャンセル';
+        callData.session.callResult = '失敗';
         await callData.session.save();
       } catch (error) {
         console.error('[StopAll] Error cancelling queued call:', error);
@@ -583,7 +583,7 @@ exports.cleanupOldSessions = async (req, res) => {
         $set: {
           status: 'completed',
           endTime: new Date(),
-          callResult: 'タイムアウト'
+          callResult: '失敗'
         }
       }
     );

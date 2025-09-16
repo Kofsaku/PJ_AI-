@@ -140,21 +140,21 @@ router.post('/status', async (req, res) => {
           switch (CallStatus) {
             case 'busy':
               updateData.endReason = 'customer_hangup';
-              updateData.callResult = '話中';
+              updateData.callResult = '失敗';
               break;
             case 'no-answer':
               updateData.endReason = 'timeout';
-              updateData.callResult = '応答なし';
+              updateData.callResult = '不在';
               break;
             case 'canceled':
             case 'cancelled':
               updateData.endReason = 'manual';
-              updateData.callResult = 'キャンセル';
+              updateData.callResult = '失敗';
               break;
             case 'failed':
             default:
               updateData.endReason = 'system_error';
-              updateData.callResult = 'システムエラー';
+              updateData.callResult = '失敗';
               break;
           }
           console.log(`[Twilio Status] Failed call status: ${CallStatus} -> endReason: ${updateData.endReason}`);

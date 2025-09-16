@@ -368,7 +368,7 @@ exports.cleanupOldSessions = async (req, res) => {
         $set: {
           status: 'completed',
           endTime: new Date(),
-          callResult: 'タイムアウト'
+          callResult: '失敗'
         }
       }
     );

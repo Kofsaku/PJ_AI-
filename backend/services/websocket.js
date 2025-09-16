@@ -408,7 +408,7 @@ class WebSocketService {
           $set: {
             status: 'completed',
             endTime: new Date(),
-            callResult: 'タイムアウト'
+            callResult: '失敗'
           }
         }
       );
