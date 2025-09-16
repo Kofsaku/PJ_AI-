@@ -68,6 +68,7 @@ class CallTerminationUtils {
       webSocketService.broadcastCallEvent('call-terminated', {
         callId: callId,
         callSid: callSession.twilioCallSid,
+        customerId: callSession.customerId?._id || callSession.customerId,
         phoneNumber: phoneNumber,
         status: 'completed',
         callResult: callResult,
@@ -150,8 +151,10 @@ class CallTerminationUtils {
       webSocketService.broadcastCallEvent('call-terminated', {
         callId: callId,
         callSid: callSession.twilioCallSid,
+        customerId: callSession.customerId?._id || callSession.customerId,
         phoneNumber: phoneNumber,
         status: 'failed',
+        callResult: updateData.callResult,
         error: error,
         failureType: failureType,
         duration: duration,

@@ -169,6 +169,8 @@ class CallQueueManager {
       webSocketService.broadcastCallEvent('call-terminated', {
         sessionId: session._id,
         phoneNumber: session.phoneNumber,
+        customerId: session.customerId,
+        callResult: session.callResult,
         reason: reason
       });
       

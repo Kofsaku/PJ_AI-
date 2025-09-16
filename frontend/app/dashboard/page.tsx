@@ -593,6 +593,18 @@ export default function DashboardPage() {
           newSet.delete(customerId);
           return newSet;
         });
+
+        // 顧客ステータスをリアルタイム更新
+        if (data.callResult) {
+          console.log(`[Dashboard] Updating customer ${customerId} status to: ${data.callResult}`);
+          setCustomers(prev =>
+            prev.map(c =>
+              (c._id || c.id?.toString()) === customerId
+                ? { ...c, result: data.callResult, callResult: data.callResult }
+                : c
+            )
+          );
+        }
       } else {
         console.error("[Dashboard] Failed to identify customer for phone:", phoneNumber);
       }
