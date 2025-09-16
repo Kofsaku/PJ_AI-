@@ -141,7 +141,14 @@ const CallSessionSchema = new mongoose.Schema({
     companyName: String,
     serviceName: String,
     representativeName: String,
-    targetDepartment: String
+    targetDepartment: String,
+    serviceDescription: String,
+    targetPerson: String,
+    salesPitch: {
+      companyDescription: String,
+      callToAction: String,
+      keyBenefits: [String]
+    }
   }
 }, { 
   timestamps: true 

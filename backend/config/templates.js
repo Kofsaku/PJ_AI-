@@ -38,8 +38,7 @@ const intentToTemplate = {
 
 // フォールバック用デフォルトテンプレート定義
 const defaultTemplates = {
-  // セールス系
-  sales_pitch: 'ありがとうございます。{{companyDescription}} {{callToAction}}',
+  // セールス系（sales_pitchは削除 - GUI設定のみ使用）
   
   // 確認・問い合わせ系
   company_confirmation: '{{companyName}}でございます。{{representativeName}}です。',
@@ -64,16 +63,15 @@ const defaultTemplates = {
   // その他
   
   // システム応答
-  initial: 'お世話になります。AIコールシステム株式会社です。営業部のご担当者さまはいらっしゃいますでしょうか？',
+  initial: 'お世話になります。{{selfIntroduction}}。弊社は{{serviceDescription}}会社でございます。是非、御社の{{targetDepartment}}にご案内できればと思いお電話をさせていただきました！本日、{{targetPerson}}はいらっしゃいますでしょうか？',
   unknown: '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？'
 };
 
 // 必須テンプレート一覧（バリデーション用）
 const requiredTemplates = [
   'positive_response',
-  'transfer_explanation', 
+  'transfer_explanation',
   'prepare_transfer',
-  'sales_pitch',
   'company_confirmation',
   'absent',
   'rejection',
@@ -91,7 +89,6 @@ const agentSettingsTemplates = [
   'rejection',
   'website_redirect',
   'closing',
-  'sales_pitch',
   'positive_response',
   'transfer_explanation',
   'prepare_transfer',
@@ -115,6 +112,12 @@ const globalPatterns = {
     keywords: ['ホームページ', 'HP', 'Web', 'メール', 'サイト', 'フォーム', '問い合わせフォーム', 'ウェブ', '新規のご提案', 'ホームページから', 'サイトから', 'ウェブから'],
     confidence: 0.85,
     priority: 1
+  },
+  // セールスピッチ（用件確認時）- 常時発火対応
+  purpose_inquiry: {
+    keywords: ['ご用件', '用件は', 'どういった', 'なんの用', '何の件', 'どのような', 'どんな', '何のお話', '用事は', '何でしょう', 'どちらの件'],
+    confidence: 0.85,
+    priority: 2
   }
 };
 

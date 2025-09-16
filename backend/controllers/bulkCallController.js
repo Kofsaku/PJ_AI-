@@ -400,13 +400,16 @@ exports.initiateBulkCalls = async (req, res) => {
         assignedAgent: userId,
       };
       
-      // AI設定を追加
+      // AI設定を追加（salesPitchも含める）
       if (agentSettings?.conversationSettings) {
         sessionData.aiConfiguration = {
           companyName: agentSettings.conversationSettings.companyName,
           serviceName: agentSettings.conversationSettings.serviceName,
           representativeName: agentSettings.conversationSettings.representativeName,
-          targetDepartment: agentSettings.conversationSettings.targetDepartment
+          targetDepartment: agentSettings.conversationSettings.targetDepartment,
+          serviceDescription: agentSettings.conversationSettings.serviceDescription,
+          targetPerson: agentSettings.conversationSettings.targetPerson,
+          salesPitch: agentSettings.conversationSettings.salesPitch
         };
       }
 

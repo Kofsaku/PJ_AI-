@@ -21,6 +21,170 @@ router.get('/', protect, authorize('admin'), async (req, res) => {
   }
 });
 
+// UPDATE sales pitch settings
+router.put('/sales-pitch', protect, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const {
+      // 基本設定
+      companyName, serviceName, representativeName, targetDepartment,
+      // その他設定
+      serviceDescription, targetPerson,
+      // セールスピッチ設定
+      companyDescription, callToAction, keyBenefits
+    } = req.body;
+
+    console.log('[Sales Pitch Update] User ID:', userId);
+    console.log('[Sales Pitch Update] Data:', req.body);
+
+    // Find or create agent settings
+    let agentSettings = await AgentSettings.findOne({ userId });
+
+    if (!agentSettings) {
+      console.log(`[Sales Pitch PUT] Creating agent settings for user ${userId}`);
+
+      const User = require('../models/User');
+      const user = await User.findById(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'ユーザーが見つかりません'
+        });
+      }
+
+      // Create agent settings if they don't exist
+      agentSettings = await AgentSettings.create({
+        userId: userId,
+        conversationSettings: {
+          companyName: 'AIコールシステム株式会社',
+          serviceName: 'AIアシスタントサービス',
+          representativeName: user.firstName || '佐藤',
+          targetDepartment: '営業部'
+        }
+      });
+
+      console.log(`[Sales Pitch PUT] Created agent settings: ${agentSettings._id}`);
+    }
+
+    // Update basic settings
+    if (companyName !== undefined) {
+      agentSettings.conversationSettings.companyName = companyName;
+    }
+    if (serviceName !== undefined) {
+      agentSettings.conversationSettings.serviceName = serviceName;
+    }
+    if (representativeName !== undefined) {
+      agentSettings.conversationSettings.representativeName = representativeName;
+    }
+    if (targetDepartment !== undefined) {
+      agentSettings.conversationSettings.targetDepartment = targetDepartment;
+    }
+
+    // Update other settings
+    if (serviceDescription !== undefined) {
+      agentSettings.conversationSettings.serviceDescription = serviceDescription;
+    }
+    if (targetPerson !== undefined) {
+      agentSettings.conversationSettings.targetPerson = targetPerson;
+    }
+
+    // Initialize salesPitch if it doesn't exist
+    if (!agentSettings.conversationSettings.salesPitch) {
+      agentSettings.conversationSettings.salesPitch = {};
+    }
+
+    // Update sales pitch settings
+    if (companyDescription !== undefined) {
+      agentSettings.conversationSettings.salesPitch.companyDescription = companyDescription;
+    }
+    if (callToAction !== undefined) {
+      agentSettings.conversationSettings.salesPitch.callToAction = callToAction;
+    }
+    if (keyBenefits !== undefined) {
+      agentSettings.conversationSettings.salesPitch.keyBenefits = keyBenefits;
+    }
+
+    // 保存前にデータを確認
+    console.log('[Sales Pitch Update] 保存前の設定:');
+    console.log('- companyName:', agentSettings.conversationSettings.companyName);
+    console.log('- representativeName:', agentSettings.conversationSettings.representativeName);
+    console.log('- serviceName:', agentSettings.conversationSettings.serviceName);
+
+    await agentSettings.save();
+    console.log('[Sales Pitch Update] データベースに保存完了');
+
+    res.json({
+      success: true,
+      message: 'トークスクリプト設定が更新されました',
+      data: {
+        conversationSettings: agentSettings.conversationSettings
+      }
+    });
+
+  } catch (error) {
+    console.error('Sales pitch update error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'トークスクリプト設定の更新に失敗しました',
+      error: error.message
+    });
+  }
+});
+
+// GET sales pitch settings
+router.get('/sales-pitch', protect, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    let agentSettings = await AgentSettings.findOne({ userId });
+
+    // If no agent settings exist, create default ones
+    if (!agentSettings) {
+      console.log(`[Sales Pitch GET] Creating default agent settings for user ${userId}`);
+
+      const User = require('../models/User');
+      const user = await User.findById(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'ユーザーが見つかりません'
+        });
+      }
+
+      // Create default agent settings
+      agentSettings = await AgentSettings.create({
+        userId: userId,
+        conversationSettings: {
+          companyName: 'AIコールシステム株式会社',
+          serviceName: 'AIアシスタントサービス',
+          representativeName: user.firstName || '佐藤',
+          targetDepartment: '営業部',
+          serviceDescription: '新規テレアポや掘り起こしなどの営業電話を人間に代わって生成AIが電話をかけるというサービスを提供している',
+          targetPerson: '営業の担当者さま'
+        }
+      });
+
+      console.log(`[Sales Pitch GET] Created default agent settings: ${agentSettings._id}`);
+    }
+
+    // エージェント設定の全データを返す
+    res.json({
+      success: true,
+      data: agentSettings
+    });
+
+  } catch (error) {
+    console.error('Get sales pitch error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'トークスクリプト設定の取得に失敗しました',
+      error: error.message
+    });
+  }
+});
+
 // GET single user (admin only)
 router.get('/:id', protect, authorize('admin'), async (req, res) => {
   try {
@@ -289,153 +453,6 @@ router.post('/phone-numbers/purchase', protect, authorize('admin'), async (req, 
     res.status(500).json({ 
       success: false, 
       error: error.message || 'Failed to purchase phone number from Twilio' 
-    });
-  }
-});
-
-// UPDATE sales pitch settings
-router.put('/sales-pitch', protect, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { companyDescription, serviceDescription, callToAction, keyBenefits } = req.body;
-
-    console.log('[Sales Pitch Update] User ID:', userId);
-    console.log('[Sales Pitch Update] Data:', req.body);
-
-    // Find or create agent settings
-    let agentSettings = await AgentSettings.findOne({ userId });
-    
-    if (!agentSettings) {
-      console.log(`[Sales Pitch PUT] Creating agent settings for user ${userId}`);
-      
-      const User = require('../models/User');
-      const user = await User.findById(userId);
-      
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'ユーザーが見つかりません'
-        });
-      }
-      
-      // Create agent settings if they don't exist
-      agentSettings = await AgentSettings.create({
-        userId: userId,
-        conversationSettings: {
-          companyName: 'AIコールシステム株式会社',
-          serviceName: 'AIアシスタントサービス',
-          representativeName: user.firstName || '佐藤',
-          targetDepartment: '営業部',
-          salesPitch: {}
-        }
-      });
-      
-      console.log(`[Sales Pitch PUT] Created agent settings: ${agentSettings._id}`);
-    }
-
-    // Initialize salesPitch if it doesn't exist
-    if (!agentSettings.conversationSettings.salesPitch) {
-      agentSettings.conversationSettings.salesPitch = {};
-    }
-
-    // Update sales pitch settings
-    if (companyDescription !== undefined) {
-      agentSettings.conversationSettings.salesPitch.companyDescription = companyDescription;
-    }
-    if (serviceDescription !== undefined) {
-      agentSettings.conversationSettings.salesPitch.serviceDescription = serviceDescription;
-    }
-    if (callToAction !== undefined) {
-      agentSettings.conversationSettings.salesPitch.callToAction = callToAction;
-    }
-    if (keyBenefits !== undefined) {
-      agentSettings.conversationSettings.salesPitch.keyBenefits = keyBenefits;
-    }
-
-    await agentSettings.save();
-
-    res.json({
-      success: true,
-      message: 'セールスピッチ設定が更新されました',
-      data: {
-        salesPitch: agentSettings.conversationSettings.salesPitch
-      }
-    });
-
-  } catch (error) {
-    console.error('Sales pitch update error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'セールスピッチ設定の更新に失敗しました',
-      error: error.message
-    });
-  }
-});
-
-// GET sales pitch settings
-router.get('/sales-pitch', protect, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    
-    let agentSettings = await AgentSettings.findOne({ userId });
-    
-    // If no agent settings exist, create default ones
-    if (!agentSettings) {
-      console.log(`[Sales Pitch GET] Creating default agent settings for user ${userId}`);
-      
-      const User = require('../models/User');
-      const user = await User.findById(userId);
-      
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'ユーザーが見つかりません'
-        });
-      }
-      
-      // Create default agent settings
-      agentSettings = await AgentSettings.create({
-        userId: userId,
-        conversationSettings: {
-          companyName: 'AIコールシステム株式会社',
-          serviceName: 'AIアシスタントサービス',
-          representativeName: user.firstName || '佐藤',
-          targetDepartment: '営業部',
-          salesPitch: {
-            companyDescription: 'AIコールシステム株式会社では、生成AIを使った新規顧客獲得テレアポ支援により、AIが一次架電と仕分けを行い、見込み度の高いお客さまだけを営業におつなぎする仕組みをご提供しています。',
-            serviceDescription: '概要だけご説明させていただけますか？',
-            callToAction: '御社の営業部ご担当者さまに、概要だけご説明させていただけますか？',
-            keyBenefits: []
-          }
-        }
-      });
-      
-      console.log(`[Sales Pitch GET] Created default agent settings: ${agentSettings._id}`);
-    }
-
-    const defaultSalesPitch = {
-      companyDescription: 'AIコールシステム株式会社では、生成AIを使った新規顧客獲得テレアポ支援により、AIが一次架電と仕分けを行い、見込み度の高いお客さまだけを営業におつなぎする仕組みをご提供しています。',
-      serviceDescription: '概要だけご説明させていただけますか？',
-      callToAction: '御社の営業部ご担当者さまに、概要だけご説明させていただけますか？',
-      keyBenefits: []
-    };
-
-    const salesPitch = {
-      ...defaultSalesPitch,
-      ...(agentSettings.conversationSettings?.salesPitch || {})
-    };
-
-    res.json({
-      success: true,
-      data: { salesPitch }
-    });
-
-  } catch (error) {
-    console.error('Get sales pitch error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'セールスピッチ設定の取得に失敗しました',
-      error: error.message
     });
   }
 });

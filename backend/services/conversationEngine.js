@@ -55,10 +55,10 @@ class ConversationEngine {
         keywords: ['失礼します', '失礼いたします', 'ありがとうございました', 'では失礼', 'それでは'],
         confidence: 0.9
       },
-      // 担当者変更（担当者が電話に出た場合）
+      // 担当者変更（担当者が電話に出た場合 / 顧客が担当者に代わる場合）
       person_changed: {
-        keywords: ['変わりました', '代わりました', '担当の', 'です', 'と申します', 'もしもし', '私が', '私は'],
-        confidence: 0.7
+        keywords: ['変わりました', '代わりました', '担当の', 'です', 'と申します', 'もしもし', '私が', '私は', '担当者に代わります', '担当者に変わります', '代わります', '変わります'],
+        confidence: 0.8
       },
       // 無音
       silent: {
@@ -337,13 +337,17 @@ class ConversationEngine {
         break;
       
       
-      // 用件確認への対応（10秒ピッチ）
+      // 用件確認への対応（10秒ピッチ）- グローバル対応で重複防止強化
       case 'purpose_inquiry':
         if (!state.hasGivenPurpose) {
-          console.log('[ConversationEngine] 用件説明（10秒ピッチ）');
+          console.log('[ConversationEngine] 用件説明（10秒ピッチ）- グローバルパターンから発火');
           state.hasGivenPurpose = true;
           state.conversationState = conversationStates.AFTER_PURPOSE_EXPLANATION;
           bestMatch.nextAction = 'give_purpose';
+        } else {
+          console.log('[ConversationEngine] セールスピッチ重複検出 - 既に実行済みのため positive_response に変更');
+          bestMatch.intent = 'positive_response';
+          bestMatch.nextAction = 'positive_response';
         }
         break;
       
@@ -559,13 +563,13 @@ class ConversationEngine {
     if (!state) {
       console.error(`[ConversationEngine] ERROR: No conversation state found for call ${callId}`);
       // 初期応答を返す
-      return this.getDefaultInitialResponse();
+      return await this.getDefaultInitialResponse();
     }
     
     if (!state.agentSettings) {
       console.error(`[ConversationEngine] ERROR: No agent settings in state for call ${callId}`);
       // 初期応答を返す
-      return this.getDefaultInitialResponse();
+      return await this.getDefaultInitialResponse();
     }
     
     // 最初の顧客の発話（もしもし等）には、通常の挨拶で応答
@@ -576,7 +580,7 @@ class ConversationEngine {
         const initialMessage = `お世話になります。${companyName}の${representativeName}と申します。${serviceName}のご案内でお電話しました。本日、${targetDepartment}のご担当者さまはいらっしゃいますでしょうか？`;
         return initialMessage;
       }
-      return this.getDefaultInitialResponse();
+      return await this.getDefaultInitialResponse();
     }
     
     // 直前のメッセージ繰り返し処理
@@ -631,8 +635,19 @@ class ConversationEngine {
   }
 
   // デフォルトの初期応答を取得
-  getDefaultInitialResponse() {
-    return 'お世話になります。AIコールシステム株式会社の佐藤と申します。AIアシスタントサービスのご案内でお電話しました。本日、営業部のご担当者さまはいらっしゃいますでしょうか？';
+  async getDefaultInitialResponse() {
+    // まずはデフォルトテンプレートシステムを使用
+    try {
+      const defaultResponse = await this.getDefaultResponse('initial', null);
+      if (defaultResponse) {
+        return defaultResponse;
+      }
+    } catch (error) {
+      console.error('[ConversationEngine] Error getting default initial response:', error);
+    }
+
+    // 最終フォールバック（基本的には使われない想定）
+    return 'お世話になります。わたくしAIコールシステムの佐藤と申します。AIアシスタントサービスのご案内でお電話しました。本日、営業の担当者さまはいらっしゃいますでしょうか？';
   }
 
   // AgentSettingsから応答を取得（call_logic.md完全準拠）
@@ -644,14 +659,14 @@ class ConversationEngine {
     if (callId) {
       const state = this.conversationStates.get(callId);
       if (state && state.agentSettings) {
-        // AgentSettingsインスタンスとしてprocessTemplateメソッドを使用
-        if (typeof state.agentSettings.processTemplate === 'function') {
-          console.log(`[ConversationEngine] Using processTemplate method for intent: ${intent}`);
-          templateResponse = state.agentSettings.processTemplate(intent);
+        console.log(`[ConversationEngine] Using manual template processing for intent: ${intent}`);
+        // 統一されたprocessTemplateメソッドを使用（aiConfigurationも必要）
+        const callSession = await require('../models/CallSession').findById(callId);
+        if (callSession && callSession.aiConfiguration) {
+          templateResponse = this.processTemplate(intent, callSession.aiConfiguration);
         } else {
-          console.log(`[ConversationEngine] Using manual template processing for intent: ${intent}`);
-          // agentSettingsがプレーンオブジェクトの場合、手動でテンプレート処理
-          templateResponse = this.processTemplate(intent, state.agentSettings);
+          // フォールバック用の空オブジェクト
+          templateResponse = this.processTemplate(intent, {});
         }
         
         if (templateResponse) {
@@ -663,36 +678,6 @@ class ConversationEngine {
       }
     }
 
-    // AgentSettingsから取得できない場合、データベースから取得を試行
-    try {
-      const AgentSettings = require('../models/AgentSettings');
-      let agentSettings = null;
-      
-      if (callId) {
-        const state = this.conversationStates.get(callId);
-        if (state && state.agentSettings && state.agentSettings.userId) {
-          // stateから取得したuserIdを使用してAgentSettingsを取得
-          agentSettings = await AgentSettings.findOne({ userId: state.agentSettings.userId });
-        }
-      }
-      
-      // 特定のユーザーで見つからない場合は、任意のAgentSettingsを使用
-      if (!agentSettings) {
-        agentSettings = await AgentSettings.findOne({});
-      }
-      
-      if (agentSettings) {
-        console.log(`[ConversationEngine] Found AgentSettings from database for intent: ${intent}`);
-        const processedTemplate = agentSettings.processTemplate(intent);
-        if (processedTemplate) {
-          console.log(`[ConversationEngine] Successfully processed template from DB: ${processedTemplate}`);
-          return processedTemplate;
-        }
-      }
-    } catch (error) {
-      console.error(`[ConversationEngine] Error getting AgentSettings from database:`, error);
-    }
-
     // フォールバック用のデフォルト応答
     const fallbackResponses = {
       // 基本的な応答のみをフォールバックとして保持
@@ -701,7 +686,8 @@ class ConversationEngine {
       rejection: '承知いたしました。本日は突然のご連絡、失礼いたしました。よろしくお願いいたします。',
       website_redirect: '承知しました。御社ホームページの問い合わせフォームからご連絡いたします。ありがとうございました。',
       closing: '本日はありがとうございました。失礼いたします。',
-      unknown: '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？'
+      unknown: '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？',
+      unknown_context_aware: '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？'
     };
 
     const fallbackResponse = fallbackResponses[intent] || fallbackResponses.unknown;
@@ -710,30 +696,53 @@ class ConversationEngine {
   }
 
   // 手動でテンプレート処理を行う
-  processTemplate(templateName, agentSettings) {
+  processTemplate(templateName, aiConfiguration) {
     console.log(`[ConversationEngine] Processing template: ${templateName}`);
     
-    // 統一設定ファイルからテンプレート名を取得
     const actualTemplateName = intentToTemplate[templateName] || templateName;
     console.log(`[ConversationEngine] Mapped to template: ${actualTemplateName}`);
     
-    // 統一設定ファイルからデフォルトテンプレートを取得
+    // aiConfigurationから変数の値を準備（統一処理）
+    const vars = {
+      companyName: aiConfiguration.companyName || 'AIコールシステム株式会社',
+      serviceName: aiConfiguration.serviceName || 'AIアシスタントサービス',
+      representativeName: aiConfiguration.representativeName || '佐藤',
+      targetDepartment: aiConfiguration.targetDepartment || '営業部',
+      serviceDescription: aiConfiguration.serviceDescription || '新規テレアポや掘り起こしなどの営業電話を人間に代わって生成AIが電話をかけるというサービスを提供している',
+      targetPerson: aiConfiguration.targetPerson || '営業の担当者さま',
+      selfIntroduction: `${aiConfiguration.companyName || 'AIコールシステム株式会社'}の${aiConfiguration.representativeName || '佐藤'}と申します`
+    };
+    
+    // sales_pitchテンプレートの場合、GUIで設定されたsalesPitch設定のみを使用
+    if (actualTemplateName === 'sales_pitch') {
+      const salesPitch = aiConfiguration.salesPitch;
+      if (salesPitch) {
+        let companyDesc = salesPitch.companyDescription || '';
+        let callAction = salesPitch.callToAction || '';
+        
+        // 変数置換を実行
+        Object.keys(vars).forEach(key => {
+          const regex = new RegExp(`{{${key}}}`, 'g');
+          companyDesc = companyDesc.replace(regex, vars[key]);
+          callAction = callAction.replace(regex, vars[key]);
+        });
+        
+        // GUI設定が存在する場合のみ使用（ハードコードフォールバックなし）
+        if (companyDesc.trim() || callAction.trim()) {
+          const customResponse = `ありがとうございます。${companyDesc} ${callAction}`.trim();
+          console.log('[ConversationEngine] sales_pitchでGUI設定を使用:', customResponse);
+          return customResponse;
+        }
+      }
+      
+      // GUI設定が空の場合は汎用応答
+      console.log('[ConversationEngine] sales_pitch: GUI設定が空のため汎用応答を使用');
+      return '申し訳ございません。詳細はお電話でご説明させていただきます。';
+    }
+    
+    // その他のテンプレートは従来通りdefaultTemplatesを使用
     const template = defaultTemplates[actualTemplateName];
     if (!template) return null;
-    
-    // 変数の値を取得（call_logic.md準拠のデフォルト値）
-    const vars = {
-      companyName: agentSettings.conversationSettings?.companyName || agentSettings.companyName || 'AIコールシステム株式会社',
-      serviceName: agentSettings.conversationSettings?.serviceName || agentSettings.serviceName || 'AIアシスタントサービス',
-      representativeName: agentSettings.conversationSettings?.representativeName || agentSettings.representativeName || '佐藤',
-      targetDepartment: agentSettings.conversationSettings?.targetDepartment || agentSettings.targetDepartment || '営業部',
-      companyDescription: agentSettings.conversationSettings?.salesPitch?.companyDescription || agentSettings.salesPitch?.companyDescription || '弊社では、AIアシスタントサービスを提供しております。AIが一次架電を行い、見込み度の高いお客様だけを営業におつなぎする仕組みです。',
-      serviceDescription: agentSettings.conversationSettings?.serviceDescription || agentSettings.conversationSettings?.salesPitch?.serviceDescription || agentSettings.serviceDescription || agentSettings.salesPitch?.serviceDescription || '新規テレアポや掘り起こしなどの営業電話を人間に代わって生成AIが電話をかけるというサービスを提供している',
-      callToAction: agentSettings.conversationSettings?.salesPitch?.callToAction || agentSettings.salesPitch?.callToAction || '是非、御社の営業の方にご案内できればと思いお電話をさせていただきました！本日、営業の担当者さまはいらっしゃいますでしょうか？',
-      // 新しい変数を追加
-      selfIntroduction: agentSettings.conversationSettings?.selfIntroduction || agentSettings.selfIntroduction || 'わたくしＡＩコールシステムの安達と申します',
-      targetPerson: agentSettings.conversationSettings?.targetPerson || agentSettings.targetPerson || '営業の担当者さま'
-    };
     
     // テンプレート変数を置換
     let processed = template;
@@ -915,8 +924,12 @@ class ConversationEngine {
       }
     }
     
-    // インテントマッピングの存在チェック
+    // インテントマッピングの存在チェック（sales_pitchは特別処理されるので除外）
     for (const [intent, templateName] of Object.entries(intentToTemplate)) {
+      if (templateName === 'sales_pitch') {
+        // sales_pitchは特別処理されるため、defaultTemplatesに存在しなくても問題なし
+        continue;
+      }
       if (!defaultTemplates[templateName]) {
         unmappedIntents.push(`${intent} -> ${templateName}`);
       }

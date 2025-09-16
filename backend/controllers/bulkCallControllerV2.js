@@ -230,7 +230,10 @@ exports.initiateBulkCalls = async (req, res) => {
           companyName: agentSettings.conversationSettings.companyName,
           serviceName: agentSettings.conversationSettings.serviceName,
           representativeName: agentSettings.conversationSettings.representativeName,
-          targetDepartment: agentSettings.conversationSettings.targetDepartment
+          targetDepartment: agentSettings.conversationSettings.targetDepartment,
+          serviceDescription: agentSettings.conversationSettings.serviceDescription,
+          targetPerson: agentSettings.conversationSettings.targetPerson,
+          salesPitch: agentSettings.conversationSettings.salesPitch
         };
       }
 

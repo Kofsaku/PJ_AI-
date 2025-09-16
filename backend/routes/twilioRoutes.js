@@ -108,6 +108,14 @@ router.post('/status', async (req, res) => {
           } else {
             updateData.endReason = 'normal';
           }
+
+          // 明示的な結果が未設定の場合は拒否として扱う
+          if (!callSession.callResult && !updateData.callResult) {
+            const rejectionReasons = ['customer_hangup', 'timeout', 'normal'];
+            if (rejectionReasons.includes(updateData.endReason)) {
+              updateData.callResult = '拒否';
+            }
+          }
           // 会話エンジンをクリア
           conversationEngine.clearConversation(callSession._id.toString());
           shouldBroadcast = true;
@@ -119,7 +127,7 @@ router.post('/status', async (req, res) => {
             
             await Customer.findByIdAndUpdate(callSession.customerId._id, {
               date: dateStr,
-              result: callSession.callResult || '成功'
+              result: updateData.callResult || callSession.callResult || '拒否'
             });
             
             console.log(`[Twilio Status] Updated customer last call date: ${dateStr} for customer: ${callSession.customerId._id}`);
@@ -164,8 +172,13 @@ router.post('/status', async (req, res) => {
           break;
       }
       
+      let updatedSession = callSession;
       if (Object.keys(updateData).length > 0) {
-        await CallSession.findByIdAndUpdate(callSession._id, updateData);
+        updatedSession = await CallSession.findByIdAndUpdate(
+          callSession._id,
+          updateData,
+          { new: true }
+        ).populate('customerId');
       }
       
       if (shouldBroadcast) {
@@ -179,18 +192,22 @@ router.post('/status', async (req, res) => {
             phoneNumber = '0' + phoneNumber.substring(3);
           }
         }
-        
+
         console.log(`[Twilio Status] Broadcasting status: ${updateData.status || CallStatus}, Phone: ${phoneNumber}`);
-        
+
+        const finalCallResult = updateData.callResult
+          || updatedSession?.callResult
+          || (updateData.status === 'failed' ? '失敗' : '拒否');
+
         const eventData = {
-          callId: callSession._id.toString(),
+          callId: (updatedSession?._id || callSession._id).toString(),
           callSid: CallSid,
-          customerId: callSession.customerId?._id || callSession.customerId,
+          customerId: updatedSession?.customerId?._id || updatedSession?.customerId || callSession.customerId?._id || callSession.customerId,
           phoneNumber: phoneNumber,
           status: updateData.status || CallStatus,
           duration: Duration,
           endReason: updateData.endReason,
-          callResult: updateData.callResult,
+          callResult: finalCallResult,
           timestamp: new Date()
         };
 
@@ -200,10 +217,10 @@ router.post('/status', async (req, res) => {
         // 終了時は専用イベントも送信
         if (['completed', 'failed'].includes(updateData.status)) {
           webSocketService.broadcastCallEvent('call-terminated', eventData);
-          
+
           // 詳細な終了情報をトランスクリプトに追加
           const endMessage = updateData.status === 'completed' 
-            ? `通話終了: ${updateData.callResult || '成功'} (理由: ${updateData.endReason || '不明'})`
+            ? `通話終了: ${finalCallResult} (理由: ${updateData.endReason || '不明'})`
             : `通話失敗: ${updateData.error} (理由: ${updateData.endReason || '不明'})`;
             
           webSocketService.sendTranscriptUpdate(callSession._id.toString(), {

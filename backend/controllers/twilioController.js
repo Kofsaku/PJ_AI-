@@ -93,7 +93,7 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
       try {
         const agentSettings = await AgentSettings.findOne({});
         if (agentSettings) {
-          const processedMessage = agentSettings.processTemplate('systemError');
+          const processedMessage = conversationEngine.processTemplate('systemError', {});
           if (processedMessage) {
             errorMessage = processedMessage;
           }
@@ -116,7 +116,7 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
       if (agentSettings && agentSettings.conversationSettings) {
         console.log(`[TwiML Conference] AgentSettings found, processing template...`);
         // 新しいテンプレート処理メソッドを使用
-        const processedTemplate = agentSettings.processTemplate('initial');
+        const processedTemplate = conversationEngine.processTemplate('initial', callSession.aiConfiguration);
         if (processedTemplate) {
           initialMessage = processedTemplate;
           console.log(`[TwiML Conference] Using processed template from AgentSettings`);
@@ -182,7 +182,7 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
     try {
       const agentSettings = await AgentSettings.findOne({});
       if (agentSettings) {
-        const processedMessage = agentSettings.processTemplate('systemError');
+        const processedMessage = conversationEngine.processTemplate('systemError', {});
         if (processedMessage) {
           errorMessage = processedMessage;
         }
@@ -208,7 +208,7 @@ exports.agentJoinConference = asyncHandler(async (req, res) => {
   try {
     const agentSettings = await AgentSettings.findOne({});
     if (agentSettings) {
-      const processedMessage = agentSettings.processTemplate('agentConnection');
+      const processedMessage = conversationEngine.processTemplate('agentConnection', {});
       if (processedMessage) {
         connectionMessage = processedMessage;
       }
@@ -258,7 +258,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
       try {
         const agentSettings = await AgentSettings.findOne({});
         if (agentSettings) {
-          const processedMessage = agentSettings.processTemplate('systemError');
+          const processedMessage = conversationEngine.processTemplate('systemError', {});
           if (processedMessage) {
             errorMessage = processedMessage;
           }
@@ -360,7 +360,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         try {
           const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
           if (agentSettings) {
-            const processedMessage = agentSettings.processTemplate('noAnswer');
+            const processedMessage = conversationEngine.processTemplate('noAnswer', {});
             if (processedMessage) {
               noAnswerMessage = processedMessage;
             }
@@ -386,7 +386,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         try {
           const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
           if (agentSettings) {
-            const processedMessage = agentSettings.processTemplate('tooManyClarifications');
+            const processedMessage = conversationEngine.processTemplate('tooManyClarifications', {});
             if (processedMessage) {
               tooManyMessage = processedMessage;
             }
@@ -487,7 +487,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
             try {
               const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
               if (agentSettings) {
-                const processedMessage = agentSettings.processTemplate('unknown');
+                const processedMessage = conversationEngine.processTemplate('unknown', {});
                 if (processedMessage) {
                   aiResponse = processedMessage;
                 }
@@ -522,7 +522,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
           try {
             const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
             if (agentSettings) {
-              const processedMessage = agentSettings.processTemplate('unknown');
+              const processedMessage = conversationEngine.processTemplate('unknown', {});
               if (processedMessage) {
                 aiResponse = processedMessage;
               }
@@ -600,7 +600,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
           try {
             const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
             if (agentSettings) {
-              const processedMessage = agentSettings.processTemplate('systemError');
+              const processedMessage = conversationEngine.processTemplate('systemError', {});
               if (processedMessage) {
                 errorMessage = processedMessage;
               }
@@ -682,7 +682,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         try {
           const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
           if (agentSettings) {
-            const processedMessage = agentSettings.processTemplate('noAnswer');
+            const processedMessage = conversationEngine.processTemplate('noAnswer', {});
             if (processedMessage) {
               noAnswerMessage = processedMessage;
             }
@@ -705,7 +705,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
     try {
       const agentSettings = await AgentSettings.findOne({});
       if (agentSettings) {
-        const processedMessage = agentSettings.processTemplate('systemError');
+        const processedMessage = conversationEngine.processTemplate('systemError', {});
         if (processedMessage) {
           errorMessage = processedMessage;
         }
@@ -754,7 +754,7 @@ exports.joinConference = asyncHandler(async (req, res) => {
   try {
     const agentSettings = await AgentSettings.findOne({});
     if (agentSettings) {
-      const processedMessage = agentSettings.processTemplate('agentConnection');
+      const processedMessage = conversationEngine.processTemplate('agentConnection', {});
       if (processedMessage) {
         connectionMessage = processedMessage;
       }
@@ -785,7 +785,7 @@ exports.generateHandoffMessage = asyncHandler(async (req, res) => {
   try {
     const agentSettings = await AgentSettings.findOne({});
     if (agentSettings) {
-      const processedMessage = agentSettings.processTemplate('agentConnection');
+      const processedMessage = conversationEngine.processTemplate('agentConnection', {});
       if (processedMessage) {
         handoffMessage = processedMessage;
       }
@@ -932,9 +932,9 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
       
       await Customer.findByIdAndUpdate(callSession.customerId._id, {
         date: dateStr,
-        result: callSession.callResult || '成功'
+        result: callSession.callResult || '拒否'
       });
-      
+
       console.log(`[handleCallStatus] Updated customer last call date: ${dateStr} for customer: ${callSession.customerId._id}`);
     }
 
@@ -1039,7 +1039,7 @@ exports.agentJoinCall = asyncHandler(async (req, res) => {
       try {
         const agentSettings = await AgentSettings.findOne({});
         if (agentSettings) {
-          const processedMessage = agentSettings.processTemplate('systemError');
+          const processedMessage = conversationEngine.processTemplate('systemError', {});
           if (processedMessage) {
             errorMessage = processedMessage;
           }
@@ -1065,7 +1065,7 @@ exports.agentJoinCall = asyncHandler(async (req, res) => {
     try {
       const agentSettings = await AgentSettings.findOne({});
       if (agentSettings) {
-        const processedMessage = agentSettings.processTemplate('agentConnection');
+        const processedMessage = conversationEngine.processTemplate('agentConnection', {});
         if (processedMessage) {
           connectionMessage = processedMessage;
         }
@@ -1106,7 +1106,7 @@ exports.agentJoinCall = asyncHandler(async (req, res) => {
       try {
         const agentSettings = await AgentSettings.findOne({});
         if (agentSettings) {
-          const processedMessage = agentSettings.processTemplate('systemError');
+          const processedMessage = conversationEngine.processTemplate('systemError', {});
           if (processedMessage) {
             errorMessage = processedMessage;
           }
@@ -1127,7 +1127,7 @@ exports.agentJoinCall = asyncHandler(async (req, res) => {
     try {
       const agentSettings = await AgentSettings.findOne({});
       if (agentSettings) {
-        const processedMessage = agentSettings.processTemplate('systemError');
+        const processedMessage = conversationEngine.processTemplate('systemError', {});
         if (processedMessage) {
           errorMessage = processedMessage;
         }
@@ -1173,7 +1173,7 @@ exports.customerJoinConference = asyncHandler(async (req, res) => {
     try {
       const agentSettings = await AgentSettings.findOne({});
       if (agentSettings) {
-        const processedMessage = agentSettings.processTemplate('systemError');
+        const processedMessage = conversationEngine.processTemplate('systemError', {});
         if (processedMessage) {
           errorMessage = processedMessage;
         }
@@ -1203,7 +1203,7 @@ exports.agentJoinHandoff = asyncHandler(async (req, res) => {
       try {
         const agentSettings = await AgentSettings.findOne({});
         if (agentSettings) {
-          const processedMessage = agentSettings.processTemplate('systemError');
+          const processedMessage = conversationEngine.processTemplate('systemError', {});
           if (processedMessage) {
             errorMessage = processedMessage;
           }
@@ -1224,7 +1224,7 @@ exports.agentJoinHandoff = asyncHandler(async (req, res) => {
     try {
       const agentSettings = await AgentSettings.findOne({});
       if (agentSettings) {
-        const processedMessage = agentSettings.processTemplate('agentConnection');
+        const processedMessage = conversationEngine.processTemplate('agentConnection', {});
         if (processedMessage) {
           connectionMessage = processedMessage;
         }
@@ -1252,7 +1252,7 @@ exports.agentJoinHandoff = asyncHandler(async (req, res) => {
     try {
       const agentSettings = await AgentSettings.findOne({});
       if (agentSettings) {
-        const processedMessage = agentSettings.processTemplate('systemError');
+        const processedMessage = conversationEngine.processTemplate('systemError', {});
         if (processedMessage) {
           errorMessage = processedMessage;
         }

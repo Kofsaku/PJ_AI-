@@ -60,11 +60,6 @@ const AgentSettingsSchema = new mongoose.Schema({
         default: 'ぜひ御社の{{targetDepartment}}ご担当者さまに概要をご案内できればと思いまして。'
       }
     },
-    // 新しい変数フィールド
-    selfIntroduction: {
-      type: String,
-      default: 'わたくしＡＩコールシステムの安達と申します'
-    },
     serviceDescription: {
       type: String,
       default: '新規テレアポや掘り起こしなどの営業電話を人間に代わって生成AIが電話をかけるというサービスを提供している'
@@ -104,7 +99,7 @@ const AgentSettingsSchema = new mongoose.Schema({
       },
       sales_pitch: {
         type: String,
-        default: 'ありがとうございます。よろしくお願いいたします。'
+        default: 'ありがとうございます。{{companyDescription}} {{callToAction}}'
       },
       positive_response: {
         type: String,
@@ -181,42 +176,7 @@ const AgentSettingsSchema = new mongoose.Schema({
 // userIdは既にスキーマレベルでunique: trueが設定されているため、追加のインデックスは不要
 AgentSettingsSchema.index({ isAvailable: 1, priority: -1 });
 
-// テンプレートの変数を置換するメソッド
-AgentSettingsSchema.methods.processTemplate = function(templateName, additionalVars = {}) {
-  let template = null;
-  
-  // customTemplatesまたはsystemMessagesから取得
-  if (this.conversationSettings.customTemplates && this.conversationSettings.customTemplates[templateName]) {
-    template = this.conversationSettings.customTemplates[templateName];
-  } else if (this.conversationSettings.systemMessages && this.conversationSettings.systemMessages[templateName]) {
-    template = this.conversationSettings.systemMessages[templateName];
-  }
-  
-  if (!template) return null;
-
-  const vars = {
-    companyName: this.conversationSettings.companyName,
-    serviceName: this.conversationSettings.serviceName,
-    representativeName: this.conversationSettings.representativeName,
-    targetDepartment: this.conversationSettings.targetDepartment,
-    companyDescription: this.conversationSettings.salesPitch?.companyDescription || 'AIコールシステム株式会社では、生成AIを使った新規顧客獲得テレアポ支援により、AIが一次架電と仕分けを行い、見込み度の高いお客さまだけを営業におつなぎする仕組みをご提供しています。',
-    // serviceDescriptionを新しい変数で上書き（テンプレート用）
-    serviceDescription: this.conversationSettings.serviceDescription || this.conversationSettings.salesPitch?.serviceDescription || '新規テレアポや掘り起こしなどの営業電話を人間に代わって生成AIが電話をかけるというサービスを提供している',
-    callToAction: this.conversationSettings.salesPitch?.callToAction || '御社の営業部ご担当者さまに、概要だけご説明させていただけますか？',
-    // 新しい変数を追加
-    selfIntroduction: this.conversationSettings.selfIntroduction || 'わたくしＡＩコールシステムの安達と申します',
-    targetPerson: this.conversationSettings.targetPerson || '営業の担当者さま',
-    ...additionalVars
-  };
-
-  let processed = template;
-  Object.keys(vars).forEach(key => {
-    const regex = new RegExp(`{{${key}}}`, 'g');
-    processed = processed.replace(regex, vars[key]);
-  });
-
-  return processed;
-};
+// processTemplateメソッドは削除 - ConversationEngineで統一処理;
 
 // 勤務時間内かチェックするメソッド
 AgentSettingsSchema.methods.isWithinWorkingHours = function() {
