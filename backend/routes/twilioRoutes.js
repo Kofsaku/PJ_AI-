@@ -111,7 +111,7 @@ router.post('/status', async (req, res) => {
             
             await Customer.findByIdAndUpdate(callSession.customerId._id, {
               date: dateStr,
-              result: callSession.callResult || '完了'
+              result: callSession.callResult || '成功'
             });
             
             console.log(`[Twilio Status] Updated customer last call date: ${dateStr} for customer: ${callSession.customerId._id}`);
@@ -194,7 +194,7 @@ router.post('/status', async (req, res) => {
           
           // 詳細な終了情報をトランスクリプトに追加
           const endMessage = updateData.status === 'completed' 
-            ? `通話終了: ${updateData.callResult || '完了'} (理由: ${updateData.endReason || '不明'})`
+            ? `通話終了: ${updateData.callResult || '成功'} (理由: ${updateData.endReason || '不明'})`
             : `通話失敗: ${updateData.error} (理由: ${updateData.endReason || '不明'})`;
             
           webSocketService.sendTranscriptUpdate(callSession._id.toString(), {

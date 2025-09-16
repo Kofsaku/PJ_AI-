@@ -301,7 +301,7 @@ exports.endCall = asyncHandler(async (req, res, next) => {
   // 通話セッションを更新
   callSession.status = 'completed';
   callSession.endTime = new Date();
-  callSession.callResult = result || '完了';
+  callSession.callResult = result || '成功';
   callSession.notes = notes;
   callSession.calculateDuration();
   await callSession.save();

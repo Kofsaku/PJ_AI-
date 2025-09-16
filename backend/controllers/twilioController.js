@@ -10,6 +10,58 @@ const CallTerminationUtils = require('../utils/callTerminationUtils');
 const callTimeoutManager = require('../services/callTimeoutManager');
 const { sanitizeStatus, sanitizeCallResult, sanitizeEndReason } = require('../utils/statusValidator');
 
+/**
+ * 会話内容と行動に基づいて通話結果を判定する
+ * @param {string} intent - 分類された意図
+ * @param {string} nextAction - 次の行動
+ * @returns {string} 通話結果 ('成功', '不在', '拒否', '要フォロー', '失敗')
+ */
+function determineCallResult(intent, nextAction) {
+  console.log(`[CallResult] 判定中 - Intent: ${intent}, NextAction: ${nextAction}`);
+
+  // インテントに基づく基本的な判定
+  switch (intent) {
+    case 'absent':
+    case 'not_available':
+      return '不在';
+
+    case 'rejection':
+    case 'decline':
+    case 'refuse':
+      return '拒否';
+
+    case 'interest':
+    case 'positive_response':
+    case 'agreement':
+    case 'website_redirect':
+    case 'information_provided':
+      return '成功';
+
+    case 'needs_followup':
+    case 'callback_request':
+    case 'partial_interest':
+      return '要フォロー';
+
+    case 'error':
+    case 'system_error':
+    case 'network_issue':
+      return '失敗';
+
+    default:
+      // NextActionも考慮した詳細な判定
+      if (nextAction === 'respond_and_end' || nextAction === 'end_call') {
+        // 正常終了の場合、会話が完了したと判断
+        return '成功';
+      } else if (nextAction === 'apologize_and_end') {
+        // 謝罪して終了の場合、フォローアップが必要
+        return '要フォロー';
+      } else {
+        // その他の場合、成功とみなす
+        return '成功';
+      }
+  }
+}
+
 // Twilio client
 const client = twilio(
   process.env.TWILIO_ACCOUNT_SID,
@@ -588,10 +640,8 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         twiml.hangup();
         console.log(`[Speech Input] Hangup TwiML generated for call ${callId}`);
         
-        // 通話を正常終了
-        const callResult = classification.intent === 'absent' ? '不在' : 
-                          classification.intent === 'rejection' ? 'お断り' : 
-                          classification.intent === 'website_redirect' ? 'Web誘導' : '完了';
+        // 通話を正常終了 - 会話内容に基づく自動ステータス判定
+        const callResult = determineCallResult(classification.intent, classification.nextAction);
         
         await CallTerminationUtils.terminateCall(callId, callResult, null, 'ai_initiated');
         
@@ -882,7 +932,7 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
       
       await Customer.findByIdAndUpdate(callSession.customerId._id, {
         date: dateStr,
-        result: callSession.callResult || '完了'
+        result: callSession.callResult || '成功'
       });
       
       console.log(`[handleCallStatus] Updated customer last call date: ${dateStr} for customer: ${callSession.customerId._id}`);

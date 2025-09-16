@@ -162,7 +162,7 @@ class CallQueueManager {
       // セッション更新
       session.status = 'completed';
       session.endTime = new Date();
-      session.callResult = reason === 'no-answer' ? '不在' : '完了';
+      session.callResult = reason === 'no-answer' ? '不在' : '成功';
       await session.save();
       
       // WebSocketで通知
@@ -301,9 +301,9 @@ exports.handleCallStatusUpdate = async (req, res) => {
       case 'no-answer':
         session.status = 'completed';
         session.endTime = new Date();
-        session.callResult = CallStatus === 'completed' ? '完了' : 
+        session.callResult = CallStatus === 'completed' ? '成功' :
                            CallStatus === 'no-answer' ? '不在' :
-                           CallStatus === 'busy' ? '話中' : '失敗';
+                           CallStatus === 'busy' ? '失敗' : '失敗';
         callQueueManager.clearTimeouts(session._id);
         break;
     }

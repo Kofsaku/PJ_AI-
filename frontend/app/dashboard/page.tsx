@@ -323,7 +323,8 @@ export default function DashboardPage() {
     setIsUpdatingStatus(customerId);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/customers/${customerId}`, {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
+      const response = await fetch(`${backendUrl}/api/customers/${customerId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -360,7 +361,7 @@ export default function DashboardPage() {
     } finally {
       setIsUpdatingStatus(null);
     }
-  };
+  };;
 
   // Handle bulk call
   const handleBulkCall = async () => {

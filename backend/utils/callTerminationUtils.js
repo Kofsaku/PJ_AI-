@@ -14,7 +14,7 @@ class CallTerminationUtils {
    * @param {number} duration - 通話時間（秒）
    * @param {string} reason - 終了理由
    */
-  static async terminateCall(callId, callResult = '完了', duration = null, reason = 'normal') {
+  static async terminateCall(callId, callResult = '成功', duration = null, reason = 'normal') {
     try {
       const updateData = {
         status: 'completed',
