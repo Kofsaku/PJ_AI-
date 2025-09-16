@@ -68,6 +68,14 @@ router.post('/status', async (req, res) => {
         case 'in-progress':
           updateData.status = 'in-progress';
           shouldBroadcast = true;
+
+          // 顧客のステータスを「通話中」に更新
+          if (callSession.customerId?._id) {
+            await Customer.findByIdAndUpdate(callSession.customerId._id, {
+              result: '通話中'
+            });
+            console.log(`[Twilio Status] Updated customer status to '通話中' for customer: ${callSession.customerId._id}`);
+          }
           break;
         case 'completed':
           updateData.status = 'completed';
@@ -177,6 +185,7 @@ router.post('/status', async (req, res) => {
         const eventData = {
           callId: callSession._id.toString(),
           callSid: CallSid,
+          customerId: callSession.customerId?._id || callSession.customerId,
           phoneNumber: phoneNumber,
           status: updateData.status || CallStatus,
           duration: Duration,

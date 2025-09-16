@@ -52,7 +52,7 @@ type Customer = {
 };
 
 // 定義されているステータス値
-const VALID_CALL_RESULTS = ['成功', '不在', '拒否', '要フォロー', '失敗'];
+const VALID_CALL_RESULTS = ['成功', '不在', '拒否', '要フォロー', '失敗', '通話中'];
 
 const statusColors = {
   不在: "bg-yellow-500",
@@ -634,13 +634,25 @@ export default function DashboardPage() {
       }
       
       if (customerId) {
-        if (data.status === "in-progress" || data.status === "calling" || 
-            data.status === "ai-responding" || data.status === "initiated" || 
+        if (data.status === "in-progress" || data.status === "calling" ||
+            data.status === "ai-responding" || data.status === "initiated" ||
             data.status === "human-connected" || data.status === "transferring") {
           // 通話開始〜通話中の状態は全て「通話中」として扱う
           console.log(`[Dashboard] Setting customer ${customerId} as calling`);
           setCallingSessions(prev => new Set(prev).add(customerId));
-          
+
+          // 顧客ステータスを「通話中」に更新
+          if (data.status === "in-progress") {
+            console.log(`[Dashboard] Updating customer ${customerId} status to '通話中'`);
+            setCustomers(prev =>
+              prev.map(c =>
+                (c._id || c.id?.toString()) === customerId
+                  ? { ...c, result: '通話中', callResult: '通話中' }
+                  : c
+              )
+            );
+          }
+
           // キューカウントを減らす
           if (data.status === "calling" || data.status === "in-progress") {
             setBulkCallQueue(prev => Math.max(0, prev - 1));

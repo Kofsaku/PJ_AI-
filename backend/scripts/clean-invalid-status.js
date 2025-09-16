@@ -7,7 +7,7 @@ const VALID_STATUS = [
   'failed', 'cancelled', 'in-progress', 'queued'
 ];
 
-const VALID_CALL_RESULT = ['成功', '不在', '拒否', '要フォロー', '失敗'];
+const VALID_CALL_RESULT = ['成功', '不在', '拒否', '要フォロー', '失敗', '通話中'];
 
 async function cleanInvalidStatus() {
   try {

@@ -295,6 +295,18 @@ exports.handleCallStatusUpdate = async (req, res) => {
         if (timeouts?.noAnswer) {
           clearTimeout(timeouts.noAnswer);
         }
+
+        // 顧客のステータスを「通話中」に更新
+        if (session.customerId) {
+          try {
+            await Customer.findByIdAndUpdate(session.customerId, {
+              result: '通話中'
+            });
+            console.log(`[BulkCallV2] Updated customer status to '通話中' for customer: ${session.customerId}`);
+          } catch (error) {
+            console.error('[BulkCallV2] Error updating customer status:', error);
+          }
+        }
         break;
         
       case 'completed':
