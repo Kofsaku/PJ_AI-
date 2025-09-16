@@ -51,11 +51,21 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
       phoneNumber = '0' + phoneNumber.substring(3);
     }
     
+    // CallSessionから会社IDを取得するため、先にCallSessionを確認
+    let tempCallSession = await CallSession.findOne({ twilioCallSid: CallSid }).populate('assignedAgent');
+    let defaultCompanyId = 'default-company'; // デフォルト会社ID
+    
+    // CallSessionに紐づいているエージェントから会社IDを取得
+    if (tempCallSession && tempCallSession.assignedAgent && tempCallSession.assignedAgent.companyId) {
+      defaultCompanyId = tempCallSession.assignedAgent.companyId;
+    }
+    
     let customer = await Customer.findOne({ phone: phoneNumber });
     if (!customer) {
       // 新規顧客として作成
       const now = new Date();
       customer = await Customer.create({
+        companyId: defaultCompanyId,
         customer: '新規顧客',
         company: '未設定',
         phone: phoneNumber,
@@ -66,11 +76,16 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
       });
       console.log('[Incoming Call] New customer created:', customer._id);
     } else {
+      // 既存顧客の場合、companyIdが設定されていなければ更新
+      if (!customer.companyId) {
+        customer.companyId = defaultCompanyId;
+        await customer.save();
+      }
       console.log('[Incoming Call] Existing customer found:', customer._id);
     }
     
-    // まず既存のCallSessionをCallSidで検索（bulk callの場合はすでに存在）
-    let callSession = await CallSession.findOne({ twilioCallSid: CallSid }).populate('assignedAgent');
+    // 前で取得した CallSession を使用
+    let callSession = tempCallSession;
     
     // エージェント設定を取得
     let agentSettings = null;

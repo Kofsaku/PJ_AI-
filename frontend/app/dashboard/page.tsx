@@ -51,13 +51,25 @@ type Customer = {
   url?: string;
 };
 
+// 定義されているステータス値
+const VALID_CALL_RESULTS = ['成功', '不在', '拒否', '要フォロー', '失敗'];
+
 const statusColors = {
   不在: "bg-yellow-500",
   成功: "bg-green-500",
   要フォロー: "bg-purple-500",
   拒否: "bg-red-500",
-  お断り: "bg-red-600",
+  失敗: "bg-gray-500",
   通話中: "bg-blue-500",
+  未設定: "bg-gray-400"
+};
+
+// ステータス値を正規化する関数
+const normalizeStatus = (status: string | null | undefined): string => {
+  if (!status) return "未設定";
+  if (VALID_CALL_RESULTS.includes(status)) return status;
+  console.warn(`[Dashboard] Invalid status detected: ${status}, using "未設定"`);
+  return "未設定";
 };
 
 export default function DashboardPage() {
@@ -938,7 +950,7 @@ export default function DashboardPage() {
                 <SelectItem value="成功">成功</SelectItem>
                 <SelectItem value="要フォロー">要フォロー</SelectItem>
                 <SelectItem value="拒否">拒否</SelectItem>
-                <SelectItem value="お断り">お断り</SelectItem>
+                <SelectItem value="失敗">失敗</SelectItem>
               </SelectContent>
             </Select>
 
@@ -1032,20 +1044,21 @@ export default function DashboardPage() {
                           </div>
                         ) : (
                           <Select
-                            value={customer.result || customer.callResult || "不在"}
+                            value={normalizeStatus(customer.result || customer.callResult)}
                             onValueChange={(value) => handleStatusChange(customerId, value)}
                           >
                             <SelectTrigger className="w-32 h-8">
                               <SelectValue>
-                                <Badge
-                                  className={`${
-                                    statusColors[
-                                      (customer.result || customer.callResult || "不在") as keyof typeof statusColors
-                                    ] || "bg-gray-500"
-                                  } text-white`}
-                                >
-                                  {customer.result || customer.callResult || "不在"}
-                                </Badge>
+                                {(() => {
+                                  const normalizedStatus = normalizeStatus(customer.result || customer.callResult);
+                                  return (
+                                    <Badge
+                                      className={`${statusColors[normalizedStatus]} text-white`}
+                                    >
+                                      {normalizedStatus}
+                                    </Badge>
+                                  );
+                                })()}
                               </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
@@ -1061,8 +1074,8 @@ export default function DashboardPage() {
                               <SelectItem value="拒否">
                                 <Badge className="bg-red-500 text-white">拒否</Badge>
                               </SelectItem>
-                              <SelectItem value="お断り">
-                                <Badge className="bg-red-600 text-white">お断り</Badge>
+                              <SelectItem value="失敗">
+                                <Badge className="bg-gray-500 text-white">失敗</Badge>
                               </SelectItem>
                             </SelectContent>
                           </Select>

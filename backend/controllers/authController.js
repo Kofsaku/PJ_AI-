@@ -304,7 +304,12 @@ exports.updateProfile = asyncHandler(async (req, res, next) => {
 // @access  Public
 exports.sendVerificationCode = asyncHandler(async (req, res, next) => {
   console.log('=== SEND VERIFICATION CODE DEBUG ===');
+  console.log('Request method:', req.method);
+  console.log('Content-Type:', req.headers['content-type']);
+  console.log('Request headers:', JSON.stringify(req.headers, null, 2));
+  console.log('Request body type:', typeof req.body);
   console.log('Request body:', JSON.stringify(req.body, null, 2));
+  console.log('Request body keys:', Object.keys(req.body || {}));
 
   const { 
     email, 
@@ -340,9 +345,12 @@ exports.sendVerificationCode = asyncHandler(async (req, res, next) => {
   };
 
   try {
+    console.log('Checking company with ID:', companyId);
     // Check if company exists and is active
     const company = await Company.findOne({ companyId, status: 'active' });
+    console.log('Found company:', company ? 'YES' : 'NO');
     if (!company) {
+      console.log('Company not found or not active');
       return res.status(400).json({
         success: false,
         error: '無効な企業IDです',
@@ -350,8 +358,11 @@ exports.sendVerificationCode = asyncHandler(async (req, res, next) => {
     }
 
     // Check if user with this email already exists
+    console.log('Checking existing user with email:', email);
     const existingUser = await User.findOne({ email });
+    console.log('Found existing user:', existingUser ? 'YES' : 'NO');
     if (existingUser) {
+      console.log('User already exists');
       return res.status(400).json({
         success: false,
         error: 'このメールアドレスは既に使用されています',
@@ -389,22 +400,31 @@ exports.sendVerificationCode = asyncHandler(async (req, res, next) => {
 
     console.log('Verification record created:', verification._id);
 
-    // Send verification email
-    const emailResult = await emailService.sendVerificationCode(
-      email,
-      verificationCode,
-      company.name
-    );
+    // 開発環境では実際のメール送信をスキップして、ログで認証コードを確認
+    if (process.env.NODE_ENV === 'development') {
+      console.log('=== DEVELOPMENT MODE: EMAIL VERIFICATION CODE ===');
+      console.log(`Email: ${email}`);
+      console.log(`Verification Code: ${verificationCode}`);
+      console.log(`Company: ${company.name}`);
+      console.log('=== EMAIL SENDING SKIPPED IN DEVELOPMENT ===');
+    } else {
+      // Send verification email
+      const emailResult = await emailService.sendVerificationCode(
+        email,
+        verificationCode,
+        company.name
+      );
 
-    if (!emailResult.success) {
-      console.error('Email sending failed:', emailResult.error);
-      return res.status(500).json({
-        success: false,
-        error: 'メールの送信に失敗しました',
-      });
+      if (!emailResult.success) {
+        console.error('Email sending failed:', emailResult.error);
+        return res.status(500).json({
+          success: false,
+          error: 'メールの送信に失敗しました',
+        });
+      }
+
+      console.log('Verification email sent successfully');
     }
-
-    console.log('Verification email sent successfully');
 
     res.status(200).json({
       success: true,
@@ -417,7 +437,11 @@ exports.sendVerificationCode = asyncHandler(async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error('Send verification code error:', error);
+    console.error('=== SEND VERIFICATION CODE ERROR ===');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Full error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
       error: 'サーバーエラーが発生しました',

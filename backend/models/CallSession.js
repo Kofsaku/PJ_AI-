@@ -1,4 +1,12 @@
 const mongoose = require('mongoose');
+const { 
+  VALID_STATUS, 
+  VALID_CALL_RESULT, 
+  VALID_END_REASON,
+  validateAndSanitizeSession,
+  isValidStatusTransition,
+  getStatusLogInfo
+} = require('../utils/statusValidator');
 
 const CallSessionSchema = new mongoose.Schema({
   companyId: {
@@ -27,8 +35,27 @@ const CallSessionSchema = new mongoose.Schema({
   },
   status: { 
     type: String, 
-    enum: ['initiating', 'calling', 'initiated', 'ai-responding', 'transferring', 'human-connected', 'completed', 'failed', 'cancelled', 'in-progress', 'queued'],
-    default: 'initiating'
+    enum: {
+      values: VALID_STATUS,
+      message: 'Invalid status value: {VALUE}. Must be one of: ' + VALID_STATUS.join(', ')
+    },
+    default: 'initiating',
+    validate: {
+      validator: function(value) {
+        // ステータス変更の妥当性をチェック
+        if (this.isNew) {
+          return true; // 新規作成時は制限なし
+        }
+        
+        const currentStatus = this.constructor.findById(this._id).select('status');
+        if (currentStatus && currentStatus.status) {
+          return isValidStatusTransition(currentStatus.status, value);
+        }
+        
+        return true;
+      },
+      message: 'Invalid status transition'
+    }
   },
   error: {
     type: String,
@@ -41,7 +68,10 @@ const CallSessionSchema = new mongoose.Schema({
   endTime: Date,
   endReason: {
     type: String,
-    enum: ['normal', 'ai_initiated', 'customer_hangup', 'agent_hangup', 'transfer', 'timeout', 'system_error', 'network_error', 'manual'],
+    enum: {
+      values: VALID_END_REASON,
+      message: 'Invalid endReason value: {VALUE}. Must be one of: ' + VALID_END_REASON.join(', ')
+    },
     required: false
   },
   assignedAgent: { 
@@ -97,11 +127,16 @@ const CallSessionSchema = new mongoose.Schema({
   },
   callResult: {
     type: String,
-    enum: ['成功', '不在', '拒否', '要フォロー', '失敗']
+    enum: {
+      values: VALID_CALL_RESULT,
+      message: 'Invalid callResult value: {VALUE}. Must be one of: ' + VALID_CALL_RESULT.join(', ')
+    }
   },
   notes: String,
   duration: Number,
   recordingUrl: String,
+  twilioRecordingUrl: String,
+  recordingSid: String,
   aiConfiguration: {
     companyName: String,
     serviceName: String,
@@ -126,14 +161,45 @@ CallSessionSchema.methods.calculateDuration = function() {
   return this.duration;
 };
 
-// 録音の自動削除日を設定
+// 保存前のバリデーションとサニタイズ
 CallSessionSchema.pre('save', function(next) {
-  if (this.isNew && this.recordingSettings.enabled) {
-    const deleteDate = new Date();
-    deleteDate.setDate(deleteDate.getDate() + this.recordingSettings.retentionDays);
-    this.recordingSettings.deleteAfter = deleteDate;
+  try {
+    // ステータス値のサニタイズ
+    const sanitized = validateAndSanitizeSession(this.toObject());
+    
+    // サニタイズされた値を設定
+    if (sanitized.status !== this.status) {
+      console.warn(`[CallSession] Sanitized status from '${this.status}' to '${sanitized.status}' for session ${this._id}`);
+      this.status = sanitized.status;
+    }
+    
+    if (sanitized.callResult !== this.callResult) {
+      console.warn(`[CallSession] Sanitized callResult from '${this.callResult}' to '${sanitized.callResult}' for session ${this._id}`);
+      this.callResult = sanitized.callResult;
+    }
+    
+    if (sanitized.endReason !== this.endReason) {
+      console.warn(`[CallSession] Sanitized endReason from '${this.endReason}' to '${sanitized.endReason}' for session ${this._id}`);
+      this.endReason = sanitized.endReason;
+    }
+    
+    // 録音の自動削除日を設定
+    if (this.isNew && this.recordingSettings.enabled) {
+      const deleteDate = new Date();
+      deleteDate.setDate(deleteDate.getDate() + this.recordingSettings.retentionDays);
+      this.recordingSettings.deleteAfter = deleteDate;
+    }
+    
+    // ログ出力（デバッグ用）
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[CallSession] Pre-save validation: ${getStatusLogInfo(this)}`);
+    }
+    
+    next();
+  } catch (error) {
+    console.error('[CallSession] Pre-save validation error:', error);
+    next(error);
   }
-  next();
 });
 
 // アクティブな通話を取得するスタティックメソッド

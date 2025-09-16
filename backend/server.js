@@ -56,7 +56,7 @@ app.use(cors({
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
 
 // Set security headers
@@ -86,6 +86,9 @@ app.use('/api', handoffRoutes);
 app.use('/api/company-admin', companyAdminRoutes);
 app.use('/api/call-history', callHistoryRoutes);
 app.use('/', healthRoutes);
+
+// Serve static files from uploads directory
+app.use('/uploads', express.static('uploads'));
 
 // Database cleanup endpoint
 const { cleanupOldCalls } = require('./cleanup-calls');

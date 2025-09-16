@@ -258,10 +258,12 @@ router.put('/:id', async (req, res) => {
 // @access  Private
 router.get('/stats/summary', async (req, res) => {
   try {
-    const { startDate, endDate, agentId } = req.query;
+    const { startDate, endDate } = req.query;
     
-    const query = {};
-    if (agentId) query.assignedAgent = agentId;
+    // ログインユーザーのIDでフィルタリング
+    const query = {
+      assignedAgent: req.user._id || req.user.id
+    };
     
     if (startDate || endDate) {
       query.createdAt = {};
@@ -298,31 +300,36 @@ router.get('/stats/summary', async (req, res) => {
       }
     ]);
 
-    // 結果別の統計
-    const resultStats = await CallSession.aggregate([
-      { $match: query },
-      {
-        $group: {
-          _id: '$callResult',
-          count: { $sum: 1 },
-          avgDuration: { $avg: '$duration' }
-        }
-      }
-    ]);
+    // デフォルト値
+    const defaultStats = {
+      totalCalls: 0,
+      avgDuration: 0,
+      successCount: 0,
+      absentCount: 0,
+      rejectCount: 0,
+      followUpCount: 0
+    };
+
+    const summary = stats[0] || defaultStats;
+    
+    // 成功率の計算
+    const successRate = summary.totalCalls > 0 
+      ? Math.round((summary.successCount / summary.totalCalls) * 100)
+      : 0;
+    
+    // 平均通話時間のフォーマット（秒を分:秒形式に）
+    const avgDurationSeconds = Math.round(summary.avgDuration || 0);
+    const minutes = Math.floor(avgDurationSeconds / 60);
+    const seconds = avgDurationSeconds % 60;
+    const avgDurationFormatted = `${minutes}分${seconds}秒`;
 
     res.json({
       success: true,
       data: {
-        summary: stats[0] || {
-          totalCalls: 0,
-          avgDuration: 0,
-          totalDuration: 0,
-          successCount: 0,
-          absentCount: 0,
-          rejectCount: 0,
-          followUpCount: 0
-        },
-        byResult: resultStats
+        totalCalls: summary.totalCalls,
+        successRate: successRate,
+        avgDuration: avgDurationFormatted,
+        pendingCount: summary.followUpCount // 未対応件数として要フォロー数を使用
       }
     });
 

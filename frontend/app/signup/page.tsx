@@ -143,28 +143,39 @@ export default function SignupPage() {
     setEmailVerification(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      const response = await fetch('/api/auth/send-verification-code', {
+      const requestData = {
+        email: formData.verificationEmail,
+        companyId: formData.companyId,
+        companyName: formData.companyName,
+        businessName: formData.businessName,
+        businessPhone: formData.businessPhone,
+        address: formData.address,
+        businessType: formData.businessType1,
+        employees: formData.employees,
+        description: formData.annualRevenue || ''
+      };
+      
+      console.log('Sending verification code request...');
+      console.log('Data to send:', requestData);
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/auth/send-verification-code`, {
         method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
-        body: JSON.stringify({
-          email: formData.verificationEmail,
-          companyId: formData.companyId,
-          companyName: formData.companyName,
-          businessName: formData.businessName,
-          businessPhone: formData.businessPhone,
-          address: formData.address,
-          businessType: formData.businessType1,
-          employees: formData.employees,
-          description: formData.annualRevenue || ''
-        })
+        body: JSON.stringify(requestData)
       });
 
       const data = await response.json();
+      console.log('API Response:', { status: response.status, data });
 
       if (!response.ok) {
-        throw new Error(data.message || '認証コードの送信に失敗しました');
+        const errorMessage = data.error || data.message || '認証コードの送信に失敗しました';
+        console.error('API Error:', errorMessage);
+        throw new Error(errorMessage);
       }
 
       setEmailVerification(prev => ({
@@ -195,7 +206,7 @@ export default function SignupPage() {
     setEmailVerification(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      const response = await fetch('/api/auth/verify-email-code', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/auth/verify-email-code`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -208,9 +219,12 @@ export default function SignupPage() {
       });
 
       const data = await response.json();
+      console.log('Verify API Response:', { status: response.status, data });
 
       if (!response.ok) {
-        throw new Error(data.message || '認証コードの検証に失敗しました');
+        const errorMessage = data.error || data.message || '認証コードの検証に失敗しました';
+        console.error('Verify API Error:', errorMessage);
+        throw new Error(errorMessage);
       }
 
       setEmailVerification(prev => ({
@@ -242,28 +256,39 @@ export default function SignupPage() {
     setEmailVerification(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      const response = await fetch('/api/auth/send-verification-code', {
+      const requestData = {
+        email: formData.verificationEmail,
+        companyId: formData.companyId,
+        companyName: formData.companyName,
+        businessName: formData.businessName,
+        businessPhone: formData.businessPhone,
+        address: formData.address,
+        businessType: formData.businessType1,
+        employees: formData.employees,
+        description: formData.annualRevenue || ''
+      };
+      
+      console.log('Resending verification code request...');
+      console.log('Data to send:', requestData);
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/auth/send-verification-code`, {
         method: 'POST',
+        mode: 'cors',
+        credentials: 'omit',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
-        body: JSON.stringify({
-          email: formData.verificationEmail,
-          companyId: formData.companyId,
-          companyName: formData.companyName,
-          businessName: formData.businessName,
-          businessPhone: formData.businessPhone,
-          address: formData.address,
-          businessType: formData.businessType1,
-          employees: formData.employees,
-          description: formData.annualRevenue || ''
-        })
+        body: JSON.stringify(requestData)
       });
 
       const data = await response.json();
+      console.log('Resend API Response:', { status: response.status, data });
 
       if (!response.ok) {
-        throw new Error(data.message || '認証コードの再送信に失敗しました');
+        const errorMessage = data.error || data.message || '認証コードの再送信に失敗しました';
+        console.error('Resend API Error:', errorMessage);
+        throw new Error(errorMessage);
       }
 
       setEmailVerification(prev => ({
@@ -391,7 +416,7 @@ export default function SignupPage() {
       }
 
       const response = await fetch(
-        '/api/auth/complete-registration',
+        `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/auth/complete-registration`,
         {
           method: "POST",
           headers: {
@@ -465,7 +490,7 @@ export default function SignupPage() {
     }
     
     try {
-      const response = await fetch(`/api/companies/validate/${formData.companyId}`);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/companies/validate/${formData.companyId}`);
       const data = await response.json();
       
       if (data.success) {

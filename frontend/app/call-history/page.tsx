@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Search, ChevronLeft, ChevronRight, Phone, Calendar, Clock, User, FileText, Loader2 } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
+import { CallDetailModal } from "@/components/CallDetailModal"
 import { format } from "date-fns"
 import { ja } from "date-fns/locale"
 
@@ -48,6 +49,16 @@ interface Pagination {
   hasPrev: boolean
 }
 
+interface Statistics {
+  totalCalls: number
+  successRate: number
+  avgDuration: string
+  pendingCount: number
+}
+
+// 定義されているステータス値
+const VALID_CALL_RESULTS = ['成功', '不在', '拒否', '要フォロー', '失敗'];
+
 const statusColors: Record<string, string> = {
   成功: "bg-green-500",
   不在: "bg-yellow-500",
@@ -55,6 +66,14 @@ const statusColors: Record<string, string> = {
   拒否: "bg-red-500",
   失敗: "bg-gray-500",
   未設定: "bg-gray-400"
+}
+
+// ステータス値を正規化する関数
+const normalizeStatus = (status: string | null | undefined): string => {
+  if (!status) return "未設定";
+  if (VALID_CALL_RESULTS.includes(status)) return status;
+  console.warn(`[CallHistory] Invalid status detected: ${status}, using "未設定"`);
+  return "未設定";
 }
 
 const statusOptions = [
@@ -81,6 +100,44 @@ export default function CallHistoryPage() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [statistics, setStatistics] = useState<Statistics>({
+    totalCalls: 0,
+    successRate: 0,
+    avgDuration: "0分0秒",
+    pendingCount: 0
+  })
+  const [statsLoading, setStatsLoading] = useState(false)
+  const [selectedCallId, setSelectedCallId] = useState<string | null>(null)
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
+
+  // 統計情報を取得
+  const fetchStatistics = async () => {
+    setStatsLoading(true)
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/call-history/stats/summary`, {
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token")}`,
+          "Content-Type": "application/json"
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error("統計情報の取得に失敗しました")
+      }
+
+      const data = await response.json()
+      
+      if (data.success) {
+        setStatistics(data.data)
+      } else {
+        throw new Error(data.error || "統計情報の取得に失敗しました")
+      }
+    } catch (err) {
+      console.error("Error fetching statistics:", err)
+    } finally {
+      setStatsLoading(false)
+    }
+  }
 
   // コール履歴を取得
   const fetchCallHistory = async (page: number = 1) => {
@@ -135,6 +192,11 @@ export default function CallHistoryPage() {
     fetchCallHistory(1)
   }, [searchTerm, selectedStatus])
 
+  // 統計情報の初回読み込み
+  useEffect(() => {
+    fetchStatistics()
+  }, [])
+
   // チェックボックスの全選択/解除
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -184,10 +246,18 @@ export default function CallHistoryPage() {
     alert("新規コール記録機能は開発中です")
   }
 
-  // 通話詳細表示（ダミー機能）
+  // 通話詳細表示
   const handleCallDetails = (callId: string) => {
-    console.log("View details for call:", callId)
-    // TODO: 詳細モーダルまたは詳細ページへの遷移を実装
+    setSelectedCallId(callId)
+    setIsDetailModalOpen(true)
+  }
+
+  // 詳細モーダルを閉じる
+  const handleCloseDetailModal = () => {
+    setIsDetailModalOpen(false)
+    setSelectedCallId(null)
+    // データの更新があった可能性があるため、履歴を再取得
+    fetchCallHistory(pagination.currentPage)
   }
 
   return (
@@ -203,6 +273,57 @@ export default function CallHistoryPage() {
           >
             新規コール記録
           </Button>
+        </div>
+
+        {/* 統計情報カード */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {/* 総コール件数 */}
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="text-sm text-gray-600 mb-1">総コール件数</div>
+            <div className="text-2xl font-bold text-blue-600">
+              {statsLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              ) : (
+                `${statistics.totalCalls.toLocaleString()}件`
+              )}
+            </div>
+          </div>
+
+          {/* 成功率 */}
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="text-sm text-gray-600 mb-1">成功率</div>
+            <div className="text-2xl font-bold text-blue-600">
+              {statsLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              ) : (
+                `${statistics.successRate}%`
+              )}
+            </div>
+          </div>
+
+          {/* 平均通話時間 */}
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="text-sm text-gray-600 mb-1">平均通話時間</div>
+            <div className="text-2xl font-bold text-blue-600">
+              {statsLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              ) : (
+                statistics.avgDuration
+              )}
+            </div>
+          </div>
+
+          {/* 未対応件数 */}
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="text-sm text-gray-600 mb-1">未対応件数</div>
+            <div className="text-2xl font-bold text-orange-600">
+              {statsLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              ) : (
+                `${statistics.pendingCount}件`
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="bg-white rounded-lg shadow">
@@ -321,9 +442,14 @@ export default function CallHistoryPage() {
                         </div>
                       </td>
                       <td className="p-3">
-                        <Badge className={`${statusColors[call.result] || statusColors["未設定"]} text-white`}>
-                          {call.result}
-                        </Badge>
+                        {(() => {
+                          const normalizedResult = normalizeStatus(call.result);
+                          return (
+                            <Badge className={`${statusColors[normalizedResult]} text-white`}>
+                              {normalizedResult}
+                            </Badge>
+                          );
+                        })()}
                       </td>
                       <td className="p-3">
                         <div className="max-w-xs truncate" title={call.notes}>
@@ -388,6 +514,13 @@ export default function CallHistoryPage() {
             </div>
           </div>
         )}
+
+        {/* 詳細表示モーダル */}
+        <CallDetailModal
+          isOpen={isDetailModalOpen}
+          onClose={handleCloseDetailModal}
+          callId={selectedCallId}
+        />
       </main>
     </div>
   )

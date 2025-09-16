@@ -8,6 +8,7 @@ const webSocketService = require('../services/websocket');
 const coefontService = require('../services/coefontService');
 const CallTerminationUtils = require('../utils/callTerminationUtils');
 const callTimeoutManager = require('../services/callTimeoutManager');
+const { sanitizeStatus, sanitizeCallResult, sanitizeEndReason } = require('../utils/statusValidator');
 
 // Twilio client
 const client = twilio(
@@ -830,14 +831,14 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
     switch (CallStatus) {
       case 'initiated':
       case 'ringing':
-        updateData.status = 'calling';
+        updateData.status = sanitizeStatus('calling');
         break;
       case 'answered':
       case 'in-progress':
-        updateData.status = 'in-progress';
+        updateData.status = sanitizeStatus('in-progress');
         break;
       case 'completed':
-        updateData.status = 'completed';
+        updateData.status = sanitizeStatus('completed');
         updateData.endTime = new Date();
         if (Duration) {
           updateData.duration = parseInt(Duration);
@@ -849,7 +850,7 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
       case 'busy':
       case 'no-answer':
       case 'cancelled':
-        updateData.status = 'failed';
+        updateData.status = sanitizeStatus('failed');
         updateData.endTime = new Date();
         updateData.error = `Call ${CallStatus}`;
         
@@ -924,15 +925,41 @@ exports.handleRecordingStatus = asyncHandler(async (req, res) => {
   const { callId } = req.params;
   const { RecordingUrl, RecordingSid, RecordingStatus } = req.body;
 
+  console.log('[RecordingStatus] Webhook received:', {
+    callId,
+    RecordingUrl,
+    RecordingSid,
+    RecordingStatus
+  });
+
   try {
     if (RecordingStatus === 'completed' && RecordingUrl) {
+      console.log('[RecordingStatus] Recording completed, downloading to local storage...');
+      
+      // Download and save recording locally
+      const recordingService = require('../services/recordingService');
+      const localPath = await recordingService.downloadAndSaveRecording(
+        RecordingUrl, 
+        callId, 
+        RecordingSid
+      );
+
+      // Generate local URL
+      const baseUrl = process.env.BASE_URL || 'http://localhost:5001';
+      const localUrl = `${baseUrl}/${localPath}`;
+
+      // Update CallSession with local URL
       await CallSession.findByIdAndUpdate(callId, {
-        recordingUrl: RecordingUrl
+        recordingUrl: localUrl,
+        twilioRecordingUrl: RecordingUrl,
+        recordingSid: RecordingSid
       });
+
+      console.log('[RecordingStatus] Recording saved locally:', localUrl);
 
       // WebSocketで通知
       webSocketService.sendToCallRoom(callId, 'recording-available', {
-        recordingUrl: RecordingUrl,
+        recordingUrl: localUrl,
         recordingSid: RecordingSid
       });
     }

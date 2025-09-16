@@ -106,7 +106,10 @@ exports.makeCall = async (phoneNumber, sessionId, userId = null) => {
       statusCallback: `${baseUrl}/api/twilio/call/status/${sessionId}`,
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed', 'failed', 'busy', 'no-answer', 'cancelled'],
       statusCallbackMethod: 'POST',
-      method: 'POST'
+      method: 'POST',
+      record: true,
+      recordingStatusCallback: `${baseUrl}/api/twilio/recording/status/${sessionId}`,
+      recordingStatusCallbackMethod: 'POST'
     });
     
     console.log(`[TwilioService] Call created successfully:`);

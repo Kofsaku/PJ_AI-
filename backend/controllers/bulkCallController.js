@@ -393,6 +393,7 @@ exports.initiateBulkCalls = async (req, res) => {
       const sessionData = {
         phoneNumber,
         customerId,
+        companyId: req.user.companyId, // companyIdを追加
         status: 'queued', // 新しいステータス: キュー待ち
         startTime: new Date(),
         assignedAgent: userId,
