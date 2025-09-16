@@ -617,7 +617,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
             status: 'failed',
             endTime: new Date(),
             error: 'Transfer failed: ' + transferError.message,
-            callResult: '転送失敗'
+            callResult: '失敗'
           });
           
           conversationEngine.clearConversation(callId);
@@ -1546,7 +1546,7 @@ exports.handleTransferStatus = asyncHandler(async (req, res) => {
           'handoffDetails.connectedAt': new Date(),
           'handoffDetails.disconnectedAt': new Date()
         };
-        callResult = '転送成功';
+        callResult = '成功';
         
         if (DialCallDuration) {
           updateData.duration = parseInt(DialCallDuration);
@@ -1575,12 +1575,24 @@ exports.handleTransferStatus = asyncHandler(async (req, res) => {
           endTime: new Date(),
           error: `Transfer failed: ${DialCallStatus}`
         };
-        callResult = `転送失敗: ${DialCallStatus}`;
-        
+
+        // 転送失敗の理由に応じて適切なcallResultを設定
+        switch (DialCallStatus) {
+          case 'no-answer':
+            callResult = '不在';
+            break;
+          case 'busy':
+          case 'failed':
+          case 'cancelled':
+          default:
+            callResult = '失敗';
+            break;
+        }
+
         // Clear conversation engine
         conversationEngine.clearConversation(callId);
-        
-        console.log(`[TransferStatus] Transfer failed: ${DialCallStatus}`);
+
+        console.log(`[TransferStatus] Transfer failed: ${DialCallStatus} -> callResult: ${callResult}`);
         break;
         
       default:

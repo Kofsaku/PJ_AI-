@@ -187,14 +187,14 @@ class CallTerminationUtils {
    */
   static async terminateTransferCall(callId, transferResult, duration = null) {
     const callResultMap = {
-      'transfer_success': '転送成功',
-      'transfer_failed': '転送失敗',
-      'transfer_no_answer': '転送先応答なし',
-      'transfer_busy': '転送先話中',
-      'transfer_cancelled': '転送キャンセル'
+      'transfer_success': '成功',
+      'transfer_failed': '失敗',
+      'transfer_no_answer': '不在',
+      'transfer_busy': '失敗',
+      'transfer_cancelled': '失敗'
     };
 
-    const callResult = callResultMap[transferResult] || '転送完了';
+    const callResult = callResultMap[transferResult] || '成功';
     return await this.terminateCall(callId, callResult, duration, 'transfer');
   }
 
