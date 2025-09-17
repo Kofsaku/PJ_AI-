@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 
-export default function CompanyRegister() {
+function CompanyRegisterContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [formData, setFormData] = useState({
@@ -152,5 +152,13 @@ export default function CompanyRegister() {
         </form>
       </div>
     </div>
+  )
+}
+
+export default function CompanyRegister() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <CompanyRegisterContent />
+    </Suspense>
   )
 }

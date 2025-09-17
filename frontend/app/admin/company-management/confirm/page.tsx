@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { Button } from "@/components/ui/button"
 import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
@@ -14,7 +14,7 @@ type CompanyData = {
   address: string;
 }
 
-export default function CompanyConfirm() {
+function CompanyConfirmContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
@@ -156,5 +156,13 @@ export default function CompanyConfirm() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function CompanyConfirm() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <CompanyConfirmContent />
+    </Suspense>
   )
 }
