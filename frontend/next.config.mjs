@@ -10,6 +10,9 @@ const nextConfig = {
     unoptimized: true,
   },
   reactStrictMode: false,
+  experimental: {
+    forceSwcTransforms: true,
+  },
   async rewrites() {
     return [
       {
