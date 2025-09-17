@@ -1,4 +1,3 @@
-"use client";
 import type React from "react";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
@@ -7,11 +6,10 @@ import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
-// export const metadata: Metadata = {
-//   title: "Customer Management System",
-//   description: "A comprehensive customer management application",
-//     generator: 'v0.dev'
-// }
+export const metadata: Metadata = {
+  title: "AI Call System",
+  description: "AI-powered call system with Twilio integration",
+}
 
 export default function RootLayout({
   children,
