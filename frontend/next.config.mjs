@@ -10,6 +10,9 @@ const nextConfig = {
     unoptimized: true,
   },
   reactStrictMode: false,
+  trailingSlash: false,
+  skipMiddlewareUrlNormalize: true,
+  serverExternalPackages: [],
   async rewrites() {
     if (process.env.NODE_ENV === 'development') {
       return [
