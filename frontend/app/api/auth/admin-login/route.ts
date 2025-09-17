@@ -11,7 +11,7 @@ export async function POST(req: NextRequest) {
     
     // Call backend login API to get proper JWT token
     // Use 127.0.0.1 instead of localhost for better compatibility
-    const apiUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:5001';
+    const apiUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'https://pj-ai.onrender.com';
     const backendUrl = `${apiUrl}/api/auth/login`;
     console.log('Calling backend URL:', backendUrl);
     
