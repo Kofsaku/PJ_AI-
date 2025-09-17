@@ -323,8 +323,7 @@ export default function DashboardPage() {
     setIsUpdatingStatus(customerId);
     try {
       const token = localStorage.getItem('token');
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
-      const response = await fetch(`${backendUrl}/api/customers/${customerId}`, {
+      const response = await fetch(`/api/customers/${customerId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
