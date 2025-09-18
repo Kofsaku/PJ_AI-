@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
     const data = await backendResponse.json();
     console.log('Backend response status:', backendResponse.status);
     console.log('Backend response success:', data.success);
+    console.log('Full backend response:', JSON.stringify(data, null, 2));
     
     if (data.user) {
       console.log('User found - Role:', data.user.role, 'Email:', data.user.email);
