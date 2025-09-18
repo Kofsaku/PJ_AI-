@@ -94,7 +94,7 @@ export default function CustomerDetailPage() {
     const fetchCustomer = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch(`/api/customers/${customerId}`, {
+        const response = await fetch(`/api/customers?id=${customerId}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -165,7 +165,7 @@ export default function CustomerDetailPage() {
   const fetchCallHistory = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/customers/${customerId}/call-history`, {
+      const response = await fetch(`/api/customers?id=${customerId}&call-history=true`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -223,7 +223,7 @@ export default function CustomerDetailPage() {
       }
 
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/customers/${customerId}`, {
+      const response = await fetch(`/api/customers?id=${customerId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -264,7 +264,7 @@ export default function CustomerDetailPage() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/customers/${customerId}`, {
+      const response = await fetch(`/api/customers?id=${customerId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
