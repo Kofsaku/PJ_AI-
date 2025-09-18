@@ -323,7 +323,7 @@ export default function DashboardPage() {
     setIsUpdatingStatus(customerId);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/customers/${customerId}`, {
+      const response = await fetch(`/api/customers?id=${customerId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
