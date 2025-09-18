@@ -43,6 +43,30 @@ router.get('/', protect, async (req, res) => {
   }
 });
 
+// Test endpoint to verify customer and auth
+router.get('/:id/test', protect, async (req, res) => {
+  try {
+    console.log('[Customer API TEST] Request from user:', req.user.email, 'companyId:', req.user.companyId, 'customerId:', req.params.id);
+    
+    const anyCustomer = await Customer.findById(req.params.id);
+    const userCustomer = await Customer.findOne({ _id: req.params.id, companyId: req.user.companyId });
+    
+    res.json({
+      timestamp: new Date().toISOString(),
+      user: req.user.email,
+      userCompanyId: req.user.companyId,
+      customerId: req.params.id,
+      customerExists: !!anyCustomer,
+      customerCompanyId: anyCustomer?.companyId,
+      hasAccess: !!userCustomer,
+      test: 'Customer API test endpoint working'
+    });
+  } catch (error) {
+    console.error('[Customer API TEST] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get a specific customer
 router.get('/:id', protect, async (req, res) => {
   try {
