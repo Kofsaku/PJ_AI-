@@ -9,7 +9,9 @@ export async function GET(
 ) {
   try {
     console.log(`[Customer API] GET request for customer ID: ${params.id}, API_BASE_URL: ${API_BASE_URL}`)
+    console.log(`[Customer API] Authorization header:`, request.headers.get('authorization') ? 'Present' : 'Missing')
     const token = request.headers.get('authorization')?.replace('Bearer ', '')
+    console.log(`[Customer API] Extracted token length:`, token ? token.length : 0)
     
     const response = await fetch(`${API_BASE_URL}/${params.id}`, {
       headers: {
