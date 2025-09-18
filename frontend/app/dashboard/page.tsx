@@ -661,6 +661,18 @@ export default function DashboardPage() {
             return newSet;
           });
 
+          // 通話結果があればリアルタイムで顧客ステータスを更新（通話開始と同じロジック）
+          if (data.callResult) {
+            console.log(`[Dashboard] Updating customer ${customerId} result to '${data.callResult}'`);
+            setCustomers(prev =>
+              prev.map(c =>
+                (c._id || c.id?.toString()) === customerId
+                  ? { ...c, result: data.callResult, callResult: data.callResult }
+                  : c
+              )
+            );
+          }
+
           // 通話終了時にマッピングもクリア
           if (phoneNumber) {
             setPhoneToCustomerMap(prev => {
@@ -734,6 +746,7 @@ export default function DashboardPage() {
       // 切断時に通話中セッションをクリア（再接続時にactive-callsで更新される）
       setCallingSessions(new Set());
     });
+
 
     setSocket(newSocket);
 

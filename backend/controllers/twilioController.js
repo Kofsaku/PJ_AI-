@@ -11,6 +11,28 @@ const callTimeoutManager = require('../services/callTimeoutManager');
 const { sanitizeStatus, sanitizeCallResult, sanitizeEndReason } = require('../utils/statusValidator');
 
 /**
+ * 転送状況に基づいてcallResultを判定する
+ * @param {Object} callSession - 通話セッション
+ * @returns {string} 通話結果 ('成功' または '拒否')
+ */
+function determineCallResultFromTransfer(callSession) {
+  if (callSession?.callResult) {
+    // 既にhandleTransferStatusで設定済みの場合（転送完了時）
+    console.log(`[handleCallStatus] Using existing callResult from transfer: ${callSession.callResult}`);
+    return callSession.callResult;
+  } else if (callSession?.status === 'human-connected' ||
+             callSession?.handoffDetails?.connectedAt) {
+    // 転送が成功していた場合
+    console.log(`[handleCallStatus] Transfer was successful, setting callResult: 成功`);
+    return '成功';
+  } else {
+    // 転送されずに終了した場合 = 拒否
+    console.log(`[handleCallStatus] No transfer occurred, setting callResult: 拒否`);
+    return '拒否';
+  }
+}
+
+/**
  * 会話内容と行動に基づいて通話結果を判定する
  * @param {string} intent - 分類された意図
  * @param {string} nextAction - 次の行動
@@ -872,6 +894,8 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
   const { callId } = req.params;
   const { CallStatus, CallSid, Duration } = req.body;
 
+  console.log(`[handleCallStatus] CallStatus: ${CallStatus}, CallId: ${callId}, Phone: ${CallSid}`);
+
   try {
     const updateData = {
       twilioCallSid: CallSid
@@ -893,6 +917,11 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
         if (Duration) {
           updateData.duration = parseInt(Duration);
         }
+
+        // 転送状況に基づいてcallResultを判定
+        const callSession = await CallSession.findById(callId);
+        updateData.callResult = determineCallResultFromTransfer(callSession);
+
         // 会話エンジンをクリア
         conversationEngine.clearConversation(callId);
         break;
@@ -955,8 +984,10 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
     webSocketService.broadcastCallEvent('call-status', {
       callId,
       callSid: CallSid,
+      customerId: callSession?.customerId?._id,
       phoneNumber: phoneNumber,
       status: updateData.status || CallStatus,
+      callResult: updateData.callResult || callSession?.callResult,
       duration: Duration,
       timestamp: new Date()
     });
