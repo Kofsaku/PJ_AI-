@@ -469,36 +469,85 @@ exports.initiateBulkCalls = async (req, res) => {
 
 // 通話ステータス更新のハンドラー
 exports.handleCallStatusUpdate = async (req, res) => {
-  const { CallStatus, CallSid } = req.body;
-  
+  const { CallStatus, CallSid, HangupCause } = req.body;
+
   try {
     const session = await CallSession.findOne({ twilioCallSid: CallSid });
     if (!session) {
       return res.status(404).send('Session not found');
     }
-    
+
+    console.log(`[CallStatusUpdate] CallSid: ${CallSid}, Status: ${CallStatus}, HangupCause: ${HangupCause}`);
+
     // ステータス更新
     const previousStatus = session.status;
-    
+
     switch (CallStatus) {
       case 'in-progress':
         session.status = 'in-progress';
+        session.callResult = '通話中';
+
         // 応答があったのでno-answerタイムアウトをクリア
         const timeouts = callQueueManager.timeoutHandlers.get(session._id.toString());
         if (timeouts?.noAnswer) {
           clearTimeout(timeouts.noAnswer);
         }
+
+        // 顧客ステータスを「通話中」に即座更新
+        if (session.customerId) {
+          try {
+            const Customer = require('../models/Customer');
+            await Customer.findByIdAndUpdate(session.customerId, {
+              result: '通話中',
+              callResult: '通話中'
+            });
+            console.log(`[CallStatusUpdate] Updated customer ${session.customerId} to '通話中'`);
+          } catch (error) {
+            console.error('[CallStatusUpdate] Error updating customer to 通話中:', error);
+          }
+        }
         break;
-        
+
       case 'completed':
       case 'failed':
       case 'busy':
       case 'no-answer':
         session.status = 'completed';
         session.endTime = new Date();
-        session.callResult = CallStatus === 'completed' ? '成功' :
-                           CallStatus === 'no-answer' ? '不在' :
-                           CallStatus === 'busy' ? '失敗' : '失敗';
+
+        // 詳細な終了理由判定
+        if (CallStatus === 'completed') {
+          // HangupCauseで詳細判定
+          if (HangupCause === 'caller-hung-up') {
+            session.callResult = '拒否'; // 相手が電話を切った
+          } else if (HangupCause === 'callee-hung-up') {
+            session.callResult = '成功'; // こちらが切った（通話完了）
+          } else {
+            session.callResult = '成功'; // その他の正常終了
+          }
+        } else {
+          session.callResult = CallStatus === 'no-answer' ? '不在' :
+                             CallStatus === 'busy' ? '不在' : '失敗';
+        }
+
+        // 顧客ステータスを即座更新
+        if (session.customerId) {
+          try {
+            const Customer = require('../models/Customer');
+            const today = new Date();
+            const dateStr = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
+
+            await Customer.findByIdAndUpdate(session.customerId, {
+              result: session.callResult,
+              callResult: session.callResult,
+              date: dateStr
+            });
+            console.log(`[CallStatusUpdate] Updated customer ${session.customerId} to '${session.callResult}'`);
+          } catch (error) {
+            console.error('[CallStatusUpdate] Error updating customer status:', error);
+          }
+        }
+
         callQueueManager.clearTimeouts(session._id);
         break;
     }
@@ -513,6 +562,19 @@ exports.handleCallStatusUpdate = async (req, res) => {
       status: session.status,
       callResult: session.callResult
     });
+
+    // 通話終了時はcall-terminatedイベントも送信
+    if (['completed', 'failed', 'busy', 'no-answer'].includes(CallStatus)) {
+      webSocketService.broadcastCallEvent('call-terminated', {
+        sessionId: session._id,
+        phoneNumber: session.phoneNumber,
+        customerId: session.customerId,
+        callResult: session.callResult,
+        reason: `${CallStatus}${HangupCause ? ` (${HangupCause})` : ''}`,
+        timestamp: new Date()
+      });
+      console.log(`[CallStatusUpdate] Call terminated: ${session.phoneNumber} -> ${session.callResult}`);
+    }
     
     res.status(200).send('OK');
     

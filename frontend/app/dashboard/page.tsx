@@ -534,8 +534,15 @@ export default function DashboardPage() {
     // Listen for call initiated events
     newSocket.on("call-initiated", (data) => {
       console.log("[Dashboard] Call initiated:", data);
-      const phoneNumber = data.phoneNumber?.startsWith('+81') 
-        ? '0' + data.phoneNumber.substring(3) 
+
+      // バルクコール状態をアクティブに設定（bulk-calls-queuedを受信できない場合のバックアップ）
+      if (!isBulkCallActive) {
+        console.log("[Dashboard] Setting bulk call active (backup trigger)");
+        setIsBulkCallActive(true);
+      }
+
+      const phoneNumber = data.phoneNumber?.startsWith('+81')
+        ? '0' + data.phoneNumber.substring(3)
         : data.phoneNumber;
       
       // まずdataから直接customerIdを取得を試行
@@ -592,18 +599,6 @@ export default function DashboardPage() {
           newSet.delete(customerId);
           return newSet;
         });
-
-        // 顧客ステータスをリアルタイム更新
-        if (data.callResult) {
-          console.log(`[Dashboard] Updating customer ${customerId} status to: ${data.callResult}`);
-          setCustomers(prev =>
-            prev.map(c =>
-              (c._id || c.id?.toString()) === customerId
-                ? { ...c, result: data.callResult, callResult: data.callResult }
-                : c
-            )
-          );
-        }
       } else {
         console.error("[Dashboard] Failed to identify customer for phone:", phoneNumber);
       }
@@ -656,7 +651,7 @@ export default function DashboardPage() {
           if (data.status === "calling" || data.status === "in-progress") {
             setBulkCallQueue(prev => Math.max(0, prev - 1));
           }
-        } else if (data.status === "completed" || data.status === "failed" || 
+        } else if (data.status === "completed" || data.status === "failed" ||
                    data.status === "ended" || data.status === "cancelled") {
           // 通話終了時のみクリア
           console.log(`[Dashboard] Clearing customer ${customerId} from calling sessions`);
@@ -665,7 +660,7 @@ export default function DashboardPage() {
             newSet.delete(customerId);
             return newSet;
           });
-          
+
           // 通話終了時にマッピングもクリア
           if (phoneNumber) {
             setPhoneToCustomerMap(prev => {
@@ -747,6 +742,32 @@ export default function DashboardPage() {
       newSocket.disconnect();
     };
   }, [phoneToCustomerMap, customers]);
+
+  // 通話状態監視 - 全通話終了時に一斉通話状態を自動リセット（遅延実行）
+  useEffect(() => {
+    if (isBulkCallActive && callingSessions.size === 0 && bulkCallQueue === 0) {
+      console.log("[Dashboard] All calls ended and queue empty, scheduling bulk call state reset");
+
+      // 3秒後にリセット（通話終了処理の完了を待つ）
+      const resetTimer = setTimeout(() => {
+        // タイマー実行時にも再度確認してから実行
+        if (callingSessions.size === 0 && bulkCallQueue === 0) {
+          console.log("[Dashboard] Auto-resetting bulk call state after delay");
+          setIsBulkCallActive(false);
+          toast({
+            title: "通話完了",
+            description: "すべての通話が終了しました",
+          });
+        } else {
+          console.log("[Dashboard] Reset cancelled - calls still active");
+        }
+      }, 3000);
+
+      return () => {
+        clearTimeout(resetTimer);
+      };
+    }
+  }, [callingSessions.size, isBulkCallActive, bulkCallQueue, toast]);
 
   // Filter customers based on search and filters
   const filteredCustomers = customers.filter((customer) => {
