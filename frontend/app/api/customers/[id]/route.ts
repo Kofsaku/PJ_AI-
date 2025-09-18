@@ -56,13 +56,21 @@ export async function PATCH(
       body: JSON.stringify(body),
     })
 
+    console.log(`[Customer API] PATCH Backend response status: ${response.status}`)
+    
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+      const errorText = await response.text()
+      console.error(`[Customer API] PATCH Backend error: ${response.status} - ${errorText}`)
+      return NextResponse.json(
+        { error: `Backend error: ${response.status}` },
+        { status: response.status }
+      )
     }
 
     const data = await response.json()
     return NextResponse.json(data)
   } catch (error) {
+    console.error('[Customer API] PATCH Frontend error:', error)
     return NextResponse.json(
       { error: 'Failed to update customer' },
       { status: 500 }
