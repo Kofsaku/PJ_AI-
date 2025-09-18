@@ -46,15 +46,31 @@ router.get('/', protect, async (req, res) => {
 // Get a specific customer
 router.get('/:id', protect, async (req, res) => {
   try {
+    console.log('[Customer API] GET /:id request from user:', req.user.email, 'companyId:', req.user.companyId, 'customerId:', req.params.id);
+    
+    // First check if customer exists at all
+    const anyCustomer = await Customer.findById(req.params.id);
+    if (!anyCustomer) {
+      console.log('[Customer API] Customer not found in database:', req.params.id);
+      return res.status(404).send({ error: 'Customer not found' });
+    }
+    
+    console.log('[Customer API] Customer found with companyId:', anyCustomer.companyId, 'user companyId:', req.user.companyId);
+    
+    // Then check with company filter
     const customer = await Customer.findOne({ 
       _id: req.params.id, 
       companyId: req.user.companyId 
     });
     if (!customer) {
-      return res.status(404).send();
+      console.log('[Customer API] Customer access denied - different company');
+      return res.status(404).send({ error: 'Customer not found' });
     }
+    
+    console.log('[Customer API] Customer found and authorized');
     res.send(customer);
   } catch (error) {
+    console.error('[Customer API] Error in GET /:id:', error);
     res.status(500).send(error);
   }
 });
