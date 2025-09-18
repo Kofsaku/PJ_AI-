@@ -94,7 +94,7 @@ export default function CustomerDetailPage() {
     const fetchCustomer = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch(`/api/customers/${customerId}`, {
+        const response = await fetch(`/api/customers?id=${customerId}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
