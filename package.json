@@ -3,12 +3,15 @@
   "version": "1.0.0",
   "description": "AI-powered call system with frontend and backend",
   "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "start": "cd frontend && npm start",
+    "dev": "npm run check-config && echo 'Start backend first: npm run start-backend' && echo 'Then frontend: npm run start-frontend'",
     "check-config": "node scripts/check-startup-config.js",
     "startup-hook": "./.claude/hooks/startup.sh",
     "start-backend": "cd backend && npm start",
     "start-frontend": "cd frontend && npm run dev",
-    "dev": "npm run check-config && echo 'Start backend first: npm run start-backend' && echo 'Then frontend: npm run start-frontend'",
-    "install-all": "cd backend && npm install && cd ../frontend && npm install"
+    "install-all": "cd backend && npm install && cd ../frontend && npm install",
+    "postinstall": "cd frontend && npm install && cd ../backend && npm install"
   },
   "keywords": ["ai", "call", "system", "twilio", "voice"],
   "author": "AI Call System",
