@@ -75,41 +75,144 @@ function defineModels(mongoose) {
 
   const Customer = mongoose.models.Customer || mongoose.model('Customer', CustomerSchema)
 
-  // CallSessionモデル定義
+  // CallSessionモデル定義（統一スキーマ）
+  const VALID_STATUS = ['initiating', 'queued', 'calling', 'initiated', 'ai-responding', 'transferring', 'human-connected', 'in-progress', 'completed', 'failed', 'cancelled']
+  const VALID_END_REASON = ['completed', 'cancelled', 'failed', 'no-answer', 'busy', 'customer-hangup', 'agent-hangup', 'timeout', 'system-error']
+  const VALID_CALL_RESULT = ['成功', '不在', '拒否', '要フォロー', '失敗', '通話中', '未対応']
+
   const CallSessionSchema = new mongoose.Schema({
-    customerId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Customer',
-      required: true
-    },
     companyId: {
       type: String,
       required: true,
       index: true
     },
-    createdAt: {
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Customer',
+      required: false
+    },
+    phoneNumber: {
+      type: String,
+      required: false
+    },
+    twilioCallSid: {
+      type: String,
+      required: false,
+      unique: true,
+      sparse: true
+    },
+    conferenceSid: {
+      type: String,
+      sparse: true
+    },
+    status: {
+      type: String,
+      enum: {
+        values: VALID_STATUS,
+        message: 'Invalid status value: {VALUE}. Must be one of: ' + VALID_STATUS.join(', ')
+      },
+      default: 'initiating'
+    },
+    error: {
+      type: String,
+      required: false
+    },
+    startTime: {
       type: Date,
       default: Date.now
     },
     endTime: Date,
-    duration: String,
-    status: {
+    endReason: {
       type: String,
-      enum: ['進行中', '完了', '失敗', '中止'],
-      default: '進行中'
+      enum: {
+        values: VALID_END_REASON,
+        message: 'Invalid endReason value: {VALUE}. Must be one of: ' + VALID_END_REASON.join(', ')
+      },
+      required: false
+    },
+    assignedAgent: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    transcript: [{
+      timestamp: {
+        type: Date,
+        default: Date.now
+      },
+      speaker: {
+        type: String,
+        enum: ['ai', 'customer', 'agent']
+      },
+      message: String,
+      confidence: Number
+    }],
+    handoffTime: Date,
+    handoffReason: String,
+    handoffDetails: {
+      requestedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      },
+      requestedAt: Date,
+      connectedAt: Date,
+      disconnectedAt: Date,
+      handoffPhoneNumber: String,
+      handoffCallSid: String,
+      handoffMethod: {
+        type: String,
+        enum: ['manual', 'auto', 'ai-triggered'],
+        default: 'manual'
+      }
+    },
+    participants: [{
+      type: {
+        type: String,
+        enum: ['customer', 'ai', 'agent']
+      },
+      callSid: String,
+      phoneNumber: String,
+      joinedAt: Date,
+      leftAt: Date,
+      isMuted: Boolean,
+      isOnHold: Boolean
+    }],
+    recordingSettings: {
+      enabled: { type: Boolean, default: true },
+      retentionDays: { type: Number, default: 7 },
+      deleteAfter: Date
     },
     callResult: {
       type: String,
-      enum: ['成功', '不在', '拒否', '要フォロー', '失敗', '通話中', '未対応'],
-      default: '未対応'
+      enum: {
+        values: VALID_CALL_RESULT,
+        message: 'Invalid callResult value: {VALUE}. Must be one of: ' + VALID_CALL_RESULT.join(', ')
+      }
     },
-    transcript: String,
     notes: String,
-    phoneNumber: String,
-    twilioCallSid: String
+    duration: Number,
+    recordingUrl: String,
+    twilioRecordingUrl: String,
+    recordingSid: String,
+    aiConfiguration: {
+      companyName: String,
+      serviceName: String,
+      representativeName: String,
+      targetDepartment: String,
+      serviceDescription: String,
+      targetPerson: String,
+      salesPitch: {
+        companyDescription: String,
+        callToAction: String,
+        keyBenefits: [String]
+      }
+    }
   }, {
     timestamps: true
   })
+
+  CallSessionSchema.index({ customerId: 1, createdAt: -1 })
+  CallSessionSchema.index({ assignedAgent: 1, createdAt: -1 })
+  CallSessionSchema.index({ status: 1 })
 
   const CallSession = mongoose.models.CallSession || mongoose.model('CallSession', CallSessionSchema)
 
@@ -174,7 +277,30 @@ export async function GET(
     }
 
     console.log('[Call History Detail API] Call session found and authorized')
-    return NextResponse.json(callSession)
+
+    // データ構造をフロントエンドの期待する形式に変換
+    const sessionObj = callSession.toObject()
+    if (sessionObj.customerId && sessionObj.customerId.customer) {
+      sessionObj.customer = {
+        ...sessionObj.customerId,
+        name: sessionObj.customerId.customer
+      }
+    } else {
+      sessionObj.customer = {
+        name: sessionObj.phoneNumber || '不明',
+        phone: sessionObj.phoneNumber || '',
+        email: '',
+        company: ''
+      }
+    }
+
+    sessionObj.id = sessionObj._id
+    delete sessionObj.customerId
+
+    return NextResponse.json({
+      success: true,
+      data: sessionObj
+    })
   } catch (error) {
     console.error('[Call History Detail API] Error:', error)
     return NextResponse.json(

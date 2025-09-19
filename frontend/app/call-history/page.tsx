@@ -300,7 +300,7 @@ export default function CallHistoryPage() {
               {statsLoading ? (
                 <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
               ) : (
-                `${statistics.successRate}%`
+                statistics.successRate
               )}
             </div>
           </div>
