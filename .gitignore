@@ -24,6 +24,9 @@ yarn-error.log*
 
 ### Environment ###
 .env
+.env.local
+.env.development
+.env.production
 !.env.example  # Keep example env (optional)
 ### IDE & Editor ###
 .idea/
