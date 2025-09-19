@@ -24,15 +24,18 @@ router.get('/', async (req, res) => {
       sortOrder = 'desc'
     } = req.query;
 
-    // クエリ構築
-    const query = {};
+    // クエリ構築 - ログインユーザーのデータのみ取得
+    const query = {
+      assignedAgent: req.user._id || req.user.id
+    };
     
     // 検索条件
     if (search) {
-      // 顧客名で検索するため、まず顧客を検索
+      // 顧客名で検索するため、まず同じ会社の顧客を検索
       const customers = await Customer.find({
+        companyId: req.user.companyId,
         $or: [
-          { name: { $regex: search, $options: 'i' } },
+          { customer: { $regex: search, $options: 'i' } },
           { phone: { $regex: search, $options: 'i' } }
         ]
       });
@@ -73,7 +76,7 @@ router.get('/', async (req, res) => {
     // データ取得
     const [calls, total] = await Promise.all([
       CallSession.find(query)
-        .populate('customerId', 'name company phone email')
+        .populate('customerId', 'customer company phone email')
         .populate('assignedAgent', 'firstName lastName email')
         .sort(sort)
         .skip(skip)
@@ -101,7 +104,7 @@ router.get('/', async (req, res) => {
         id: call._id,
         customer: call.customerId ? {
           id: call.customerId._id,
-          name: call.customerId.name || '不明',
+          name: call.customerId.customer || '不明',
           phone: call.customerId.phone || call.phoneNumber || '不明',
           company: call.customerId.company || ''
         } : {
@@ -159,8 +162,11 @@ router.get('/', async (req, res) => {
 // @access  Private
 router.get('/:id', async (req, res) => {
   try {
-    const call = await CallSession.findById(req.params.id)
-      .populate('customerId', 'name company phone email')
+    const call = await CallSession.findOne({
+      _id: req.params.id,
+      assignedAgent: req.user._id || req.user.id
+    })
+      .populate('customerId', 'customer company phone email')
       .populate('assignedAgent', 'firstName lastName email')
       .lean();
 
@@ -184,7 +190,11 @@ router.get('/:id', async (req, res) => {
 
     const formattedCall = {
       id: call._id,
-      customer: call.customerId || { name: '不明', phone: call.phoneNumber || '不明' },
+      customer: call.customerId ? {
+        name: call.customerId.customer || '不明',
+        phone: call.customerId.phone || call.phoneNumber || '不明',
+        company: call.customerId.company || ''
+      } : { name: '不明', phone: call.phoneNumber || '不明' },
       date: call.createdAt,
       startTime: call.startTime,
       endTime: call.endTime,
@@ -226,8 +236,11 @@ router.put('/:id', async (req, res) => {
     if (notes !== undefined) updateData.notes = notes;
     if (callResult !== undefined) updateData.callResult = callResult;
 
-    const call = await CallSession.findByIdAndUpdate(
-      req.params.id,
+    const call = await CallSession.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        assignedAgent: req.user._id || req.user.id
+      },
       updateData,
       { new: true }
     );
@@ -275,15 +288,26 @@ router.get('/stats/summary', async (req, res) => {
       }
     }
 
-    // 統計情報を集計
+    // 統計情報を集計（startTimeとendTimeから実際の通話時間を計算）
     const stats = await CallSession.aggregate([
       { $match: query },
+      {
+        $addFields: {
+          calculatedDuration: {
+            $cond: {
+              if: { $and: [{ $ne: ['$endTime', null] }, { $ne: ['$startTime', null] }] },
+              then: { $divide: [{ $subtract: ['$endTime', '$startTime'] }, 1000] },
+              else: 0
+            }
+          }
+        }
+      },
       {
         $group: {
           _id: null,
           totalCalls: { $sum: 1 },
-          avgDuration: { $avg: '$duration' },
-          totalDuration: { $sum: '$duration' },
+          avgDuration: { $avg: '$calculatedDuration' },
+          totalDuration: { $sum: '$calculatedDuration' },
           successCount: {
             $sum: { $cond: [{ $eq: ['$callResult', '成功'] }, 1, 0] }
           },
@@ -299,6 +323,12 @@ router.get('/stats/summary', async (req, res) => {
         }
       }
     ]);
+
+    // 顧客テーブルから未対応件数を取得（ログインユーザーの会社のデータのみ）
+    const pendingCount = await Customer.countDocuments({
+      companyId: req.user.companyId,
+      result: '未対応'
+    });
 
     // デフォルト値
     const defaultStats = {
@@ -329,7 +359,7 @@ router.get('/stats/summary', async (req, res) => {
         totalCalls: summary.totalCalls,
         successRate: successRate,
         avgDuration: avgDurationFormatted,
-        pendingCount: summary.followUpCount // 未対応件数として要フォロー数を使用
+        pendingCount: pendingCount // 顧客テーブルから取得した未対応件数
       }
     });
 

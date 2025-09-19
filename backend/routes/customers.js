@@ -227,25 +227,40 @@ router.post('/import/file', protect, upload.single('file'), async (req, res) => 
 router.post('/import', protect, async (req, res) => {
   try {
     const { customers } = req.body;
-    
+
+    console.log('[Customer Import] Received data:', JSON.stringify(req.body, null, 2));
+
     if (!customers || !Array.isArray(customers)) {
       return res.status(400).json({ error: 'Invalid data format' });
     }
 
+    console.log('[Customer Import] Processing', customers.length, 'customers');
+    console.log('[Customer Import] First customer sample:', customers[0]);
+
     // Validate and format customer data
-    const validatedCustomers = customers.map(customer => ({
-      companyId: req.user.companyId,
-      customer: customer.customer || 'Unknown',
-      date: customer.date || new Date().toISOString().split('T')[0],
-      time: customer.time || '00:00',
-      duration: customer.duration || '0',
-      result: customer.result || '未処理',
-      notes: customer.notes || '',
-      address: customer.address || '',
-      phone: customer.phone || '',
-      email: customer.email || '',
-      company: customer.company || ''
-    }));
+    const validatedCustomers = customers.map((customer, index) => {
+      const validated = {
+        companyId: req.user.companyId,
+        customer: customer.customer || 'Unknown',
+        date: customer.date || new Date().toISOString().split('T')[0],
+        time: customer.time || '00:00',
+        duration: customer.duration || '0',
+        result: customer.result || '未対応',
+        notes: customer.notes || '',
+        address: customer.address || '',
+        phone: customer.phone || '',
+        email: customer.email || '',
+        company: customer.company || ''
+      };
+
+      if (index === 0) {
+        console.log('[Customer Import] Original customer:', customer);
+        console.log('[Customer Import] Validated customer:', validated);
+        console.log('[Customer Import] Result field - original:', customer.result, 'validated:', validated.result);
+      }
+
+      return validated;
+    });
 
     // Insert all records into the database
     const insertedCustomers = await Customer.insertMany(validatedCustomers);
