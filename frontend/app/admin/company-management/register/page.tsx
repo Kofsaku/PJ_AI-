@@ -144,7 +144,7 @@ function CompanyRegisterContent() {
             </Button>
             <Button 
               type="submit" 
-              className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+              className="ml-64 bg-orange-500 hover:bg-orange-600 text-white"
             >
               確認画面へ
             </Button>

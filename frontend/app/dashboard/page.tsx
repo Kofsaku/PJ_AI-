@@ -52,7 +52,7 @@ type Customer = {
 };
 
 // 定義されているステータス値
-const VALID_CALL_RESULTS = ['成功', '不在', '拒否', '要フォロー', '失敗', '通話中'];
+const VALID_CALL_RESULTS = ['成功', '不在', '拒否', '要フォロー', '失敗', '通話中', '未対応'];
 
 const statusColors = {
   不在: "bg-yellow-500",
@@ -61,6 +61,7 @@ const statusColors = {
   拒否: "bg-red-500",
   失敗: "bg-gray-500",
   通話中: "bg-blue-500",
+  未対応: "bg-gray-600",
   未設定: "bg-gray-400"
 };
 
@@ -802,9 +803,9 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50">
         <Sidebar />
-        <main className="flex-1 p-6 flex items-center justify-center">
+        <main className="ml-64 p-6 flex items-center justify-center">
           <div>Loading...</div>
         </main>
       </div>
@@ -812,11 +813,11 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Sidebar />
 
-      <main 
-        className="flex-1 p-6 relative" 
+      <main
+        className="ml-64 p-6 relative"
         onDragEnter={handleDragEnter}
       >
         {/* Drag & Drop Overlay */}

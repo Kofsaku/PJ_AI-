@@ -22,7 +22,7 @@ export default function CompanyAdminLayout({
     <CompanyAdminGuard>
       <div className="flex h-screen bg-gray-50">
         <Sidebar />
-        <main className="flex-1 overflow-hidden">
+        <main className="ml-64 overflow-hidden">
           <div className="h-full overflow-auto">
             {children}
           </div>

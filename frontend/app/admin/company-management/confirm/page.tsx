@@ -140,14 +140,14 @@ function CompanyConfirmContent() {
           <Button 
             type="button" 
             variant="outline"
-            className="flex-1 border-orange-500 text-orange-500"
+            className="ml-64 border-orange-500 text-orange-500"
             onClick={handleEdit}
           >
             修正する
           </Button>
           <Button 
             type="button" 
-            className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+            className="ml-64 bg-orange-500 hover:bg-orange-600 text-white"
             disabled={loading}
             onClick={handleRegister}
           >

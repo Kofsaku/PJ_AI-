@@ -142,10 +142,10 @@ export default function UserInfoPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Sidebar />
 
-      <main className="flex-1 p-6">
+      <main className="ml-64 p-6">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">ユーザー情報</h1>
           <div className="flex gap-2">

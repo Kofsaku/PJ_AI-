@@ -293,9 +293,9 @@ export default function CustomerDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50">
         <Sidebar />
-        <main className="flex-1 p-6 flex items-center justify-center">
+        <main className="ml-64 p-6 flex items-center justify-center">
           <div>読み込み中...</div>
         </main>
       </div>
@@ -303,10 +303,10 @@ export default function CustomerDetailPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Sidebar />
 
-      <main className="flex-1 p-6">
+      <main className="ml-64 p-6">
         <div className="max-w-2xl">
           <div className="flex items-center gap-4 mb-6">
             <Button

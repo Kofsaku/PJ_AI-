@@ -222,7 +222,7 @@ export default function CompanyEdit({ params }: PageProps) {
             </Button>
             <Button 
               type="submit" 
-              className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+              className="ml-64 bg-orange-500 hover:bg-orange-600 text-white"
               disabled={loading}
             >
               {loading ? "更新中..." : "企業情報を更新する"}

@@ -195,9 +195,9 @@ ${settings.callToAction || "ぜひ御社の営業部ご担当者さまに概要�
 
   if (loading) {
     return (
-      <div className="flex min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50">
         <Sidebar />
-        <main className="flex-1 p-6 flex items-center justify-center">
+        <main className="ml-64 p-6 flex items-center justify-center">
           <div className="flex items-center">
             <Loader2 className="h-8 w-8 animate-spin" />
             <span className="ml-2">設定を読み込み中...</span>
@@ -208,9 +208,9 @@ ${settings.callToAction || "ぜひ御社の営業部ご担当者さまに概要�
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Sidebar />
-      <main className="flex-1 p-6">
+      <main className="ml-64 p-6">
         <div className="max-w-4xl mx-auto space-y-6">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">トークスクリプト設定</h1>

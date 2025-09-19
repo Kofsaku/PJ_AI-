@@ -8,10 +8,10 @@ import { Sidebar } from "@/components/sidebar"
 
 export default function ImportCompletePage() {
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Sidebar />
 
-      <main className="flex-1 p-6 flex items-center justify-center">
+      <main className="ml-64 p-6 flex items-center justify-center">
         <Card className="w-full max-w-md text-center">
           <CardHeader>
             <div className="mx-auto mb-4">
