@@ -195,7 +195,8 @@ export async function GET(request: NextRequest) {
       console.log('[Call History API] Found', callSessions.length, 'call sessions for companyId:', user.companyId)
 
       return NextResponse.json({
-        callSessions,
+        success: true,
+        data: callSessions,
         pagination: {
           page,
           limit,

@@ -240,7 +240,10 @@ export async function GET(request: NextRequest) {
 
     console.log('[Call Stats API] Summary generated:', summary)
 
-    return NextResponse.json(summary)
+    return NextResponse.json({
+      success: true,
+      data: summary
+    })
   } catch (error) {
     console.error('[Call Stats API] Error:', error)
     return NextResponse.json(
