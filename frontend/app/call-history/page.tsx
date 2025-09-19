@@ -175,9 +175,12 @@ export default function CallHistoryPage() {
       const data = await response.json()
       
       if (data.success) {
-        setCalls(data.data)
-        setPagination(data.pagination)
+        const callsData = Array.isArray(data.data) ? data.data : []
+        console.log('[Call History] Received data:', callsData)
+        setCalls(callsData)
+        setPagination(data.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 })
       } else {
+        console.error('[Call History] API returned error:', data.error)
         throw new Error(data.error || "データの取得に失敗しました")
       }
     } catch (err) {
@@ -408,7 +411,7 @@ export default function CallHistoryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {calls.map((call) => (
+                  {Array.isArray(calls) && calls.length > 0 ? calls.map((call) => call && (
                     <tr 
                       key={call.id} 
                       className="border-b hover:bg-gray-50 cursor-pointer"
@@ -457,7 +460,13 @@ export default function CallHistoryPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  )) : (
+                    <tr>
+                      <td colSpan={6} className="p-4 text-center text-gray-500">
+                        データがありません
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             )}
