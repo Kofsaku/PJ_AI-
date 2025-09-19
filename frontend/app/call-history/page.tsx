@@ -13,10 +13,13 @@ import { format } from "date-fns"
 import { ja } from "date-fns/locale"
 
 interface Customer {
-  id: string
+  id?: string
   name: string
+  customer?: string
   phone: string
   company?: string
+  email?: string
+  address?: string
 }
 
 interface CallRecord {
@@ -104,7 +107,7 @@ export default function CallHistoryPage() {
   const [statistics, setStatistics] = useState<Statistics>({
     totalCalls: 0,
     successRate: 0,
-    avgDuration: "0分0秒",
+    avgDuration: "0秒",
     pendingCount: 0
   })
   const [statsLoading, setStatsLoading] = useState(false)
@@ -115,7 +118,7 @@ export default function CallHistoryPage() {
   const fetchStatistics = async () => {
     setStatsLoading(true)
     try {
-      const response = await fetch(`/api/calls/statistics?period=all`, {
+      const response = await fetch(`/api/call-history/stats/summary`, {
         headers: {
           "Authorization": `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json"
