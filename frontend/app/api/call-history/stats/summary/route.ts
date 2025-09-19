@@ -224,6 +224,41 @@ export async function GET(request: NextRequest) {
     // 成功率計算
     const successRate = totalCalls > 0 ? Math.round((successfulCalls / totalCalls) * 100) : 0
 
+    // 未対応件数の計算
+    const pendingCalls = await CallSession.countDocuments({
+      companyId: user.companyId,
+      callResult: '未対応'
+    })
+
+    // 平均通話時間の計算
+    const completedCallsWithDuration = await CallSession.find({
+      companyId: user.companyId,
+      status: '完了',
+      duration: { $exists: true, $ne: null, $ne: '' }
+    })
+
+    let avgDuration = '0秒'
+    if (completedCallsWithDuration.length > 0) {
+      const totalDurationSeconds = completedCallsWithDuration.reduce((total, call) => {
+        if (typeof call.duration === 'number') {
+          return total + call.duration
+        } else if (typeof call.duration === 'string' && call.duration) {
+          const match = call.duration.match(/(\d+)/)
+          return total + (match ? parseInt(match[1]) : 0)
+        }
+        return total
+      }, 0)
+
+      const avgDurationSeconds = Math.round(totalDurationSeconds / completedCallsWithDuration.length)
+      if (avgDurationSeconds >= 60) {
+        const minutes = Math.floor(avgDurationSeconds / 60)
+        const seconds = avgDurationSeconds % 60
+        avgDuration = seconds > 0 ? `${minutes}分${seconds}秒` : `${minutes}分`
+      } else {
+        avgDuration = `${avgDurationSeconds}秒`
+      }
+    }
+
     const summary = {
       total: totalCalls,
       completed: completedCalls,
@@ -235,7 +270,10 @@ export async function GET(request: NextRequest) {
       rejected: rejectedCalls,
       today: todayCalls,
       thisWeek: weekCalls,
-      successRate: successRate
+      successRate: successRate,
+      totalCalls: totalCalls,
+      avgDuration: avgDuration,
+      pendingCount: pendingCalls
     }
 
     console.log('[Call Stats API] Summary generated:', summary)
