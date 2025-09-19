@@ -21,15 +21,9 @@ class ConversationEngine {
         confidence: 0.8
       },
       // B: 聞き返し（「はい？」）
-      clarification_request: {
-        keywords: ['はい？', 'もしもし？', 'えっ？', 'なんでしょう', '聞こえない', 'もう一度教えて', 'もう一度説明', '再度教えて', '聞き取れない', '聞こえませんでした', '聞こえません'],
-        confidence: 0.85
-      },
-      // C: 社名確認（「もう一度社名を？」）
-      company_confirmation: {
-        keywords: ['社名', 'どちら様', '会社名', 'お名前', 'どこの', 'どちらから', 'もう一度社名を', '社名をもう一度', '会社名をもう一度', 'もう一度お聞かせ願えますか'],
-        confidence: 0.9
-      },
+      // B: 聞き返し（「はい？」「もしもし？」等）- globalPatternsに統合済みのため削除,
+      // C: 明確化要求（統合された） - globalPatternsで処理されるため、ここでは不要
+      // company_confirmationは削除されました
       // D: 担当者不在
       absent: {
         keywords: ['不在', 'いない', 'いません', '席を外し', '出張', '会議', '休み', '外出', '他の電話', 'おりません'],
@@ -302,38 +296,9 @@ class ConversationEngine {
       
       // B: 聞き返し（1回まで） - 直前のメッセージを繰り返し
       case 'clarification_request':
-        state.clarificationCount++;
-        console.log(`[ConversationEngine] 聞き返し回数: ${state.clarificationCount}`);
-        if (state.clarificationCount > 1) {
-          // 2回目の聞き返しは諦めて終了
-          console.log('[ConversationEngine] 聞き返し2回目 - 終了');
-          bestMatch.intent = 'too_many_clarifications';
-          bestMatch.nextAction = 'apologize_and_end';
-          state.currentPhase = 'CLOSING';
-        } else {
-          // 1回目は直前のAI応答を繰り返し
-          console.log('[ConversationEngine] 直前のメッセージを繰り返し');
-          bestMatch.intent = 'repeat_last_message';  // intentを変更（重要）
-          bestMatch.nextAction = 'repeat_last_message';
-          // 直前のAI応答を保存（存在する場合）
-          if (state.conversationHistory && state.conversationHistory.length > 0) {
-            // 最後のAI応答を探す
-            for (let i = state.conversationHistory.length - 1; i >= 0; i--) {
-              if (state.conversationHistory[i].sender === 'ai') {
-                bestMatch.lastAiMessage = state.conversationHistory[i].message;
-                console.log(`[ConversationEngine] 繰り返すメッセージ: ${bestMatch.lastAiMessage}`);
-                break;
-              }
-            }
-          }
-        }
-        break;
-      
-      // C: 社名確認
-      case 'company_confirmation':
-        console.log('[ConversationEngine] 社名確認要求');
-        state.conversationState = conversationStates.AFTER_COMPANY_CONFIRMATION;
-        bestMatch.nextAction = 'confirm_company';
+        console.log('[ConversationEngine] 明確化要求 - clarificationテンプレートを使用');
+        // 明確化要求は常に同じテンプレートで応答（回数制限なし）
+        bestMatch.nextAction = 'clarify';
         break;
       
       
@@ -713,32 +678,7 @@ class ConversationEngine {
       selfIntroduction: `${aiConfiguration.companyName || 'AIコールシステム株式会社'}の${aiConfiguration.representativeName || '佐藤'}と申します`
     };
     
-    // sales_pitchテンプレートの場合、GUIで設定されたsalesPitch設定のみを使用
-    if (actualTemplateName === 'sales_pitch') {
-      const salesPitch = aiConfiguration.salesPitch;
-      if (salesPitch) {
-        let companyDesc = salesPitch.companyDescription || '';
-        let callAction = salesPitch.callToAction || '';
-        
-        // 変数置換を実行
-        Object.keys(vars).forEach(key => {
-          const regex = new RegExp(`{{${key}}}`, 'g');
-          companyDesc = companyDesc.replace(regex, vars[key]);
-          callAction = callAction.replace(regex, vars[key]);
-        });
-        
-        // GUI設定が存在する場合のみ使用（ハードコードフォールバックなし）
-        if (companyDesc.trim() || callAction.trim()) {
-          const customResponse = `ありがとうございます。${companyDesc} ${callAction}`.trim();
-          console.log('[ConversationEngine] sales_pitchでGUI設定を使用:', customResponse);
-          return customResponse;
-        }
-      }
-      
-      // GUI設定が空の場合は汎用応答
-      console.log('[ConversationEngine] sales_pitch: GUI設定が空のため汎用応答を使用');
-      return '申し訳ございません。詳細はお電話でご説明させていただきます。';
-    }
+    // sales_pitchテンプレートは削除されたため、このブロックは不要
     
     // その他のテンプレートは従来通りdefaultTemplatesを使用
     const template = defaultTemplates[actualTemplateName];
@@ -763,7 +703,7 @@ class ConversationEngine {
     const flowTransitions = {
       initial: {
         normal_response: 'purpose_explanation',
-        company_inquiry: 'company_confirmation',
+        company_inquiry: 'clarification_request',
         purpose_inquiry: 'purpose_explanation',
         absent: 'schedule_callback',
         rejection: 'polite_end',
@@ -781,7 +721,7 @@ class ConversationEngine {
         rejection: 'polite_end',
         silent: 'check_connection'
       },
-      company_confirmation: {
+      clarification_request: {
         normal_response: 'purpose_explanation',
         rejection: 'polite_end',
         unclear: 'clarification'

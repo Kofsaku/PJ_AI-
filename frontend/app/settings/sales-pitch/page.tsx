@@ -185,7 +185,7 @@ export default function SalesPitchSettingsPage() {
 
   // トークスクリプトテンプレート
   const talkTemplates = {
-    initial: "お世話になります。{{selfIntroduction}}。弊社は{{serviceDescription}}会社でございます。是非、御社の{{targetDepartment}}にご案内できればと思いお電話をさせていただきました！本日、{{targetPerson}}はいらっしゃいますでしょうか？",
+    initial: "お世話になります。{{selfIntroduction}}。弊社は{{serviceDescription}}会社でございます。{{serviceName}}について、是非御社の{{targetDepartment}}にご案内できればと思いお電話をさせていただきました。本日、{{targetPerson}}はいらっしゃいますでしょうか？",
     clarification: "失礼しました。{{companyName}}の{{representativeName}}です。{{serviceName}}についてご担当者さまにご案内の可否を伺っております。",
     salesPitch: `ありがとうございます。${settings.companyDescription || "弊社では、革新的なサービスを提供しております。"}
 
@@ -195,9 +195,9 @@ ${settings.callToAction || "ぜひ御社の営業部ご担当者さまに概要�
 
   if (loading) {
     return (
-      <div className="flex min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50">
         <Sidebar />
-        <main className="flex-1 p-6 flex items-center justify-center">
+        <main className="ml-64 p-6 flex items-center justify-center">
           <div className="flex items-center">
             <Loader2 className="h-8 w-8 animate-spin" />
             <span className="ml-2">設定を読み込み中...</span>
@@ -208,9 +208,9 @@ ${settings.callToAction || "ぜひ御社の営業部ご担当者さまに概要�
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Sidebar />
-      <main className="flex-1 p-6">
+      <main className="ml-64 p-6">
         <div className="max-w-4xl mx-auto space-y-6">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">トークスクリプト設定</h1>
@@ -347,7 +347,7 @@ ${settings.callToAction || "ぜひ御社の営業部ご担当者さまに概要�
                   <h4 className="font-semibold text-sm text-gray-700 mb-2">🤖 自動生成される自己紹介</h4>
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <p
-                      className="text-sm text-blue-800"
+                      className="text-sm text-gray-800"
                       dangerouslySetInnerHTML={{ __html: dynamicSelfIntroductionHighlighted }}
                     />
                     <p className="text-xs text-blue-600 mt-1">
@@ -359,7 +359,7 @@ ${settings.callToAction || "ぜひ御社の営業部ご担当者さまに概要�
                 {/* 初回コンタクト */}
                 <div>
                   <h4 className="font-semibold text-sm text-gray-700 mb-2">📞 初回コンタクト（電話開始時）</h4>
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
                     <p
                       className="text-sm leading-relaxed whitespace-pre-wrap"
                       dangerouslySetInnerHTML={{ __html: replaceVariables(talkTemplates.initial) }}
@@ -370,45 +370,6 @@ ${settings.callToAction || "ぜひ御社の営業部ご担当者さまに概要�
             </CardContent>
           </Card>
 
-          {/* セールスピッチ設定セクション */}
-          <Card>
-            <CardHeader>
-              <CardTitle>セールスピッチ設定</CardTitle>
-              <CardDescription>
-                「用件を教えてください」と聞かれた際に使用される詳細なピッチ文を設定します。
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="companyDescription">会社・サービス紹介文</Label>
-                  <Textarea
-                    id="companyDescription"
-                    placeholder="会社とサービスの詳細な説明を入力してください"
-                    value={settings.companyDescription}
-                    onChange={(e) => setSettings(prev => ({
-                      ...prev,
-                      companyDescription: e.target.value
-                    }))}
-                    className="min-h-[120px]"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="callToAction">コールトゥアクション</Label>
-                  <Textarea
-                    id="callToAction"
-                    placeholder="担当者への取次や説明の要請文を入力してください"
-                    value={settings.callToAction}
-                    onChange={(e) => setSettings(prev => ({
-                      ...prev,
-                      callToAction: e.target.value
-                    }))}
-                    className="min-h-[80px]"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
 
           {/* トークプレビューセクション */}
           <Card>
@@ -426,57 +387,83 @@ ${settings.callToAction || "ぜひ御社の営業部ご担当者さまに概要�
                 {/* 聞き返し応答 */}
                 <div>
                   <h4 className="font-semibold text-sm text-gray-700 mb-2">❓ 聞き返し・確認応答</h4>
-                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                  <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
                     <p
                       className="text-sm leading-relaxed"
                       dangerouslySetInnerHTML={{ __html: replaceVariables(talkTemplates.clarification) }}
                     />
                   </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    「用件を教えてください」「会社名を教えてください」「もう一度お願いします」等に使用
+                  </p>
                 </div>
 
-                {/* セールスピッチ */}
+                {/* 肯定的応答 */}
                 <div>
-                  <h4 className="font-semibold text-sm text-gray-700 mb-2">💼 セールスピッチ（詳細説明時）</h4>
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                      ありがとうございます。<span className="font-semibold text-blue-600">{settings.companyDescription || "（未設定）"}</span>
-                      <br /><br />
-                      <span className="font-semibold text-blue-600">{settings.callToAction || "（未設定）"}</span>
+                  <h4 className="font-semibold text-sm text-gray-700 mb-2">✅ 肯定的応答</h4>
+                  <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
+                    <p className="text-sm leading-relaxed">
+                      ありがとうございます。よろしくお願いいたします。
                     </p>
                   </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    「はい」「お願いします」「いいですよ」等の同意・肯定に使用
+                  </p>
+                </div>
+
+                {/* 不在応答 */}
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-700 mb-2">❌ 不在応答</h4>
+                  <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
+                    <p className="text-sm leading-relaxed">
+                      承知しました。では、また改めてお電話いたします。ありがとうございました。
+                    </p>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    「不在です」「いません」「席を外しています」等に使用
+                  </p>
+                </div>
+
+                {/* 断り応答 */}
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-700 mb-2">🚫 お断り応答</h4>
+                  <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
+                    <p className="text-sm leading-relaxed">
+                      承知いたしました。本日は突然のご連絡、失礼いたしました。よろしくお願いいたします。
+                    </p>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    「必要ない」「お断りします」「営業お断り」等に使用
+                  </p>
+                </div>
+
+                {/* 担当者取次応答 */}
+                <div>
+                  <h4 className="font-semibold text-sm text-gray-700 mb-2">👤 担当者取次応答</h4>
+                  <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
+                    <p className="text-sm leading-relaxed">
+                      ありがとうございます。お待ちしております。
+                    </p>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    「担当者に代わります」「少々お待ちください」等に使用
+                  </p>
                 </div>
 
                 {/* 転送説明 */}
                 <div>
                   <h4 className="font-semibold text-sm text-gray-700 mb-2">🔄 転送前説明</h4>
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
                     <p
                       className="text-sm leading-relaxed whitespace-pre-wrap"
                       dangerouslySetInnerHTML={{ __html: replaceVariables(talkTemplates.transferExplanation) }}
                     />
                   </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    担当者が電話に出た際の詳細説明
+                  </p>
                 </div>
 
-                {/* 変数一覧 */}
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-700 mb-2">🔧 現在の変数設定</h4>
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                      <div><span className="font-mono bg-gray-200 px-1 rounded">companyName</span>: {settings.companyName}</div>
-                      <div><span className="font-mono bg-gray-200 px-1 rounded">serviceName</span>: {settings.serviceName}</div>
-                      <div><span className="font-mono bg-gray-200 px-1 rounded">representativeName</span>: {settings.representativeName}</div>
-                      <div><span className="font-mono bg-gray-200 px-1 rounded">targetDepartment</span>: {settings.targetDepartment}</div>
-                      <div><span className="font-mono bg-blue-200 px-1 rounded">selfIntroduction</span>: {dynamicSelfIntroduction} <span className="text-blue-600">(自動生成)</span></div>
-                      <div><span className="font-mono bg-gray-200 px-1 rounded">targetPerson</span>: {settings.targetPerson}</div>
-                    </div>
-                    <div className="mt-3 pt-3 border-t border-gray-300">
-                      <div className="text-xs">
-                        <div><span className="font-mono bg-gray-200 px-1 rounded">serviceDescription</span>:</div>
-                        <div className="ml-2 mt-1 text-gray-600">{settings.serviceDescription}</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </div>
             </CardContent>
           </Card>

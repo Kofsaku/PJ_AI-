@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import twilio from "twilio";
 
+// Node.js Runtime指定（Vercel Edge Runtime回避）
+export const runtime = 'nodejs'
+
 interface TwilioError {
   code: number;
   message: string;

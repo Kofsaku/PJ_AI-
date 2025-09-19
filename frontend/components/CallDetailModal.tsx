@@ -55,6 +55,7 @@ const statusColors: Record<string, string> = {
   要フォロー: "bg-purple-500",
   拒否: "bg-red-500",
   失敗: "bg-gray-500",
+  未対応: "bg-gray-600",
   未設定: "bg-gray-400"
 }
 
@@ -164,7 +165,7 @@ export function CallDetailModal({ isOpen, onClose, callId }: CallDetailModalProp
 
   const normalizeStatus = (status: string | null | undefined): string => {
     if (!status) return "未設定";
-    const validResults = ['成功', '不在', '拒否', '要フォロー', '失敗'];
+    const validResults = ['成功', '不在', '拒否', '要フォロー', '失敗', '未対応'];
     if (validResults.includes(status)) return status;
     return "未設定";
   }

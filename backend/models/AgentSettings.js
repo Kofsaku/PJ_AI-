@@ -71,15 +71,11 @@ const AgentSettingsSchema = new mongoose.Schema({
     customTemplates: {
       initial: {
         type: String,
-        default: 'お世話になります。{{selfIntroduction}}。弊社は{{serviceDescription}}会社でございます。是非、御社の{{targetDepartment}}にご案内できればと思いお電話をさせていただきました！本日、{{targetPerson}}はいらっしゃいますでしょうか？'
+        default: 'お世話になります。{{selfIntroduction}}。弊社は{{serviceDescription}}会社でございます。{{serviceName}}について、是非御社の{{targetDepartment}}にご案内できればと思いお電話をさせていただきました。本日、{{targetPerson}}はいらっしゃいますでしょうか？'
       },
       clarification: {
         type: String,
         default: '失礼しました。{{companyName}}の{{representativeName}}です。{{serviceName}}についてご担当者さまにご案内の可否を伺っております。'
-      },
-      company_confirmation: {
-        type: String,
-        default: '{{companyName}}でございます。{{representativeName}}です。是非、御社の{{targetPerson}}にご案内できればと思いお電話をさせていただきました！本日、{{targetPerson}}はいらっしゃいますでしょうか？'
       },
       absent: {
         type: String,
@@ -112,6 +108,10 @@ const AgentSettingsSchema = new mongoose.Schema({
       prepare_transfer: {
         type: String,
         default: 'ありがとうございます。よろしくお願いいたします。'
+      },
+      transfer_accepted: {
+        type: String,
+        default: 'ありがとうございます。お待ちしております。'
       }
     },
     // システムメッセージテンプレート

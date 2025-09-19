@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5001';
+// Node.js Runtime指定（Vercel Edge Runtime回避）
+export const runtime = 'nodejs'
 
 export async function GET(req: NextRequest) {
   try {

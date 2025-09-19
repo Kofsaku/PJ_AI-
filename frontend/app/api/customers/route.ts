@@ -51,6 +51,9 @@ export async function GET(request: NextRequest) {
 }
 
 // POST new customer
+// Node.js Runtime指定（Vercel Edge Runtime回避）
+export const runtime = 'nodejs'
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()

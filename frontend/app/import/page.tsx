@@ -14,6 +14,8 @@ import { Sidebar } from "@/components/sidebar"
 export default function ImportPage() {
   const [file, setFile] = useState<File | null>(null)
   const [dragActive, setDragActive] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
   const handleDrag = (e: React.DragEvent) => {
@@ -33,26 +35,104 @@ export default function ImportPage() {
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       setFile(e.dataTransfer.files[0])
+      setError(null)
     }
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0])
+      setError(null)
     }
   }
 
-  const handleImport = () => {
-    if (file) {
+  const parseCSV = (text: string): any[] => {
+    console.log('[CSV Parse] Raw text length:', text.length)
+    const lines = text.split('\n').filter(line => line.trim())
+    console.log('[CSV Parse] Lines found:', lines.length)
+
+    if (lines.length < 2) return []
+
+    const headers = lines[0].split(',').map(h => h.trim())
+    console.log('[CSV Parse] Headers:', headers)
+    const customers = []
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map(v => v.trim())
+      if (values.length >= headers.length) {
+        const customer: any = {}
+        headers.forEach((header, index) => {
+          customer[header] = values[index] || ''
+        })
+        customers.push(customer)
+
+        if (i === 1) {
+          console.log('[CSV Parse] First customer sample:')
+          console.log('Raw line:', lines[i])
+          console.log('Parsed values:', values)
+          console.log('Customer object:', customer)
+          console.log('Result field value:', customer.result)
+        }
+      }
+    }
+
+    console.log('[CSV Parse] Total customers parsed:', customers.length)
+    return customers
+  }
+
+  const handleImport = async () => {
+    if (!file) return
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const text = await file.text()
+      const customers = parseCSV(text)
+      
+      if (customers.length === 0) {
+        setError('CSVファイルにデータが見つかりません')
+        setLoading(false)
+        return
+      }
+
+      console.log('[Import API] Sending data to API:', customers)
+      console.log('[Import API] First customer being sent:', customers[0])
+
+      const token = localStorage.getItem('token')
+      const response = await fetch('/api/customers/import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ customers })
+      })
+
+      console.log('[Import API] Response status:', response.status)
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'インポートに失敗しました')
+      }
+
+      const result = await response.json()
+      console.log('Import successful:', result)
+      
       router.push("/import/complete")
+    } catch (err) {
+      console.error('Import error:', err)
+      setError(err instanceof Error ? err.message : 'インポート中にエラーが発生しました')
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Sidebar />
 
-      <main className="flex-1 p-6">
+      <main className="ml-64 p-6">
         <h1 className="text-2xl font-bold mb-6">CSVファイルインポート</h1>
 
         <div className="max-w-2xl">
@@ -62,6 +142,12 @@ export default function ImportPage() {
               <p className="text-sm text-gray-600">CSVファイルをドラッグ&ドロップするか、ファイルを選択してください</p>
             </CardHeader>
             <CardContent className="space-y-4">
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-red-700 text-sm">{error}</p>
+                </div>
+              )}
+
               <div
                 className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
                   dragActive ? "border-orange-500 bg-orange-50" : "border-gray-300 hover:border-gray-400"
@@ -96,17 +182,21 @@ export default function ImportPage() {
                 <ul className="text-sm text-blue-800 space-y-1">
                   <li>• 1行目はヘッダー行として扱われます</li>
                   <li>• 文字コードはUTF-8で保存してください</li>
-                  <li>• 必須項目: 氏名、メールアドレス</li>
+                  <li>• 必須項目: customer, email</li>
                   <li>• 最大10,000件まで一度にインポート可能です</li>
                 </ul>
               </div>
 
               <div className="flex justify-end space-x-2 pt-4">
-                <Button variant="outline" onClick={() => router.back()}>
+                <Button variant="outline" onClick={() => router.back()} disabled={loading}>
                   キャンセル
                 </Button>
-                <Button onClick={handleImport} disabled={!file} className="bg-orange-500 hover:bg-orange-600">
-                  インポート実行
+                <Button 
+                  onClick={handleImport} 
+                  disabled={!file || loading} 
+                  className="bg-orange-500 hover:bg-orange-600"
+                >
+                  {loading ? 'インポート中...' : 'インポート実行'}
                 </Button>
               </div>
             </CardContent>

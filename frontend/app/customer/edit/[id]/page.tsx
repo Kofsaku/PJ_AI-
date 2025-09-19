@@ -37,10 +37,10 @@ export default function EditCustomerPage({ params }: { params: { id: string } })
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Sidebar />
 
-      <main className="flex-1 p-6">
+      <main className="ml-64 p-6">
         <div className="max-w-2xl">
           <h1 className="text-2xl font-bold mb-6">顧客情報編集</h1>
 

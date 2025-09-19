@@ -336,7 +336,7 @@ export default function EditUserPage() {
             <select
               value={selectedCompanyId}
               onChange={(e) => setSelectedCompanyId(e.target.value)}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+              className="ml-64 px-3 py-2 border border-gray-300 rounded-md"
             >
               <option value="">企業を選択してください</option>
               {companies.map((company) => (
@@ -418,7 +418,7 @@ export default function EditUserPage() {
                     type="text"
                     value={user.twilioPhoneNumber}
                     disabled
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                    className="ml-64 px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
                   />
                   <span className={`px-2 py-1 text-xs rounded-full ${
                     user.twilioPhoneNumberStatus === 'active' 
@@ -447,7 +447,7 @@ export default function EditUserPage() {
                   <select
                     value={selectedNumberId}
                     onChange={(e) => setSelectedNumberId(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                    className="ml-64 px-3 py-2 border border-gray-300 rounded-md"
                     disabled={availableNumbers.length === 0}
                   >
                     <option value="">電話番号を選択してください</option>

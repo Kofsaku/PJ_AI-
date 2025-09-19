@@ -83,54 +83,54 @@ router.post('/status', async (req, res) => {
           if (Duration) {
             updateData.duration = parseInt(Duration);
           }
-          // HangupCauseから切断理由を判定
+          // HangupCauseから切断理由と通話結果を判定
+          console.log(`[Twilio Status] Hangup cause: ${HangupCause}`);
           if (HangupCause) {
             switch (HangupCause) {
-              case 'originated':
-              case 'caller_hungup':
+              case 'caller-hung-up':
                 updateData.endReason = 'customer_hangup';
+                updateData.callResult = '拒否'; // 相手が電話を切った
                 break;
-              case 'callee_hungup':
+              case 'callee-hung-up':
                 updateData.endReason = 'agent_hangup';
+                updateData.callResult = '成功'; // こちらが切った（通話完了）
                 break;
               case 'system_hangup':
               case 'application_hangup':
                 updateData.endReason = 'ai_initiated';
+                updateData.callResult = '成功';
                 break;
               case 'timeout':
                 updateData.endReason = 'timeout';
+                updateData.callResult = '不在';
                 break;
               default:
                 updateData.endReason = 'normal';
+                updateData.callResult = '成功';
                 break;
             }
-            console.log(`[Twilio Status] Hangup cause: ${HangupCause} -> endReason: ${updateData.endReason}`);
+            console.log(`[Twilio Status] Hangup cause: ${HangupCause} -> endReason: ${updateData.endReason}, callResult: ${updateData.callResult}`);
           } else {
             updateData.endReason = 'normal';
-          }
-
-          // 明示的な結果が未設定の場合は拒否として扱う
-          if (!callSession.callResult && !updateData.callResult) {
-            const rejectionReasons = ['customer_hangup', 'timeout', 'normal'];
-            if (rejectionReasons.includes(updateData.endReason)) {
-              updateData.callResult = '拒否';
-            }
+            updateData.callResult = '成功';
           }
           // 会話エンジンをクリア
           conversationEngine.clearConversation(callSession._id.toString());
           shouldBroadcast = true;
           
-          // 顧客の最終コール日を更新
+          // 顧客の最終コール日とステータスを更新
           if (callSession.customerId?._id) {
             const today = new Date();
             const dateStr = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
-            
+            const finalResult = updateData.callResult || callSession.callResult || '拒否';
+
             await Customer.findByIdAndUpdate(callSession.customerId._id, {
               date: dateStr,
-              result: updateData.callResult || callSession.callResult || '拒否'
+              result: finalResult,
+              callResult: finalResult
             });
-            
-            console.log(`[Twilio Status] Updated customer last call date: ${dateStr} for customer: ${callSession.customerId._id}`);
+
+            console.log(`[Twilio Status] Updated customer ${callSession.customerId._id}: date=${dateStr}, result=${finalResult}`);
           }
           break;
         case 'failed':

@@ -262,10 +262,10 @@ export default function CallHistoryPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Sidebar />
 
-      <main className="flex-1 p-6">
+      <main className="ml-64 p-6">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">コール履歴</h1>
           <Button 
@@ -405,7 +405,6 @@ export default function CallHistoryPage() {
                         メモ
                       </div>
                     </th>
-                    <th className="p-3 text-left">担当</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -456,13 +455,6 @@ export default function CallHistoryPage() {
                         <div className="max-w-xs truncate" title={call.notes}>
                           {call.notes || "-"}
                         </div>
-                      </td>
-                      <td className="p-3">
-                        {call.assignedAgent ? (
-                          <div className="text-sm">{call.assignedAgent.name}</div>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
                       </td>
                     </tr>
                   ))}
