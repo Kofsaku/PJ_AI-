@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
+// Node.js Runtime指定（Vercel Edge Runtime回避）
+export const runtime = 'nodejs'
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const backendResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/auth/signup`, {
+    const backendResponse = await fetch(`${process.env.BACKEND_URL || 'http://localhost:5001'}/api/auth/signup`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

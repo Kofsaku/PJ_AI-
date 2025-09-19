@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Node.js Runtime指定（Vercel Edge Runtime回避）
+export const runtime = 'nodejs'
+
 export async function POST(req: NextRequest) {
   try {
     const { email, password } = await req.json();
@@ -11,7 +14,7 @@ export async function POST(req: NextRequest) {
     
     // Call backend login API to get proper JWT token
     // Use 127.0.0.1 instead of localhost for better compatibility
-    const apiUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'https://pj-ai.onrender.com';
+    const apiUrl = process.env.BACKEND_URL || 'http://localhost:5001';
     const backendUrl = `${apiUrl}/api/auth/login`;
     console.log('Calling backend URL:', backendUrl);
     

@@ -5,15 +5,18 @@ import { NextResponse } from "next/server"
  * This route is deprecated. Twilio voice handling should go through the backend.
  * Redirecting to backend ngrok URL.
  */
+// Node.js Runtime指定（Vercel Edge Runtime回避）
+export const runtime = 'nodejs'
+
 export async function GET() {
   console.log('GET request received from Twilio - redirecting to backend')
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_NGROK_URL || 'https://21fe5a6abbaf.ngrok-free.app'
+  const backendUrl = process.env.BACKEND_URL || 'http://localhost:5001'
   return NextResponse.redirect(`${backendUrl}/api/twilio/voice`, 302)
 }
 
 export async function POST(request: Request) {
   console.log('POST request received from Twilio - redirecting to backend')
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_NGROK_URL || 'https://21fe5a6abbaf.ngrok-free.app'
+  const backendUrl = process.env.BACKEND_URL || 'http://localhost:5001'
   
   // Forward the request to backend
   try {

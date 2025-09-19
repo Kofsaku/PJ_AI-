@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 
+// Node.js Runtime指定（Vercel Edge Runtime回避）
+export const runtime = 'nodejs'
+
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5001'
 const API_BASE_URL = `${BACKEND_URL}/api/customers/import`
 
