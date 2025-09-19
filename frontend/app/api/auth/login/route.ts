@@ -7,29 +7,76 @@ export const runtime = 'nodejs'
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
-    const backendResponse = await fetch(`${process.env.BACKEND_URL || 'http://localhost:5001'}/api/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
+    const { email, password } = await req.json()
+
+    // MongoDBに直接接続（Vercel環境変数から接続文字列取得）
+    const mongoose = require('mongoose')
+    const bcrypt = require('bcryptjs')
+    const jwt = require('jsonwebtoken')
+
+    // MongoDB接続
+    if (mongoose.connection.readyState !== 1) {
+      await mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://kosakutsubata:f10Kl6uGREjqHoWh@cluster0.cu3zvlo.mongodb.net/ai-call?retryWrites=true&w=majority&appName=Cluster0')
+    }
+
+    // Userモデル定義
+    const UserSchema = new mongoose.Schema({
+      email: { type: String, required: true, unique: true },
+      password: { type: String, required: true, select: false },
+      firstName: String,
+      lastName: String,
+      companyId: String,
+      role: { type: String, default: 'user' },
+      isCompanyAdmin: { type: Boolean, default: false }
     })
 
-    const data = await backendResponse.json()
+    UserSchema.methods.comparePassword = async function(enteredPassword) {
+      return await bcrypt.compare(enteredPassword, this.password)
+    }
 
-    if (!backendResponse.ok) {
+    const User = mongoose.models.User || mongoose.model('User', UserSchema)
+
+    // ユーザー検索（パスワードフィールドを含める）
+    const user = await User.findOne({ email }).select('+password')
+
+    if (!user || !(await user.comparePassword(password))) {
       return NextResponse.json(
-        { error: data.error || 'Login failed' },
-        { status: backendResponse.status }
+        { error: 'Invalid email or password' },
+        { status: 401 }
       )
     }
 
-    // You might want to set HTTP-only cookies here for better security
-    const response = NextResponse.json(data)
+    // JWT生成
+    const token = jwt.sign(
+      { 
+        userId: user._id,
+        email: user.email,
+        companyId: user.companyId,
+        role: user.role 
+      },
+      process.env.JWT_SECRET || '7f4a8b9c3d2e1f0g5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8e9f',
+      { expiresIn: '30d' }
+    )
+
+    // レスポンスデータ
+    const responseData = {
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        companyId: user.companyId,
+        role: user.role,
+        isCompanyAdmin: user.isCompanyAdmin
+      }
+    }
+
+    const response = NextResponse.json(responseData)
     
-    // Set cookie (adjust as needed)
-    response.cookies.set('token', data.token, {
+    // セキュアクッキー設定
+    response.cookies.set('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
@@ -39,12 +86,9 @@ export async function POST(req: NextRequest) {
 
     return response
   } catch (error) {
-    const errorMessage =
-      error && typeof error === 'object' && 'message' in error
-        ? (error as { message: string }).message
-        : 'Internal server error'
+    console.error('Login error:', error)
     return NextResponse.json(
-      { error: errorMessage },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
