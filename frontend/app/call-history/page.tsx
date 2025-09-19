@@ -115,7 +115,7 @@ export default function CallHistoryPage() {
   const fetchStatistics = async () => {
     setStatsLoading(true)
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/call-history/stats/summary`, {
+      const response = await fetch(`/api/calls/statistics?period=all`, {
         headers: {
           "Authorization": `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json"
@@ -161,7 +161,7 @@ export default function CallHistoryPage() {
         params.append("result", selectedStatus)
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/call-history?${params}`, {
+      const response = await fetch(`/api/call-history?${params}`, {
         headers: {
           "Authorization": `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json"

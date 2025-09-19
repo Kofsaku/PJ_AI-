@@ -1,80 +1,120 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server'
 
 // Node.js Runtime指定（Vercel Edge Runtime回避）
 export const runtime = 'nodejs'
 
+// 共通のモデル定義とヘルパー関数
+async function initializeMongoose() {
+  const mongoose = require('mongoose')
+
+  if (mongoose.connection.readyState !== 1) {
+    await mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://kosakutsubata:f10Kl6uGREjqHoWh@cluster0.cu3zvlo.mongodb.net/ai-call?retryWrites=true&w=majority&appName=Cluster0')
+  }
+  return mongoose
+}
+
+function defineModels(mongoose) {
+  // Userモデル定義
+  const UserSchema = new mongoose.Schema({
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    companyId: String,
+    role: { type: String, default: 'user' },
+    firstName: String,
+    lastName: String,
+    isActive: { type: Boolean, default: true }
+  }, {
+    timestamps: true
+  })
+  const User = mongoose.models.User || mongoose.model('User', UserSchema)
+
+  return { User }
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { email, password } = await req.json();
-    
-    console.log('=== Admin Login API Called ===');
-    console.log('Email:', email);
-    console.log('Password length:', password?.length || 0);
-    console.log('Timestamp:', new Date().toISOString());
-    
-    // Call backend login API to get proper JWT token
-    // Use 127.0.0.1 instead of localhost for better compatibility
-    const apiUrl = process.env.BACKEND_URL || 'http://localhost:5001';
-    const backendUrl = `${apiUrl}/api/auth/login`;
-    console.log('Calling backend URL:', backendUrl);
-    
-    const backendResponse = await fetch(backendUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, password }),
-    });
+    const { email, password } = await req.json()
 
-    const data = await backendResponse.json();
-    console.log('Backend response status:', backendResponse.status);
-    console.log('Backend response success:', data.success);
-    
-    if (data.user) {
-      console.log('User found - Role:', data.user.role, 'Email:', data.user.email);
-    }
-    
-    if (data.error) {
-      console.log('Backend error:', data.error);
-    }
+    console.log('[Admin Login API] POST request')
+    console.log('[Admin Login API] Email:', email)
+    console.log('[Admin Login API] Password length:', password?.length || 0)
 
-    if (!backendResponse.ok) {
-      console.error('Backend login failed:', data.error);
+    if (!email || !password) {
       return NextResponse.json(
-        { error: data.error || 'Invalid credentials' },
-        { status: backendResponse.status }
-      );
+        { error: 'Email and password are required' },
+        { status: 400 }
+      )
     }
 
-    // Verify the user is an admin
-    if (data.user && data.user.role !== 'admin') {
-      console.error('User is not admin. Role:', data.user.role);
+    const mongoose = await initializeMongoose()
+    const { User } = defineModels(mongoose)
+
+    // ユーザーを検索
+    const user = await User.findOne({ email: email.toLowerCase() })
+    if (!user) {
+      console.log('[Admin Login API] User not found:', email)
+      return NextResponse.json(
+        { error: 'Invalid credentials' },
+        { status: 401 }
+      )
+    }
+
+    // 管理者権限の確認
+    if (user.role !== 'admin') {
+      console.log('[Admin Login API] User is not admin. Role:', user.role)
       return NextResponse.json(
         { error: 'Access denied. Admin privileges required.' },
         { status: 403 }
-      );
+      )
     }
 
-    console.log('✅ Admin login successful!');
-    console.log('Token generated:', !!data.token);
-    console.log('User ID:', data.user?.id);
+    // パスワード確認
+    const bcrypt = require('bcryptjs')
+    const isMatch = await bcrypt.compare(password, user.password)
 
-    // Return the backend response with proper JWT token
+    if (!isMatch) {
+      console.log('[Admin Login API] Password does not match')
+      return NextResponse.json(
+        { error: 'Invalid credentials' },
+        { status: 401 }
+      )
+    }
+
+    // JWT生成
+    const jwt = require('jsonwebtoken')
+    const token = jwt.sign(
+      {
+        userId: user._id,
+        id: user._id,
+        email: user.email,
+        role: user.role,
+        companyId: user.companyId
+      },
+      process.env.JWT_SECRET || '7f4a8b9c3d2e1f0g5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8e9f',
+      { expiresIn: '24h' }
+    )
+
+    console.log('[Admin Login API] Admin login successful')
+    console.log('[Admin Login API] User ID:', user._id)
+    console.log('[Admin Login API] User role:', user.role)
+
     return NextResponse.json({
-      ...data.user,
-      token: data.token,
+      id: user._id,
+      email: user.email,
+      role: user.role,
+      companyId: user.companyId,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      token: token,
       success: true
-    }, { status: 200 });
-    
+    })
+
   } catch (error) {
-    console.error('=== Admin Login API Error ===');
-    console.error('Error type:', error instanceof Error ? error.constructor.name : typeof error);
-    console.error('Error message:', error instanceof Error ? error.message : String(error));
-    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack');
-    
+    console.error('[Admin Login API] Error:', error)
+
     return NextResponse.json(
       { error: 'Internal server error: ' + (error instanceof Error ? error.message : String(error)) },
       { status: 500 }
-    );
+    )
   }
 }
