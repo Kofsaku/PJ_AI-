@@ -422,9 +422,9 @@ export default function CallHistoryPage() {
                       </td>
                       <td className="p-3">
                         <div>
-                          <div className="font-medium">{call.customer.name}</div>
-                          <div className="text-xs text-gray-500">{call.customer.phone}</div>
-                          {call.customer.company && (
+                          <div className="font-medium">{call.customer?.name || call.customer?.customer || '不明'}</div>
+                          <div className="text-xs text-gray-500">{call.customer?.phone || '電話番号なし'}</div>
+                          {call.customer?.company && (
                             <div className="text-xs text-gray-400">{call.customer.company}</div>
                           )}
                         </div>

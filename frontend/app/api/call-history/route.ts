@@ -194,9 +194,23 @@ export async function GET(request: NextRequest) {
 
       console.log('[Call History API] Found', callSessions.length, 'call sessions for companyId:', user.companyId)
 
+      // データ構造をフロントエンドの期待する形式に変換
+      const formattedSessions = callSessions.map(session => {
+        const sessionObj = session.toObject()
+        if (sessionObj.customerId && sessionObj.customerId.customer) {
+          // customer.name フィールドを追加
+          sessionObj.customer = {
+            ...sessionObj.customerId,
+            name: sessionObj.customerId.customer
+          }
+          delete sessionObj.customerId
+        }
+        return sessionObj
+      })
+
       return NextResponse.json({
         success: true,
-        data: callSessions,
+        data: formattedSessions,
         pagination: {
           page,
           limit,
