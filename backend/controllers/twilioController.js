@@ -194,9 +194,9 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
     // 会話エンジンを非同期で初期化（レスポンス送信後）
     setImmediate(() => {
       conversationEngine.initializeConversation(callId, callSession.aiConfiguration);
-      // システムが最初に話したのでturnCountをカウントアップ
-      conversationEngine.updateConversationState(callId, { turnCount: 1 });
-      console.log(`[TwiML Conference] System spoke first - turnCount updated to 1`);
+      // システムが即座に話すことをマーク（turnCountは顧客応答時に判定）
+      conversationEngine.updateConversationState(callId, { systemSpokeFirst: true });
+      console.log(`[TwiML Conference] System will speak first - marked systemSpokeFirst: true`);
     });
 
     res.type('text/xml').send(twimlResponse);
@@ -306,13 +306,16 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
       console.log(`[Speech Input] Conversation already exists for ${callId}`);
     }
 
-    // 初回発話判定: システムが先に話していない場合のみ初回とする
+    // 初回発話判定: 初回の顧客応答かどうかを判定
     const conversationState = conversationEngine.getConversationState(callId);
-    // turnCount 0=初期状態(顧客先行), 1=システム発話済み(システム先行), 2以上=会話継続中
-    const isFirstCustomerSpeech = !conversationState || conversationState.turnCount === 0;
+    // 顧客が先に話した場合、または2回目以降の応答でないかを判定
+    const isFirstCustomerSpeech = !conversationState ||
+      (!conversationState.customerSpokeFirst && conversationState.turnCount === 0);
     console.log(`[Speech Input] Conversation state:`, {
       exists: !!conversationState,
       turnCount: conversationState?.turnCount || 0,
+      customerSpokeFirst: conversationState?.customerSpokeFirst || false,
+      systemSpokeFirst: conversationState?.systemSpokeFirst || false,
       isFirstCustomerSpeech
     });
 
@@ -476,22 +479,26 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
     let classification;
 
     if (isFirstCustomerSpeech) {
+      console.log(`[Speech Input] ========== FIRST CUSTOMER SPEECH DETECTED ==========`);
       console.log(`[Speech Input] Customer spoke first time: "${SpeechResult}"`);
-      console.log(`[Speech Input] Transcript length before: ${callSession.transcript ? callSession.transcript.length : 0}`);
+      console.log(`[Speech Input] turnCount: ${conversationState?.turnCount || 0}`);
+      console.log(`[Speech Input] Will use initial contact response regardless of content`);
       // 会話状態を「顧客が先に名乗った」と記録
       conversationEngine.updateConversationState(callId, { customerSpokeFirst: true });
 
       // 初回応答は分類せず、必ず初回コンタクトメッセージを返す
-      console.log(`[Speech Input] First customer speech detected - using fixed initial contact response`);
       classification = {
         intent: 'initial_contact',  // 固定のインテント
         confidence: 1.0,
         shouldHandoff: false,
         nextAction: 'continue'
       };
+      console.log(`[Speech Input] Classification set to: initial_contact (forced)`);
     } else {
       // 2回目以降の応答は通常通り分類
-      console.log(`[Speech Input] Subsequent customer speech - classifying normally`);
+      console.log(`[Speech Input] ========== SUBSEQUENT CUSTOMER SPEECH ==========`);
+      console.log(`[Speech Input] turnCount: ${conversationState?.turnCount || 0}`);
+      console.log(`[Speech Input] Will classify normally: "${SpeechResult}"`);
       classification = conversationEngine.classifyResponse(SpeechResult, callId);
       console.log(`[Speech Input] Classification result:`, classification);
     }
