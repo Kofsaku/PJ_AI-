@@ -18,6 +18,7 @@ import Link from "next/link";
 import { Sidebar } from "@/components/sidebar";
 import { useToast } from "@/components/ui/use-toast";
 import { parseCSV, formatCustomerForImport } from "@/lib/csvParser";
+import { normalizeApiResponse, getCustomerId, getCustomerIds } from "@/lib/utils/id-normalizer";
 import {
   Dialog,
   DialogContent,
@@ -115,7 +116,7 @@ export default function DashboardPage() {
         });
         if (!response.ok) throw new Error("Failed to fetch customers");
         const data = await response.json();
-        setCustomers(data);
+        setCustomers(normalizeApiResponse(data));
       } catch (error) {
         toast({
           title: "Error",
@@ -188,7 +189,7 @@ export default function DashboardPage() {
         }
       });
       const data = await refreshResponse.json();
-      setCustomers(data);
+      setCustomers(normalizeApiResponse(data));
       
     } catch (error) {
       toast({
@@ -282,7 +283,7 @@ export default function DashboardPage() {
         }
       });
       const data = await refreshResponse.json();
-      setCustomers(data);
+      setCustomers(normalizeApiResponse(data));
     } catch (error) {
       toast({
         title: "Error",
@@ -297,7 +298,7 @@ export default function DashboardPage() {
     if (selectAll) {
       setSelectedCustomers(new Set());
     } else {
-      const allIds = new Set(filteredCustomers.map(c => c._id || c.id.toString()));
+      const allIds = new Set(getCustomerIds(filteredCustomers));
       setSelectedCustomers(allIds);
     }
     setSelectAll(!selectAll);
@@ -339,7 +340,7 @@ export default function DashboardPage() {
       // Update local state
       setCustomers(prevCustomers => 
         prevCustomers.map(c => 
-          (c._id || c.id.toString()) === customerId 
+          getCustomerId(c) === customerId 
             ? { ...c, result: newStatus, callResult: newStatus }
             : c
         )
@@ -364,7 +365,7 @@ export default function DashboardPage() {
   // Handle bulk call
   const handleBulkCall = async () => {
     const selectedCustomerData = customers.filter(c => 
-      selectedCustomers.has(c._id || c.id.toString())
+      selectedCustomers.has(getCustomerId(c))
     );
     
     const phoneNumbers = selectedCustomerData
@@ -372,7 +373,7 @@ export default function DashboardPage() {
       .filter(phone => phone);
     
     const customerIds = selectedCustomerData
-      .map(c => c._id || c.id.toString());
+      .map(getCustomerId);
     
     if (phoneNumbers.length === 0) {
       toast({
@@ -491,7 +492,7 @@ export default function DashboardPage() {
           if (!customerId) {
             const customer = customers.find(c => c.phone === phoneNumber);
             if (customer) {
-              customerId = customer._id || customer.id?.toString();
+              customerId = getCustomerId(customer);
             }
           }
 
@@ -508,7 +509,7 @@ export default function DashboardPage() {
             if (session.callResult) {
               setCustomers(prev =>
                 prev.map(c =>
-                  (c._id || c.id?.toString()) === customerId
+                  getCustomerId(c) === customerId
                     ? { ...c, result: session.callResult, callResult: session.callResult }
                     : c
                 )
@@ -847,7 +848,7 @@ export default function DashboardPage() {
               </thead>
               <tbody>
                 {filteredCustomers.map((customer, index) => {
-                  const customerId = customer._id || customer.id.toString();
+                  const customerId = getCustomerId(customer);
                   const isCallingNow = callingSessions.has(customerId);
                   return (
                     <tr 

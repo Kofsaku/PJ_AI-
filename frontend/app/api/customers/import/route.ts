@@ -12,14 +12,37 @@ export async function POST(req: NextRequest) {
 
     if (!token) {
       return NextResponse.json(
-        { error: 'Authorization required' },
+        { success: false, error: 'Authorization required' },
         { status: 401 }
+      )
+    }
+
+    // バリデーション強化: データ構造の検証
+    if (!customers) {
+      return NextResponse.json(
+        { success: false, error: 'customers field is required' },
+        { status: 400 }
+      )
+    }
+
+    if (!Array.isArray(customers)) {
+      return NextResponse.json(
+        { success: false, error: 'customers must be an array' },
+        { status: 400 }
+      )
+    }
+
+    if (customers.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'customers array cannot be empty' },
+        { status: 400 }
       )
     }
 
     // MongoDB直接接続
     const mongoose = require('mongoose')
     const jwt = require('jsonwebtoken')
+    const z = require('zod')
 
     // MongoDB接続
     if (mongoose.connection.readyState !== 1) {
@@ -27,7 +50,15 @@ export async function POST(req: NextRequest) {
     }
 
     // JWT検証とユーザー情報取得
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || '7f4a8b9c3d2e1f0g5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8e9f')
+    let decoded
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || '7f4a8b9c3d2e1f0g5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8e9f')
+    } catch (jwtError) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid or expired token' },
+        { status: 401 }
+      )
+    }
 
     // Userモデル定義
     const UserSchema = new mongoose.Schema({
@@ -41,7 +72,7 @@ export async function POST(req: NextRequest) {
     const user = await User.findById(decoded.userId || decoded.id)
     if (!user) {
       return NextResponse.json(
-        { error: 'User not found' },
+        { success: false, error: 'User not found' },
         { status: 404 }
       )
     }
@@ -99,48 +130,88 @@ export async function POST(req: NextRequest) {
 
     const Customer = mongoose.models.Customer || mongoose.model('Customer', CustomerSchema)
 
-    // データ検証
-    if (!customers || !Array.isArray(customers)) {
-      return NextResponse.json(
-        { error: 'Invalid data format' },
-        { status: 400 }
-      )
-    }
+    // 強化されたバリデーションスキーマ
+    const CustomerValidationSchema = z.object({
+      customer: z.string().min(1, "顧客名は必須です"),
+      phone: z.string().regex(/^[\d\-\+\(\)\s]*$/, "電話番号の形式が正しくありません").optional().or(z.literal("")),
+      email: z.string().email("メールアドレスの形式が正しくありません").optional().or(z.literal("")),
+      address: z.string().optional(),
+      company: z.string().optional(),
+      notes: z.string().optional(),
+      date: z.string().optional(),
+      time: z.string().optional(),
+      duration: z.string().optional(),
+      result: z.string().optional()
+    })
 
     console.log('[Customer Import] Processing', customers.length, 'customers')
     console.log('[Customer Import] First customer sample:', customers[0])
 
     // 顧客データの検証とフォーマット
-    const validatedCustomers = customers.map((customer, index) => {
-      const validated = {
-        companyId: user.companyId,
-        customer: customer.customer || 'Unknown',
-        date: customer.date || new Date().toISOString().split('T')[0],
-        time: customer.time || '00:00',
-        duration: customer.duration || '0',
-        result: customer.result || '未対応',
-        notes: customer.notes || '',
-        address: customer.address || '',
-        phone: customer.phone || '',
-        email: customer.email || '',
-        company: customer.company || ''
-      }
+    const validationErrors: string[] = []
+    const validatedCustomers: any[] = []
 
-      if (index === 0) {
-        console.log('[Customer Import] Original customer:', customer)
-        console.log('[Customer Import] Validated customer:', validated)
-        console.log('[Customer Import] Result field - original:', customer.result, 'validated:', validated.result)
-      }
+    for (let i = 0; i < customers.length; i++) {
+      const customer = customers[i]
+      
+      try {
+        // Zodバリデーション
+        const validatedInput = CustomerValidationSchema.parse(customer)
+        
+        const formatted = {
+          companyId: user.companyId,
+          customer: validatedInput.customer,
+          date: validatedInput.date || new Date().toISOString().split('T')[0],
+          time: validatedInput.time || '00:00',
+          duration: validatedInput.duration || '0',
+          result: validatedInput.result || '未対応',
+          notes: validatedInput.notes || '',
+          address: validatedInput.address || '',
+          phone: validatedInput.phone || '',
+          email: validatedInput.email || '',
+          company: validatedInput.company || ''
+        }
 
-      return validated
-    })
+        validatedCustomers.push(formatted)
+
+        if (i === 0) {
+          console.log('[Customer Import] Original customer:', customer)
+          console.log('[Customer Import] Validated customer:', formatted)
+        }
+      } catch (zodError) {
+        if (zodError instanceof z.ZodError) {
+          const errorMessages = zodError.errors.map(err => 
+            `行${i + 1}: ${err.path.join('.')} - ${err.message}`
+          )
+          validationErrors.push(...errorMessages)
+        } else {
+          validationErrors.push(`行${i + 1}: 予期しないエラーが発生しました`)
+        }
+      }
+    }
+
+    // バリデーションエラーがある場合は中断
+    if (validationErrors.length > 0) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'データの検証に失敗しました',
+          errors: validationErrors,
+          validCount: validatedCustomers.length,
+          totalCount: customers.length
+        },
+        { status: 400 }
+      )
+    }
 
     // データベースに挿入
     const insertedCustomers = await Customer.insertMany(validatedCustomers)
 
     return NextResponse.json({
+      success: true,
       message: `${insertedCustomers.length} customers imported successfully`,
-      count: insertedCustomers.length
+      count: insertedCustomers.length,
+      errors: []
     })
   } catch (error) {
     console.error('Import error:', error)
@@ -148,13 +219,17 @@ export async function POST(req: NextRequest) {
     // JWT関連のエラー
     if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
       return NextResponse.json(
-        { error: 'Invalid or expired token' },
+        { success: false, error: 'Invalid or expired token' },
         { status: 401 }
       )
     }
 
     return NextResponse.json(
-      { error: 'Failed to import customers', details: error.message },
+      { 
+        success: false, 
+        error: 'Failed to import customers', 
+        details: error.message 
+      },
       { status: 500 }
     )
   }
