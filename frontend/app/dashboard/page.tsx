@@ -108,15 +108,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchCustomers = async () => {
       try {
-        const token = localStorage.getItem('token');
-        const response = await fetch("/api/customers", {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        if (!response.ok) throw new Error("Failed to fetch customers");
-        const data = await response.json();
+        const data = await authenticatedApiRequest('/api/customers');
         setCustomers(normalizeApiResponse(data));
       } catch (error) {
         toast({
@@ -183,13 +175,7 @@ export default function DashboardPage() {
       });
 
       // Refresh customer list
-      const refreshResponse = await fetch("/api/customers", {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      const data = await refreshResponse.json();
+      const data = await authenticatedApiRequest('/api/customers');
       setCustomers(normalizeApiResponse(data));
       
     } catch (error) {
@@ -276,14 +262,7 @@ export default function DashboardPage() {
       });
 
       // Refresh customer list
-      const token = localStorage.getItem('token');
-      const refreshResponse = await fetch("/api/customers", {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      const data = await refreshResponse.json();
+      const data = await authenticatedApiRequest('/api/customers');
       setCustomers(normalizeApiResponse(data));
     } catch (error) {
       toast({
