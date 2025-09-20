@@ -537,16 +537,8 @@ class ConversationEngine {
       return await this.getDefaultInitialResponse();
     }
     
-    // 最初の顧客の発話（もしもし等）には、通常の挨拶で応答
-    if (state.turnCount === 0 || (state.customerSpokeFirst && state.turnCount === 1)) {
-      console.log(`[ConversationEngine] First customer interaction - providing initial greeting`);
-      const { companyName, serviceName, representativeName, targetDepartment } = state.agentSettings;
-      if (companyName && representativeName && serviceName && targetDepartment) {
-        const initialMessage = `お世話になります。${companyName}の${representativeName}と申します。${serviceName}のご案内でお電話しました。本日、${targetDepartment}のご担当者さまはいらっしゃいますでしょうか？`;
-        return initialMessage;
-      }
-      return await this.getDefaultInitialResponse();
-    }
+    // 最初の顧客の発話判定は twilioController.js で行うため、ここでは削除
+    // (システムが先に話した場合と顧客が先に話した場合の両方に対応)
     
     // 直前のメッセージ繰り返し処理
     if (intent === 'repeat_last_message') {

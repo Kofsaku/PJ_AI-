@@ -172,7 +172,7 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
       speechModel: 'enhanced',
       speechTimeout: 'auto',
       timeout: 10,
-      action: `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`,
+      action: `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}?isFirst=true`,
       method: 'POST',
       partialResultCallback: `${process.env.BASE_URL}/api/twilio/voice/partial/${callId}`,
       partialResultCallbackMethod: 'POST'
@@ -184,7 +184,7 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
     // フォールバック
     twiml.redirect({
       method: 'POST'
-    }, `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`);
+    }, `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}?isFirst=true`);
     
     console.log(`[TwiML Conference] Structure: immediate gather+say -> redirect`);
 
@@ -194,6 +194,9 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
     // 会話エンジンを非同期で初期化（レスポンス送信後）
     setImmediate(() => {
       conversationEngine.initializeConversation(callId, callSession.aiConfiguration);
+      // システムが最初に話したのでturnCountをカウントアップ
+      conversationEngine.updateConversationState(callId, { turnCount: 1 });
+      console.log(`[TwiML Conference] System spoke first - turnCount updated to 1`);
     });
 
     res.type('text/xml').send(twimlResponse);
@@ -267,6 +270,8 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
   console.log(`[会話ログ] 信頼度: ${Confidence || 'N/A'}`);
   console.log(`[会話ログ] タイムスタンプ: ${new Date().toISOString()}`);
   console.log(`[会話ログ] リクエストBody:`, JSON.stringify(req.body, null, 2));
+  console.log(`[会話ログ] クエリパラメータ:`, JSON.stringify(req.query, null, 2));
+  console.log(`[会話ログ] req.query.isFirst: "${req.query.isFirst}"`);
   console.log('============================================');
   const twiml = new VoiceResponse();
 
@@ -300,11 +305,21 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
     } else {
       console.log(`[Speech Input] Conversation already exists for ${callId}`);
     }
-    
+
+    // 初回発話判定: システムが先に話していない場合のみ初回とする
+    const conversationState = conversationEngine.getConversationState(callId);
+    // turnCount 0=初期状態(顧客先行), 1=システム発話済み(システム先行), 2以上=会話継続中
+    const isFirstCustomerSpeech = !conversationState || conversationState.turnCount === 0;
+    console.log(`[Speech Input] Conversation state:`, {
+      exists: !!conversationState,
+      turnCount: conversationState?.turnCount || 0,
+      isFirstCustomerSpeech
+    });
+
     // 無音や無入力の場合の処理
     if (!SpeechResult || SpeechResult.trim() === '') {
       // 最初の無音の場合、AIが名乗る
-      if (isFirst) {
+      if (isFirstCustomerSpeech) {
         console.log(`[Speech Input] First silence detected - AI will introduce itself`);
         const initialMessage = await conversationEngine.generateResponse(callId, 'initial');
         
@@ -446,18 +461,8 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
       status: 'ai-responding',
       timestamp: new Date()
     });
-    
-    // 最初の応答で相手が名乗った場合
-    if (isFirst) {
-      console.log(`[Speech Input] Customer spoke first: "${SpeechResult}"`);
-      // 会話状態を「顧客が先に名乗った」と記録
-      conversationEngine.updateConversationState(callId, { customerSpokeFirst: true });
-    }
-    // 音声認識結果を分類
-    const classification = conversationEngine.classifyResponse(SpeechResult, callId);
-    console.log(`[Speech Input] Classification result:`, classification);
 
-    // トランスクリプトを更新
+    // トランスクリプトを即座に更新（初回判定後、分類前）
     await CallSession.findByIdAndUpdate(callId, {
       $push: {
         transcript: {
@@ -467,6 +472,29 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         }
       }
     });
+
+    let classification;
+
+    if (isFirstCustomerSpeech) {
+      console.log(`[Speech Input] Customer spoke first time: "${SpeechResult}"`);
+      console.log(`[Speech Input] Transcript length before: ${callSession.transcript ? callSession.transcript.length : 0}`);
+      // 会話状態を「顧客が先に名乗った」と記録
+      conversationEngine.updateConversationState(callId, { customerSpokeFirst: true });
+
+      // 初回応答は分類せず、必ず初回コンタクトメッセージを返す
+      console.log(`[Speech Input] First customer speech detected - using fixed initial contact response`);
+      classification = {
+        intent: 'initial_contact',  // 固定のインテント
+        confidence: 1.0,
+        shouldHandoff: false,
+        nextAction: 'continue'
+      };
+    } else {
+      // 2回目以降の応答は通常通り分類
+      console.log(`[Speech Input] Subsequent customer speech - classifying normally`);
+      classification = conversationEngine.classifyResponse(SpeechResult, callId);
+      console.log(`[Speech Input] Classification result:`, classification);
+    }
     
     // WebSocketで顧客の発話を送信
     webSocketService.sendTranscriptUpdate(callId, {
@@ -483,40 +511,56 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
       // AI応答を生成
       let aiResponse;
       try {
-        console.log(`[Speech Input] Generating AI response for callId: ${callId}, intent: ${classification.intent}`);
-        // カスタム変数を準備（lastAiMessageがある場合）
-        const customVariables = {};
-        if (classification.lastAiMessage) {
-          customVariables.lastAiMessage = classification.lastAiMessage;
-        }
-        aiResponse = await conversationEngine.generateResponse(callId, classification.intent, customVariables);
-        
-        if (!aiResponse) {
-          console.error(`[Speech Input] WARNING: Empty AI response for callId: ${callId}, intent: ${classification.intent}`);
-          // デフォルトの応答を生成
-          if (isFirst) {
-            // 最初の応答の場合は必ず挨拶を返す
-            const callSession = await CallSession.findById(callId);
+        // 初回応答の場合は必ず初回コンタクトメッセージを生成
+        if (isFirstCustomerSpeech) {
+          console.log(`[Speech Input] Generating initial contact response for callId: ${callId}`);
+
+          // AgentSettingsから初回テンプレートを取得
+          const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
+          if (agentSettings && agentSettings.conversationSettings) {
+            // initialテンプレートを処理（会議開始時と同じ方法）
+            const processedMessage = conversationEngine.processTemplate('initial', callSession.aiConfiguration);
+            if (processedMessage) {
+              aiResponse = processedMessage;
+              console.log(`[Speech Input] Using initial template: ${aiResponse.substring(0, 100)}...`);
+            }
+          }
+
+          // テンプレートがない場合はデフォルトメッセージ
+          if (!aiResponse) {
             if (callSession && callSession.aiConfiguration) {
               const { companyName, serviceName, representativeName, targetDepartment } = callSession.aiConfiguration;
               aiResponse = `お世話になります。${companyName}の${representativeName}と申します。${serviceName}のご案内でお電話しました。本日、${targetDepartment}のご担当者さまはいらっしゃいますでしょうか？`;
             } else {
               aiResponse = 'お世話になります。本日はサービスのご案内でお電話させていただきました。ご担当者様はいらっしゃいますでしょうか？';
             }
-          } else {
-            // AgentSettingsからunknownメッセージを取得
-            aiResponse = '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？';
-            try {
-              const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
-              if (agentSettings) {
-                const processedMessage = conversationEngine.processTemplate('unknown', {});
-                if (processedMessage) {
-                  aiResponse = processedMessage;
-                }
+          }
+        } else {
+          // 2回目以降は通常の応答生成
+          console.log(`[Speech Input] Generating AI response for callId: ${callId}, intent: ${classification.intent}`);
+          // カスタム変数を準備（lastAiMessageがある場合）
+          const customVariables = {};
+          if (classification.lastAiMessage) {
+            customVariables.lastAiMessage = classification.lastAiMessage;
+          }
+          aiResponse = await conversationEngine.generateResponse(callId, classification.intent, customVariables);
+        }
+
+        if (!aiResponse && !isFirstCustomerSpeech) {
+          console.error(`[Speech Input] WARNING: Empty AI response for callId: ${callId}, intent: ${classification.intent}`);
+          // デフォルトの応答を生成
+          // AgentSettingsからunknownメッセージを取得
+          aiResponse = '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？';
+          try {
+            const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
+            if (agentSettings) {
+              const processedMessage = conversationEngine.processTemplate('unknown', {});
+              if (processedMessage) {
+                aiResponse = processedMessage;
               }
-            } catch (error) {
-              console.error('[Speech Input] Error getting unknown message:', error);
             }
+          } catch (error) {
+            console.error('[Speech Input] Error getting unknown message:', error);
           }
         }
       } catch (aiError) {
@@ -525,12 +569,12 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         console.error(`[Speech Input] Error details:`, {
           callId,
           intent: classification.intent,
-          isFirst,
+          isFirstCustomerSpeech,
           speechResult: SpeechResult
         });
-        
+
         // エラーでも最初の応答は必ず返す
-        if (isFirst) {
+        if (isFirstCustomerSpeech) {
           const callSession = await CallSession.findById(callId);
           if (callSession && callSession.aiConfiguration) {
             const { companyName, serviceName, representativeName, targetDepartment } = callSession.aiConfiguration;
