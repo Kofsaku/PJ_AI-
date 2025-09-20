@@ -14,18 +14,22 @@ async function initializeMongoose() {
 }
 
 function defineModels(mongoose) {
-  // Userモデル定義
+  // Userモデル定義（一般ログインAPIと完全一致）
   const UserSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true, select: false },
-    companyId: String,
-    role: { type: String, default: 'user' },
     firstName: String,
     lastName: String,
-    isActive: { type: Boolean, default: true }
-  }, {
-    timestamps: true
+    companyId: String,
+    role: { type: String, default: 'user' },
+    isCompanyAdmin: { type: Boolean, default: false }
   })
+
+  UserSchema.methods.comparePassword = async function(enteredPassword) {
+    const bcrypt = require('bcryptjs')
+    return await bcrypt.compare(enteredPassword, this.password)
+  }
+
   const User = mongoose.models.User || mongoose.model('User', UserSchema)
 
   return { User }
@@ -69,8 +73,7 @@ export async function POST(req: NextRequest) {
     }
 
     // パスワード確認
-    const bcrypt = require('bcryptjs')
-    const isMatch = await bcrypt.compare(password, user.password)
+    const isMatch = await user.comparePassword(password)
 
     if (!isMatch) {
       console.log('[Admin Login API] Password does not match')
