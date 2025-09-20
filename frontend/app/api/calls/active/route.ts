@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 
+// Node.js Runtime指定（Vercel Edge Runtime回避）
+export const runtime = 'nodejs'
+
 // Store active calls in memory (in production, use a database or Redis)
 let activeCalls: any[] = []
 

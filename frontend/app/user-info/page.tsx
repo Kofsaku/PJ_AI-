@@ -35,7 +35,7 @@ export default function UserInfoPage() {
       }
 
       // APIから最新のユーザー情報を取得
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'
+      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'
       const response = await fetch(`${apiUrl}/api/auth/me`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -81,7 +81,7 @@ export default function UserInfoPage() {
   const handleSave = async () => {
     try {
       const token = localStorage.getItem('token')
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'
+      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'
       
       // APIに送信
       const response = await fetch(`${apiUrl}/api/auth/users/profile`, {

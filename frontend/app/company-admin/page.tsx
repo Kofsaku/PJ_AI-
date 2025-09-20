@@ -43,7 +43,7 @@ export default function CompanyAdminDashboard() {
   const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
       
       // 企業統計データを取得
       const statsResponse = await fetch(`${apiUrl}/api/company-admin/dashboard-stats`, {

@@ -5,7 +5,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+    const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
     const authHeader = request.headers.get('authorization');
     
     const backendResponse = await fetch(`${apiUrl}/api/users/${params.id}`, {
@@ -42,7 +42,7 @@ export async function PUT(
 ) {
   try {
     const body = await request.json();
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+    const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
     const authHeader = request.headers.get('authorization');
     
     const backendResponse = await fetch(`${apiUrl}/api/users/${params.id}`, {
@@ -79,7 +79,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+    const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
     const authHeader = request.headers.get('authorization');
     
     const backendResponse = await fetch(`${apiUrl}/api/users/${params.id}`, {

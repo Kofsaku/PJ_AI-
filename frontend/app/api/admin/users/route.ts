@@ -5,7 +5,7 @@ export async function GET(request: NextRequest) {
   
   try {
     // Get the backend API URL
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+    const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
     console.log('Backend API URL:', apiUrl);
     
     // Get the authorization header from the incoming request
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+    const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
     const authHeader = request.headers.get('authorization');
     
     // Extract user ID from the request body or URL

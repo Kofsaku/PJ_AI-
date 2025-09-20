@@ -2,6 +2,9 @@
 import { NextResponse } from "next/server"
 import twilio from "twilio"
 
+// Node.js Runtime指定（Vercel Edge Runtime回避）
+export const runtime = 'nodejs'
+
 const VoiceResponse = twilio.twiml.VoiceResponse
 
 // 会話履歴を保存するためのメモリ内ストレージ（本番環境では永続化ストレージを使用すべき）
