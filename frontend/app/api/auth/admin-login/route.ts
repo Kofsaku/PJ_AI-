@@ -17,7 +17,7 @@ function defineModels(mongoose) {
   // Userモデル定義
   const UserSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
+    password: { type: String, required: true, select: false },
     companyId: String,
     role: { type: String, default: 'user' },
     firstName: String,
@@ -49,8 +49,8 @@ export async function POST(req: NextRequest) {
     const mongoose = await initializeMongoose()
     const { User } = defineModels(mongoose)
 
-    // ユーザーを検索
-    const user = await User.findOne({ email: email.toLowerCase() })
+    // ユーザーを検索（パスワードも含める）
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password')
     if (!user) {
       console.log('[Admin Login API] User not found:', email)
       return NextResponse.json(
