@@ -83,13 +83,14 @@ export default function UsersPage() {
   if (error) return <div className="p-8 text-red-500">Error: {error}</div>;
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="p-8">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">ユーザー管理</h1>
+        <h1 className="text-2xl font-semibold">ユーザー管理</h1>
       </div>
 
-      <div className="bg-white shadow-md rounded-lg overflow-hidden">
-        <table className="min-w-full">
+      <div className="bg-white shadow rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -154,7 +155,8 @@ export default function UsersPage() {
             ))}
           </tbody>
         </table>
-        
+        </div>
+
         {users.length === 0 && (
           <div className="text-center py-8 text-gray-500">
             ユーザーがいません
