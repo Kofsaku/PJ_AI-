@@ -51,9 +51,14 @@ export default function LoginPage() {
         router.push('/dashboard')
       }
     } catch (err) {
+      console.error('[Login] Full error details:', err);
       if (err instanceof Error) {
-        setError(err.message)
+        console.error('[Login] Error name:', err.name);
+        console.error('[Login] Error message:', err.message);
+        console.error('[Login] Error stack:', err.stack);
+        setError(`Login failed: ${err.message}`)
       } else {
+        console.error('[Login] Unknown error type:', typeof err, err);
         setError("An unknown error occurred")
       }
     } finally {
