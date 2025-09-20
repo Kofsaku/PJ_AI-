@@ -112,7 +112,9 @@ exports.makeCall = async (phoneNumber, sessionId, userId = null) => {
     }
     
     // Use webhook base URL from environment
-    const baseUrl = process.env.BASE_URL || process.env.NGROK_URL || 'http://localhost:5001';
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? (process.env.BASE_URL_PROD || process.env.BASE_URL || 'https://pj-ai.onrender.com')
+      : (process.env.BASE_URL || process.env.NGROK_URL || 'http://localhost:5001');
     console.log('[TwilioService] Making call to:', formattedNumber);
     console.log('[TwilioService] From number:', fromNumber);
     console.log('[TwilioService] Using webhook URL:', `${baseUrl}/api/twilio/voice`);
