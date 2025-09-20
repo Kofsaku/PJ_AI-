@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Search, ChevronLeft, ChevronRight, Phone, Calendar, Clock, User, FileText, Loader2 } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { CallDetailModal } from "@/components/CallDetailModal"
+import { authenticatedApiRequest } from "@/lib/apiHelper"
 import { format } from "date-fns"
 import { ja } from "date-fns/locale"
 
@@ -118,18 +119,7 @@ export default function CallHistoryPage() {
   const fetchStatistics = async () => {
     setStatsLoading(true)
     try {
-      const response = await fetch(`/api/call-history/stats/summary`, {
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json"
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error("統計情報の取得に失敗しました")
-      }
-
-      const data = await response.json()
+      const data = await authenticatedApiRequest('/api/call-history/stats/summary')
       
       if (data.success) {
         setStatistics(data.data)
@@ -164,18 +154,7 @@ export default function CallHistoryPage() {
         params.append("result", selectedStatus)
       }
 
-      const response = await fetch(`/api/call-history?${params}`, {
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json"
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error("コール履歴の取得に失敗しました")
-      }
-
-      const data = await response.json()
+      const data = await authenticatedApiRequest(`/api/call-history?${params}`)
       
       if (data.success) {
         const callsData = Array.isArray(data.data) ? data.data : []

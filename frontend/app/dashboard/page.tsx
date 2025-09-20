@@ -642,22 +642,14 @@ export default function DashboardPage() {
               <Button
                 onClick={async () => {
                   try {
-                    const response = await fetch('/api/calls/bulk/stop', {
-                      method: 'POST',
-                      headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
-                      }
+                    await authenticatedApiRequest('/api/calls/bulk/stop', {
+                      method: 'POST'
                     });
                     
-                    if (response.ok) {
-                      toast({
+                    toast({
                         title: "停止処理中",
                         description: "一斉通話を停止しています...",
                       });
-                    } else {
-                      throw new Error('Failed to stop bulk calls');
-                    }
                   } catch (error) {
                     toast({
                       title: "エラー",

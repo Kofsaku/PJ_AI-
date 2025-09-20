@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Save, RotateCcw, Play } from "lucide-react";
 import { Sidebar } from "@/components/sidebar";
+import { authenticatedApiRequest } from "@/lib/apiHelper";
 
 interface SalesPitchSettings {
   // 基本設定
@@ -55,15 +56,7 @@ export default function SalesPitchSettingsPage() {
 
   const loadSettings = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/users/sales-pitch', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
+      const data = await authenticatedApiRequest('/api/users/sales-pitch');
         const agentData = data.data;
         setSettings({
           // 基本設定
@@ -115,14 +108,8 @@ export default function SalesPitchSettingsPage() {
   const saveSettings = async () => {
     try {
       setSaving(true);
-      const token = localStorage.getItem('token');
-
-      const response = await fetch('/api/users/sales-pitch', {
+      await authenticatedApiRequest('/api/users/sales-pitch', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify({
           conversationSettings: {
             companyName: settings.companyName,
@@ -139,8 +126,6 @@ export default function SalesPitchSettingsPage() {
           }
         })
       });
-
-      if (response.ok) {
         toast({
           title: "保存完了",
           description: "トークスクリプト設定が保存されました。"
