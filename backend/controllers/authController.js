@@ -126,6 +126,68 @@ exports.register = asyncHandler(async (req, res, next) => {
   }
 });
 
+// @desc    Admin login
+// @route   POST /api/auth/admin-login
+// @access  Public
+exports.adminLogin = asyncHandler(async (req, res, next) => {
+  const { email, password } = req.body;
+  
+  console.log('Admin login attempt for email:', email);
+
+  // Validate email and password
+  if (!email || !password) {
+    console.log('Missing email or password');
+    return res.status(400).json({
+      success: false,
+      error: 'Please provide an email and password',
+    });
+  }
+
+  // Check for admin user specifically
+  const user = await User.findOne({ email, role: 'admin' }).select('+password');
+
+  if (!user) {
+    console.log('Admin user not found for email:', email);
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid admin credentials',
+    });
+  }
+  
+  console.log('Admin user found:', user.email, 'Role:', user.role);
+
+  // Check if password matches
+  const isMatch = await user.comparePassword(password);
+
+  if (!isMatch) {
+    console.log('Password mismatch for admin user:', email);
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid admin credentials',
+    });
+  }
+  
+  console.log('Admin login successful for:', email);
+
+  // Create token
+  const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+    expiresIn: '30d',
+  });
+
+  res.status(200).json({
+    success: true,
+    token,
+    role: user.role,
+    user: {
+      id: user._id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+    },
+  });
+});
+
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
