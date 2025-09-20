@@ -59,7 +59,9 @@ app.use(cors({
       'http://localhost:3000',
       'http://localhost:3001', 
       'http://localhost:3002',
-      process.env.FRONTEND_URL
+      process.env.FRONTEND_URL,
+      process.env.FRONTEND_URL_PROD,
+      'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app'
     ].filter(Boolean);
     
     // Allow requests with no origin (like mobile apps or curl requests)
