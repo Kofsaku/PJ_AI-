@@ -57,6 +57,7 @@ export default function SalesPitchSettingsPage() {
   const loadSettings = async () => {
     try {
       const data = await authenticatedApiRequest('/api/users/sales-pitch');
+      if (data && data.data) {
         const agentData = data.data;
         setSettings({
           // 基本設定
