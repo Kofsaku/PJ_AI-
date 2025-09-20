@@ -17,7 +17,9 @@ import { Search, ChevronLeft, ChevronRight, Upload, FileUp, X, Phone, Loader2 } 
 import Link from "next/link";
 import { Sidebar } from "@/components/sidebar";
 import { useToast } from "@/components/ui/use-toast";
+import { authenticatedApiRequest, getApiUrl } from "@/lib/apiHelper";
 import { parseCSV, formatCustomerForImport } from "@/lib/csvParser";
+import { normalizeApiResponse, getCustomerId, getCustomerIds } from "@/lib/utils/id-normalizer";
 import {
   Dialog,
   DialogContent,
@@ -28,7 +30,6 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { CallModal } from "@/components/calls/CallModal";
 import { CallStatusModal } from "@/components/calls/CallStatusModal";
-import { io, Socket } from "socket.io-client";
 
 // Define customer type
 type Customer = {
@@ -99,7 +100,6 @@ export default function DashboardPage() {
   const [activePhoneNumber, setActivePhoneNumber] = useState("");
   const [callingSessions, setCallingSessions] = useState<Set<string>>(new Set()); // 通話中の顧客ID
   const [phoneToCustomerMap, setPhoneToCustomerMap] = useState<Map<string, string>>(new Map()); // phone -> customerId
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [isBulkCallActive, setIsBulkCallActive] = useState(false); // 一斉通話実行中フラグ
   const [bulkCallQueue, setBulkCallQueue] = useState<number>(0); // キュー中の通話数
   const { toast } = useToast();
@@ -108,16 +108,8 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchCustomers = async () => {
       try {
-        const token = localStorage.getItem('token');
-        const response = await fetch("/api/customers", {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        });
-        if (!response.ok) throw new Error("Failed to fetch customers");
-        const data = await response.json();
-        setCustomers(data);
+        const data = await authenticatedApiRequest('/api/customers');
+        setCustomers(normalizeApiResponse(data));
       } catch (error) {
         toast({
           title: "Error",
@@ -183,14 +175,8 @@ export default function DashboardPage() {
       });
 
       // Refresh customer list
-      const refreshResponse = await fetch("/api/customers", {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      const data = await refreshResponse.json();
-      setCustomers(data);
+      const data = await authenticatedApiRequest('/api/customers');
+      setCustomers(normalizeApiResponse(data));
       
     } catch (error) {
       toast({
@@ -276,15 +262,8 @@ export default function DashboardPage() {
       });
 
       // Refresh customer list
-      const token = localStorage.getItem('token');
-      const refreshResponse = await fetch("/api/customers", {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      const data = await refreshResponse.json();
-      setCustomers(data);
+      const data = await authenticatedApiRequest('/api/customers');
+      setCustomers(normalizeApiResponse(data));
     } catch (error) {
       toast({
         title: "Error",
@@ -299,7 +278,7 @@ export default function DashboardPage() {
     if (selectAll) {
       setSelectedCustomers(new Set());
     } else {
-      const allIds = new Set(filteredCustomers.map(c => c._id || c.id.toString()));
+      const allIds = new Set(getCustomerIds(filteredCustomers));
       setSelectedCustomers(allIds);
     }
     setSelectAll(!selectAll);
@@ -341,7 +320,7 @@ export default function DashboardPage() {
       // Update local state
       setCustomers(prevCustomers => 
         prevCustomers.map(c => 
-          (c._id || c.id.toString()) === customerId 
+          getCustomerId(c) === customerId 
             ? { ...c, result: newStatus, callResult: newStatus }
             : c
         )
@@ -361,12 +340,12 @@ export default function DashboardPage() {
     } finally {
       setIsUpdatingStatus(null);
     }
-  };;
+  };
 
   // Handle bulk call
   const handleBulkCall = async () => {
     const selectedCustomerData = customers.filter(c => 
-      selectedCustomers.has(c._id || c.id.toString())
+      selectedCustomers.has(getCustomerId(c))
     );
     
     const phoneNumbers = selectedCustomerData
@@ -374,7 +353,7 @@ export default function DashboardPage() {
       .filter(phone => phone);
     
     const customerIds = selectedCustomerData
-      .map(c => c._id || c.id.toString());
+      .map(getCustomerId);
     
     if (phoneNumbers.length === 0) {
       toast({
@@ -391,7 +370,7 @@ export default function DashboardPage() {
     setCallResults([]);
 
     try {
-      // 電話番号と顧客IDのマッピングを作成（通話状態はWebSocketで管理）
+      // 電話番号と顧客IDのマッピングを作成（通話状態はポーリングで管理）
       const phoneMap = new Map<string, string>();
       phoneNumbers.forEach((phone, index) => {
         if (customerIds[index]) {
@@ -400,7 +379,7 @@ export default function DashboardPage() {
       });
       setPhoneToCustomerMap(phoneMap);
       
-      // 通話中状態はクリアして、実際の通話開始時にWebSocketイベントで設定される
+      // 通話中状態はクリアして、実際の通話開始時にポーリングで検出される
       setCallingSessions(new Set());
       
       // Immediately open the call status modal
@@ -410,41 +389,31 @@ export default function DashboardPage() {
         setIsCallStatusModalOpen(true);
       }
 
-      const response = await fetch('/api/calls/bulk', {
+      const result = await authenticatedApiRequest('/api/calls/bulk', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
         body: JSON.stringify({ 
           phoneNumbers,
           customerIds 
         })
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to initiate bulk calls');
-      }
-
-      const result = await response.json();
       
-      // Update progress and results
+      // Update progress and results - 修正: result.results を result.sessions に変更
       setCallProgress(100);
-      setCallResults(result.results || []);
+      setCallResults(result.sessions || []);
       setIsCalling(false);
-      
+
       toast({
         title: "一斉コール開始",
         description: `${phoneNumbers.length}件の電話を開始しました`,
       });
-      
+
       // Clear selection after starting calls
       setSelectedCustomers(new Set());
       setSelectAll(false);
-      
-      // WebSocketで通話状態を監視するため、ここではクリアしない
+
+      // ポーリングで通話状態を監視するため、ここではクリアしない
       // 実際の通話終了イベントでクリアされる
-      
+
     } catch (error) {
       setIsCalling(false);
       setCallingSessions(new Set()); // エラー時も通話中状態をクリア
@@ -457,305 +426,108 @@ export default function DashboardPage() {
   };
 
 
-  // WebSocket connection for real-time call status
+  // ポーリングベースのリアルタイム通話状態更新
   useEffect(() => {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
     const token = localStorage.getItem("token");
-    
-    const newSocket = io(backendUrl, {
-      transports: ["websocket", "polling"], // pollingもフォールバックとして追加
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 5,
-      auth: {
-        token: token || undefined
-      }
-    });
+    if (!token) return;
 
-    newSocket.on("connect", () => {
-      console.log("[Dashboard] WebSocket connected");
-      // 接続時に通話中セッションをクリア（実際の通話状態はactive-callsで更新される）
-      setCallingSessions(new Set());
-    });
+    console.log("[Dashboard] Starting polling for call status updates");
 
-    newSocket.on("connect_error", (error) => {
-      console.error("[Dashboard] WebSocket connection error:", error.message);
-    });
+    // 通話状態を取得する関数
+    const fetchCallStatuses = async () => {
+      try {
+        const data = await authenticatedApiRequest('/api/calls/bulk');
+        if (!data.success || !data.sessions) return;
 
-    // Listen for bulk call events
-    newSocket.on("bulk-calls-queued", (data) => {
-      console.log("[Dashboard] Bulk calls queued:", data);
-      setIsBulkCallActive(true);
-      setBulkCallQueue(data.totalCalls || 0);
-      
-      // queued状態のセッションの顧客IDを識別
-      if (data.sessions) {
-        const queuedIds = data.sessions
-          .filter((s: any) => s.status === 'queued')
-          .map((s: any) => {
-            // まずdataから直接customerIdを取得
-            if (s.customerId) {
-              return s.customerId;
-            }
-            
-            // 電話番号から顧客を検索
-            const phoneNumber = s.phoneNumber?.startsWith('+81') 
-              ? '0' + s.phoneNumber.substring(3) 
-              : s.phoneNumber;
-            const customer = customers.find(c => c.phone === phoneNumber);
-            return customer?._id || customer?.id?.toString();
-          })
-          .filter(Boolean);
-        
-        console.log("[Dashboard] Queued customer IDs:", queuedIds);
-        
-        // キュー待ちの顧客は通話中から除外（一旦クリアしてからキューに入れる）
-        setCallingSessions(prev => {
-          const newSet = new Set(prev);
-          queuedIds.forEach((id: string) => newSet.delete(id));
-          return newSet;
-        });
-        
-        // 顧客リストに「キュー待ち」状態を視覚的に反映させるため、
-        // 今回は通話中状態の管理のみとし、別のステータス表示は将来的に検討
-      }
-    });
-
-    newSocket.on("bulk-calls-stopped", (data) => {
-      console.log("[Dashboard] Bulk calls stopped:", data);
-      setIsBulkCallActive(false);
-      setBulkCallQueue(0);
-      setCallingSessions(new Set());
-      toast({
-        title: "一斉通話停止",
-        description: `${data.totalStopped || 0}件の通話を停止しました`,
-      });
-    });
-
-    // Listen for call initiated events
-    newSocket.on("call-initiated", (data) => {
-      console.log("[Dashboard] Call initiated:", data);
-
-      // バルクコール状態をアクティブに設定（bulk-calls-queuedを受信できない場合のバックアップ）
-      if (!isBulkCallActive) {
-        console.log("[Dashboard] Setting bulk call active (backup trigger)");
-        setIsBulkCallActive(true);
-      }
-
-      const phoneNumber = data.phoneNumber?.startsWith('+81')
-        ? '0' + data.phoneNumber.substring(3)
-        : data.phoneNumber;
-      
-      // まずdataから直接customerIdを取得を試行
-      let customerId = data.customerId;
-      
-      // customerIdがない場合はマッピングから取得
-      if (!customerId) {
-        customerId = phoneToCustomerMap.get(phoneNumber);
-      }
-      
-      // それでもない場合は顧客配列から検索
-      if (!customerId) {
-        const customer = customers.find(c => c.phone === phoneNumber);
-        if (customer) {
-          customerId = customer._id || customer.id?.toString();
-        }
-      }
-      
-      if (customerId) {
-        console.log(`[Dashboard] Setting customer ${customerId} as calling (initiated)`);
-        setCallingSessions(prev => new Set(prev).add(customerId));
-      } else {
-        console.error("[Dashboard] Failed to identify customer for phone:", phoneNumber);
-      }
-    });
-
-    // Listen for call terminated events
-    newSocket.on("call-terminated", (data) => {
-      console.log("[Dashboard] Call terminated:", data);
-      const phoneNumber = data.phoneNumber?.startsWith('+81') 
-        ? '0' + data.phoneNumber.substring(3) 
-        : data.phoneNumber;
-      
-      // まずdataから直接customerIdを取得を試行
-      let customerId = data.customerId;
-      
-      // customerIdがない場合はマッピングから取得
-      if (!customerId) {
-        customerId = phoneToCustomerMap.get(phoneNumber);
-      }
-      
-      // それでもない場合は顧客配列から検索
-      if (!customerId) {
-        const customer = customers.find(c => c.phone === phoneNumber);
-        if (customer) {
-          customerId = customer._id || customer.id?.toString();
-        }
-      }
-      
-      if (customerId) {
-        console.log(`[Dashboard] Clearing customer ${customerId} (terminated)`);
-        setCallingSessions(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(customerId);
-          return newSet;
-        });
-      } else {
-        console.error("[Dashboard] Failed to identify customer for phone:", phoneNumber);
-      }
-    });
-
-    // Listen for call status updates
-    newSocket.on("call-status", (data) => {
-      console.log("[Dashboard] Call status update:", data);
-      const phoneNumber = data.phoneNumber?.startsWith('+81') 
-        ? '0' + data.phoneNumber.substring(3) 
-        : data.phoneNumber;
-      
-      // まずdataから直接customerIdを取得を試行
-      let customerId = data.customerId;
-      
-      // customerIdがない場合はマッピングから取得
-      if (!customerId) {
-        customerId = phoneToCustomerMap.get(phoneNumber);
-      }
-      
-      // それでもない場合は顧客配列から検索
-      if (!customerId) {
-        const customer = customers.find(c => c.phone === phoneNumber);
-        if (customer) {
-          customerId = customer._id || customer.id?.toString();
-        }
-      }
-      
-      if (customerId) {
-        if (data.status === "in-progress" || data.status === "calling" ||
-            data.status === "ai-responding" || data.status === "initiated" ||
-            data.status === "human-connected" || data.status === "transferring") {
-          // 通話開始〜通話中の状態は全て「通話中」として扱う
-          console.log(`[Dashboard] Setting customer ${customerId} as calling`);
-          setCallingSessions(prev => new Set(prev).add(customerId));
-
-          // 顧客ステータスを「通話中」に更新
-          if (data.status === "in-progress") {
-            console.log(`[Dashboard] Updating customer ${customerId} status to '通話中'`);
-            setCustomers(prev =>
-              prev.map(c =>
-                (c._id || c.id?.toString()) === customerId
-                  ? { ...c, result: '通話中', callResult: '通話中' }
-                  : c
-              )
-            );
-          }
-
-          // キューカウントを減らす
-          if (data.status === "calling" || data.status === "in-progress") {
-            setBulkCallQueue(prev => Math.max(0, prev - 1));
-          }
-        } else if (data.status === "completed" || data.status === "failed" ||
-                   data.status === "ended" || data.status === "cancelled") {
-          // 通話終了時のみクリア
-          console.log(`[Dashboard] Clearing customer ${customerId} from calling sessions`);
-          setCallingSessions(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(customerId);
-            return newSet;
-          });
-
-          // 通話結果があればリアルタイムで顧客ステータスを更新（通話開始と同じロジック）
-          if (data.callResult) {
-            console.log(`[Dashboard] Updating customer ${customerId} result to '${data.callResult}'`);
-            setCustomers(prev =>
-              prev.map(c =>
-                (c._id || c.id?.toString()) === customerId
-                  ? { ...c, result: data.callResult, callResult: data.callResult }
-                  : c
-              )
-            );
-          }
-
-          // 通話終了時にマッピングもクリア
-          if (phoneNumber) {
-            setPhoneToCustomerMap(prev => {
-              const newMap = new Map(prev);
-              newMap.delete(phoneNumber);
-              return newMap;
-            });
-          }
-        } else if (data.status === "queued") {
-          // キュー待ち状態は通話中ではない
-          console.log(`[Dashboard] Customer ${customerId} is queued, not calling`);
-          setCallingSessions(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(customerId);
-            return newSet;
-          });
-        }
-      } else if (!customerId) {
-        console.error("[Dashboard] Failed to identify customer for call-status:", {
-          phoneNumber: data.phoneNumber,
-          normalizedPhone: phoneNumber,
-          dataCustomerId: data.customerId,
-          status: data.status
-        });
-      }
-    });
-
-    // Listen for bulk calls started
-    newSocket.on("bulk-calls-started", (data) => {
-      console.log("[Dashboard] Bulk calls started:", data);
-      // bulk-calls-startedイベントでは通話中にしない
-      // 実際に通話が開始されたときにcall-initiatedイベントで設定される
-    });
-
-    // Listen for active calls (既存の通話セッション）
-    newSocket.on("active-calls", (data) => {
-      console.log("[Dashboard] Active calls:", data);
-      if (Array.isArray(data) && data.length > 0) {
+        // アクティブな通話セッションを特定
         const newCallingSessions = new Set<string>();
-        data.forEach((call: any) => {
-          const phoneNumber = call.phoneNumber?.startsWith('+81') 
-            ? '0' + call.phoneNumber.substring(3) 
-            : call.phoneNumber;
-          
-          let customerId = phoneToCustomerMap.get(phoneNumber);
-          if (!customerId && call.customerId) {
-            customerId = call.customerId._id || call.customerId;
-          }
+        let activeCallCount = 0;
+        let queuedCallCount = 0;
+
+        data.sessions.forEach((session: any) => {
+          const phoneNumber = session.phoneNumber?.startsWith('+81')
+            ? '0' + session.phoneNumber.substring(3)
+            : session.phoneNumber;
+
+          let customerId = session.customer?._id || session.customer;
           if (!customerId) {
             const customer = customers.find(c => c.phone === phoneNumber);
             if (customer) {
-              customerId = customer._id || customer.id?.toString();
+              customerId = getCustomerId(customer);
             }
           }
-          
-          if (customerId && (call.status === "in-progress" || call.status === "calling" || 
-              call.status === "ai-responding" || call.status === "initiated" || call.status === "human-connected")) {
-            newCallingSessions.add(customerId);
+
+          if (customerId) {
+            // アクティブな通話状態をチェック
+            if (['calling', 'initiated', 'ai-responding', 'in-progress', 'human-connected', 'transferring'].includes(session.status)) {
+              newCallingSessions.add(customerId);
+              activeCallCount++;
+            } else if (session.status === 'queued') {
+              queuedCallCount++;
+            }
+
+            // 通話結果が更新されていれば顧客リストに反映
+            if (session.callResult) {
+              setCustomers(prev =>
+                prev.map(c =>
+                  getCustomerId(c) === customerId
+                    ? { ...c, result: session.callResult, callResult: session.callResult }
+                    : c
+                )
+              );
+            }
           }
         });
-        // 一括で更新
-        setCallingSessions(newCallingSessions);
-      } else {
-        // アクティブな通話がない場合はクリア
-        setCallingSessions(new Set());
+
+        // 通話中セッションを更新
+        setCallingSessions(prev => {
+          const hasChanges = prev.size !== newCallingSessions.size ||
+            [...prev].some(id => !newCallingSessions.has(id));
+          if (hasChanges) {
+            console.log('[Dashboard] Updated calling sessions:', newCallingSessions);
+            return newCallingSessions;
+          }
+          return prev;
+        });
+
+        // バルクコール状態を更新
+        const totalActiveCalls = activeCallCount + queuedCallCount;
+        if (totalActiveCalls > 0) {
+          setIsBulkCallActive(true);
+          setBulkCallQueue(queuedCallCount);
+        } else if (isBulkCallActive && newCallingSessions.size === 0) {
+          setIsBulkCallActive(false);
+          setBulkCallQueue(0);
+        }
+
+      } catch (error) {
+        console.error('[Dashboard] Error polling call statuses:', error);
       }
-    });
+    };
 
-    newSocket.on("disconnect", () => {
-      console.log("[Dashboard] WebSocket disconnected");
-      // 切断時に通話中セッションをクリア（再接続時にactive-callsで更新される）
-      setCallingSessions(new Set());
-    });
+    // 初回実行
+    fetchCallStatuses();
 
+    // 3秒間隔でポーリング（通話中の場合は頻度を上げる）
+    const pollingInterval = setInterval(() => {
+      if (isBulkCallActive || callingSessions.size > 0) {
+        fetchCallStatuses();
+      }
+    }, 3000);
 
-    setSocket(newSocket);
+    // 通話状態が非アクティブの場合は低頻度ポーリング
+    const lowFrequencyInterval = setInterval(() => {
+      if (!isBulkCallActive && callingSessions.size === 0) {
+        fetchCallStatuses();
+      }
+    }, 10000);
 
     return () => {
-      console.log("[Dashboard] Cleaning up WebSocket connection");
-      newSocket.disconnect();
+      clearInterval(pollingInterval);
+      clearInterval(lowFrequencyInterval);
+      console.log('[Dashboard] Stopped polling for call status updates');
     };
-  }, [phoneToCustomerMap, customers]);
+  }, [customers, isBulkCallActive, callingSessions.size]);
 
   // 通話状態監視 - 全通話終了時に一斉通話状態を自動リセット（遅延実行）
   useEffect(() => {
@@ -870,22 +642,14 @@ export default function DashboardPage() {
               <Button
                 onClick={async () => {
                   try {
-                    const response = await fetch('/api/calls/bulk/stop', {
-                      method: 'POST',
-                      headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
-                      }
+                    await authenticatedApiRequest('/api/calls/bulk/stop', {
+                      method: 'POST'
                     });
                     
-                    if (response.ok) {
-                      toast({
+                    toast({
                         title: "停止処理中",
                         description: "一斉通話を停止しています...",
                       });
-                    } else {
-                      throw new Error('Failed to stop bulk calls');
-                    }
                   } catch (error) {
                     toast({
                       title: "エラー",
@@ -1037,7 +801,7 @@ export default function DashboardPage() {
               </thead>
               <tbody>
                 {filteredCustomers.map((customer, index) => {
-                  const customerId = customer._id || customer.id.toString();
+                  const customerId = getCustomerId(customer);
                   const isCallingNow = callingSessions.has(customerId);
                   return (
                     <tr 

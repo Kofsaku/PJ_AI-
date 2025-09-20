@@ -69,9 +69,11 @@ export function CallStatusModal({
       
       // Initialize socket connection
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
-      
+      const token = localStorage.getItem('token');
+
       const newSocket = io(backendUrl, {
         transports: ["websocket"],
+        auth: { token }
       });
 
       newSocket.on("connect", () => {

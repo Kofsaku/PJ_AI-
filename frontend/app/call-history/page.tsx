@@ -9,14 +9,18 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Search, ChevronLeft, ChevronRight, Phone, Calendar, Clock, User, FileText, Loader2 } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { CallDetailModal } from "@/components/CallDetailModal"
+import { authenticatedApiRequest } from "@/lib/apiHelper"
 import { format } from "date-fns"
 import { ja } from "date-fns/locale"
 
 interface Customer {
-  id: string
+  id?: string
   name: string
+  customer?: string
   phone: string
   company?: string
+  email?: string
+  address?: string
 }
 
 interface CallRecord {
@@ -104,7 +108,7 @@ export default function CallHistoryPage() {
   const [statistics, setStatistics] = useState<Statistics>({
     totalCalls: 0,
     successRate: 0,
-    avgDuration: "0分0秒",
+    avgDuration: "0秒",
     pendingCount: 0
   })
   const [statsLoading, setStatsLoading] = useState(false)
@@ -115,18 +119,7 @@ export default function CallHistoryPage() {
   const fetchStatistics = async () => {
     setStatsLoading(true)
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/call-history/stats/summary`, {
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json"
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error("統計情報の取得に失敗しました")
-      }
-
-      const data = await response.json()
+      const data = await authenticatedApiRequest('/api/call-history/stats/summary')
       
       if (data.success) {
         setStatistics(data.data)
@@ -161,23 +154,22 @@ export default function CallHistoryPage() {
         params.append("result", selectedStatus)
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/call-history?${params}`, {
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json"
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error("コール履歴の取得に失敗しました")
-      }
-
-      const data = await response.json()
+      const data = await authenticatedApiRequest(`/api/call-history?${params}`)
       
       if (data.success) {
-        setCalls(data.data)
-        setPagination(data.pagination)
+        const callsData = Array.isArray(data.data) ? data.data : []
+        console.log('[Call History] Received data:', callsData)
+        setCalls(callsData)
+        setPagination(data.pagination || {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 10,
+          hasNext: false,
+          hasPrev: false
+        })
       } else {
+        console.error('[Call History] API returned error:', data.error)
         throw new Error(data.error || "データの取得に失敗しました")
       }
     } catch (err) {
@@ -408,7 +400,7 @@ export default function CallHistoryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {calls.map((call) => (
+                  {Array.isArray(calls) && calls.length > 0 ? calls.map((call) => call && (
                     <tr 
                       key={call.id} 
                       className="border-b hover:bg-gray-50 cursor-pointer"
@@ -422,9 +414,9 @@ export default function CallHistoryPage() {
                       </td>
                       <td className="p-3">
                         <div>
-                          <div className="font-medium">{call.customer.name}</div>
-                          <div className="text-xs text-gray-500">{call.customer.phone}</div>
-                          {call.customer.company && (
+                          <div className="font-medium">{call.customer?.name || call.customer?.customer || '不明'}</div>
+                          <div className="text-xs text-gray-500">{call.customer?.phone || '電話番号なし'}</div>
+                          {call.customer?.company && (
                             <div className="text-xs text-gray-400">{call.customer.company}</div>
                           )}
                         </div>
@@ -457,7 +449,13 @@ export default function CallHistoryPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  )) : (
+                    <tr>
+                      <td colSpan={6} className="p-4 text-center text-gray-500">
+                        データがありません
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             )}

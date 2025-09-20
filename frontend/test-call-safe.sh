@@ -6,7 +6,7 @@
 # export TWILIO_AUTH_TOKEN="your_auth_token"
 
 curl -X POST https://api.twilio.com/2010-04-01/Accounts/$TWILIO_ACCOUNT_SID/Calls.json \
---data-urlencode "Url=https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app/api/twilio/voice" \
+--data-urlencode "Url=${process.env.NEXT_PUBLIC_APP_URL}/api/twilio/voice" \
 --data-urlencode "To=+819062660207" \
 --data-urlencode "From=+16076956082" \
 -u $TWILIO_ACCOUNT_SID:$TWILIO_AUTH_TOKEN

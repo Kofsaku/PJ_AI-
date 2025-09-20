@@ -1,5 +1,31 @@
 const dotenv = require('dotenv');
-dotenv.config();
+const path = require('path');
+
+// Load .env files with priority: .env.local > .env
+if (process.env.NODE_ENV !== 'production') {
+  const fs = require('fs');
+  const envLocalPath = path.join(__dirname, '../.env.local');
+  const envPath = path.join(__dirname, '../.env');
+  
+  console.log('[Config] Loading .env files:');
+  console.log('[Config] .env.local path:', envLocalPath, 'exists:', fs.existsSync(envLocalPath));
+  console.log('[Config] .env path:', envPath, 'exists:', fs.existsSync(envPath));
+  
+  if (fs.existsSync(envLocalPath)) {
+    const result = dotenv.config({ path: envLocalPath });
+    console.log('[Config] .env.local loaded:', result.error ? 'FAILED' : 'SUCCESS');
+  }
+  
+  if (fs.existsSync(envPath)) {
+    const result = dotenv.config({ path: envPath });
+    console.log('[Config] .env loaded:', result.error ? 'FAILED' : 'SUCCESS');
+  }
+  
+  console.log('[Config] After loading - TWILIO_ACCOUNT_SID:', process.env.TWILIO_ACCOUNT_SID ? 'SET' : 'NOT SET');
+  console.log('[Config] NODE_ENV:', process.env.NODE_ENV);
+} else {
+  dotenv.config();
+}
 
 const isProduction = process.env.NODE_ENV === 'production';
 const isDevelopment = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;

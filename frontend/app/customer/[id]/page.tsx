@@ -5,6 +5,7 @@ import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { authenticatedApiRequest } from "@/lib/apiHelper"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
@@ -93,16 +94,7 @@ export default function CustomerDetailPage() {
   useEffect(() => {
     const fetchCustomer = async () => {
       try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(`/api/customers?id=${customerId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        })
-        if (!response.ok) throw new Error("Failed to fetch customer")
-        
-        const data = await response.json()
+        const data = await authenticatedApiRequest(`/api/customers?id=${customerId}`)
         
         // Parse address to extract prefecture and city
         let prefecture = ""
@@ -164,17 +156,9 @@ export default function CustomerDetailPage() {
   // 通話履歴を取得
   const fetchCallHistory = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/customers?id=${customerId}&call-history=true`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      })
-      if (response.ok) {
-        const history = await response.json()
-        setCallHistory(history)
-      }
+      const history = await authenticatedApiRequest(`/api/customers?id=${customerId}&call-history=true`)
+      // Ensure history is always an array
+      setCallHistory(Array.isArray(history) ? history : [])
     } catch (error) {
       console.error('通話履歴の取得に失敗しました:', error)
     }
@@ -222,19 +206,10 @@ export default function CustomerDetailPage() {
         notes: formData.notes
       }
 
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/customers?id=${customerId}`, {
+      await authenticatedApiRequest(`/api/customers?id=${customerId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify(customerData),
       })
-
-      if (!response.ok) {
-        throw new Error('Failed to update customer')
-      }
 
       toast({
         title: "成功",
@@ -263,18 +238,9 @@ export default function CustomerDetailPage() {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/customers?id=${customerId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      await authenticatedApiRequest(`/api/customers?id=${customerId}`, {
+        method: 'DELETE'
       })
-
-      if (!response.ok) {
-        throw new Error('Failed to delete customer')
-      }
 
       toast({
         title: "成功",

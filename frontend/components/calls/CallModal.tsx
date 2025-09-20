@@ -44,8 +44,11 @@ export function CallModal({
   useEffect(() => {
     if (isOpen && phoneNumber) {
       // Initialize socket connection
+      const token = localStorage.getItem('token');
+
       const newSocket = io(process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001", {
         transports: ["websocket"],
+        auth: { token }
       });
 
       newSocket.on("connect", () => {

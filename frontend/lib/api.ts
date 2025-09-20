@@ -1,8 +1,19 @@
 import axios from 'axios';
 
-// Use Next.js API routes for frontend API calls
-// This ensures we use local API routes that can then proxy to backend if needed
-const API_BASE_URL = '/api';
+// API base URL configuration for different environments
+function getApiBaseUrl(): string {
+  // 本番環境では直接バックエンドサーバーにアクセス
+  if (process.env.NODE_ENV === 'production') {
+    return process.env.NEXT_PUBLIC_BACKEND_URL_PROD || 
+           process.env.NEXT_PUBLIC_BACKEND_URL || 
+           process.env.NEXT_PUBLIC_API_URL || '';
+  }
+  
+  // 開発環境ではNext.jsのrewriteを使用
+  return '/api';
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 // Create axios instance with default config
 const api = axios.create({

@@ -10,6 +10,7 @@ router.post('/bulk', protect, bulkCallController.initiateBulkCalls);
 router.post('/bulk/stop', protect, bulkCallController.stopAllBulkCalls);
 
 // Get bulk call status (with authentication)
+router.get('/bulk', protect, bulkCallController.getBulkCallStatus);
 router.get('/bulk/status', protect, bulkCallController.getBulkCallStatus || (() => {}));
 
 // Cancel bulk calls (with authentication)

@@ -71,7 +71,7 @@ export function CallDetailModal({ isOpen, onClose, callId }: CallDetailModalProp
     setError(null)
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/call-history/${id}`, {
+      const response = await fetch(`/api/call-history/${id}`, {
         headers: {
           "Authorization": `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json"
@@ -109,8 +109,8 @@ export function CallDetailModal({ isOpen, onClose, callId }: CallDetailModalProp
       const updateData: any = {}
       if (newNotes.trim()) updateData.notes = newNotes.trim()
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/call-history/${callDetail.id}`, {
-        method: 'PUT',
+      const response = await fetch(`/api/call-history/${callDetail.id}`, {
+        method: 'PATCH',
         headers: {
           "Authorization": `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json"

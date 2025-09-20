@@ -36,7 +36,7 @@ export default function CompanyInfoPage() {
       }
 
       // Fetch company data from API
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'
+      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'
       const response = await fetch(`${apiUrl}/api/company/my-company`, {
         headers: {
           'Authorization': `Bearer ${token}`
