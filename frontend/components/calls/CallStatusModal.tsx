@@ -53,8 +53,19 @@ export function CallStatusModal({
       setCallSid(null); // CallSidもリセット
       setProcessedMessages(new Set()); // 処理済みメッセージをクリア
       
-      // 電話番号を正規化（0906... 形式に統一）
-      const normalizedPhone = phoneNumber.startsWith('+81') ? '0' + phoneNumber.substring(3) : phoneNumber;
+      // 電話番号を正規化（ハイフンを除去し、0906... 形式に統一）
+      const normalizePhoneNumber = (phone: string) => {
+        if (!phone) return '';
+        // ハイフンとスペースを削除
+        let normalized = phone.replace(/[-\s]/g, '');
+        // +81を0に変換
+        if (normalized.startsWith('+81')) {
+          normalized = '0' + normalized.substring(3);
+        }
+        return normalized;
+      };
+
+      const normalizedPhone = normalizePhoneNumber(phoneNumber);
       
       // Initialize socket connection
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
@@ -118,18 +129,8 @@ export function CallStatusModal({
 
       // Listen for call status updates
       newSocket.on("call-status", (data) => {
-        // 電話番号のフォーマットを統一して比較
-        const normalizePhone = (phone: string) => {
-          if (!phone) return '';
-          // +81を0に変換
-          if (phone.startsWith('+81')) {
-            return '0' + phone.substring(3);
-          }
-          return phone;
-        };
-        
-        const normalizedDataPhone = normalizePhone(data.phoneNumber);
-        const normalizedTargetPhone = normalizePhone(phoneNumber);
+        const normalizedDataPhone = normalizePhoneNumber(data.phoneNumber);
+        const normalizedTargetPhone = normalizedPhone;
         
         
         if (normalizedDataPhone === normalizedTargetPhone || data.callSid === callSid || data.callId === callSid) {
@@ -146,19 +147,26 @@ export function CallStatusModal({
         }
       });
 
+      // Listen for existing call data response
+      newSocket.on("existing-call-data", (data) => {
+        if (data && data.transcript && Array.isArray(data.transcript)) {
+          const existingTranscript = data.transcript.map((entry: any) => ({
+            speaker: entry.speaker as "AI" | "Customer" | "System",
+            text: entry.text || entry.message,
+            timestamp: entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString("ja-JP") : new Date().toLocaleTimeString("ja-JP"),
+          }));
+
+          if (existingTranscript.length > 0) {
+            setTranscript(existingTranscript);
+            setCallStatus(data.status === "completed" ? "ended" : "connected");
+          }
+        }
+      });
+
       // Listen for transcript updates
       newSocket.on("transcript-update", (data) => {
-        // 電話番号を正規化して比較
-        const normalizePhone = (phone: string) => {
-          if (!phone) return '';
-          if (phone.startsWith('+81')) {
-            return '0' + phone.substring(3);
-          }
-          return phone;
-        };
-        
-        const normalizedDataPhone = normalizePhone(data.phoneNumber || '');
-        const normalizedTargetPhone = normalizePhone(phoneNumber);
+        const normalizedDataPhone = normalizePhoneNumber(data.phoneNumber || '');
+        const normalizedTargetPhone = normalizedPhone;
         
         // より柔軟な判定: CallSidが一致するか、電話番号が一致する場合
         const isCurrentCall = (callSid && data.callSid === callSid) || 

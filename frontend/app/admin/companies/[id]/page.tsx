@@ -124,12 +124,12 @@ export default function CompanyDetail({ params }: PageProps) {
   const { company, users } = data;
 
   return (
-    <div className="p-8">
+    <div className="min-h-screen w-full p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold">企業詳細</h1>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 max-w-none">
         {/* 企業情報カラム */}
         <div className="bg-white rounded-lg shadow-lg p-6">
           <div className="flex justify-between items-center mb-6">

@@ -310,10 +310,10 @@ export default function EditUserPage() {
   if (!user) return <div className="p-8">User not found</div>;
 
   return (
-    <div className="container mx-auto py-8 max-w-2xl">
-      <h1 className="text-2xl font-bold mb-6">ユーザー編集</h1>
+    <div className="p-8">
+      <h1 className="text-2xl font-semibold mb-6">ユーザー編集</h1>
 
-      <form onSubmit={handleSubmit} className="bg-white shadow-md rounded-lg p-6 space-y-4">
+      <form onSubmit={handleSubmit} className="bg-white shadow rounded-lg p-6 space-y-4 max-w-2xl">
         {error && (
           <div className="bg-red-50 text-red-600 p-3 rounded">
             {error}
@@ -336,7 +336,7 @@ export default function EditUserPage() {
             <select
               value={selectedCompanyId}
               onChange={(e) => setSelectedCompanyId(e.target.value)}
-              className="ml-64 px-3 py-2 border border-gray-300 rounded-md"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
             >
               <option value="">企業を選択してください</option>
               {companies.map((company) => (
@@ -418,7 +418,7 @@ export default function EditUserPage() {
                     type="text"
                     value={user.twilioPhoneNumber}
                     disabled
-                    className="ml-64 px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md bg-gray-50"
                   />
                   <span className={`px-2 py-1 text-xs rounded-full ${
                     user.twilioPhoneNumberStatus === 'active' 
@@ -447,7 +447,7 @@ export default function EditUserPage() {
                   <select
                     value={selectedNumberId}
                     onChange={(e) => setSelectedNumberId(e.target.value)}
-                    className="ml-64 px-3 py-2 border border-gray-300 rounded-md"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
                     disabled={availableNumbers.length === 0}
                   >
                     <option value="">電話番号を選択してください</option>

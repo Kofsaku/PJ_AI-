@@ -11,6 +11,18 @@ class WebSocketService {
     this.socketToUser = new Map(); // socketId -> userId mapping
   }
 
+  // 電話番号正規化関数（ハイフンを削除し+81を0に変換）
+  normalizePhoneNumber(phone) {
+    if (!phone) return '';
+    // ハイフンとスペースを削除
+    let normalized = phone.replace(/[-\s]/g, '');
+    // +81を0に変換
+    if (normalized.startsWith('+81')) {
+      normalized = '0' + normalized.substring(3);
+    }
+    return normalized;
+  }
+
   initialize(server) {
     this.io = socketIo(server, {
       cors: {
@@ -184,10 +196,8 @@ class WebSocketService {
       console.log('[WebSocket] get-call-statusリクエスト:', data);
       try {
         const { phoneNumber } = data;
-        const normalizedPhone = phoneNumber?.startsWith('+81') 
-          ? '0' + phoneNumber.substring(3) 
-          : phoneNumber;
-        
+        const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
+
         // 電話番号からアクティブな通話を検索（キュー待ちも含む）
         const activeCall = await CallSession.findOne({
           phoneNumber: { $in: [phoneNumber, normalizedPhone] },
@@ -212,10 +222,8 @@ class WebSocketService {
       console.log('[WebSocket] get-transcriptリクエスト:', data);
       try {
         const { phoneNumber, callSid } = data;
-        const normalizedPhone = phoneNumber?.startsWith('+81') 
-          ? '0' + phoneNumber.substring(3) 
-          : phoneNumber;
-        
+        const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
+
         // CallSidが指定されていない場合は、新しい通話なので空のトランスクリプトを返す
         if (!callSid) {
           console.log('[WebSocket] CallSid未指定 - 新しい通話のため空のトランスクリプトを返す');
@@ -297,10 +305,8 @@ class WebSocketService {
       console.log('[WebSocket] get-existing-call-dataリクエスト:', data);
       try {
         const { phoneNumber } = data;
-        const normalizedPhone = phoneNumber?.startsWith('+81') 
-          ? '0' + phoneNumber.substring(3) 
-          : phoneNumber;
-        
+        const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
+
         console.log('[WebSocket] 既存通話データ検索:', { originalPhone: phoneNumber, normalizedPhone });
         
         // 電話番号からアクティブな通話セッションを検索（キュー待ちも含む）
@@ -324,6 +330,22 @@ class WebSocketService {
           // トランスクリプトが存在する場合は送信
           if (activeCall.transcript && activeCall.transcript.length > 0) {
             console.log('[WebSocket] 既存トランスクリプトを送信');
+
+            // existing-call-data イベントとして一括送信
+            socket.emit('existing-call-data', {
+              phoneNumber: normalizedPhone,
+              callSid: activeCall.twilioCallSid,
+              callId: activeCall._id.toString(),
+              status: activeCall.status,
+              transcript: activeCall.transcript.map(entry => ({
+                speaker: entry.speaker,
+                text: entry.message,
+                message: entry.message,
+                timestamp: entry.timestamp
+              }))
+            });
+
+            // 個別のtranscript-updateイベントも送信（既存の互換性のため）
             activeCall.transcript.forEach((entry, index) => {
               console.log(`[WebSocket] トランスクリプト[${index}]: ${entry.speaker} - ${entry.message}`);
               socket.emit('transcript-update', {
@@ -338,6 +360,14 @@ class WebSocketService {
             });
           } else {
             console.log('[WebSocket] トランスクリプトなし - 空の通話');
+            // トランスクリプトがない場合も empty existing-call-data を送信
+            socket.emit('existing-call-data', {
+              phoneNumber: normalizedPhone,
+              callSid: activeCall.twilioCallSid,
+              callId: activeCall._id.toString(),
+              status: activeCall.status,
+              transcript: []
+            });
           }
         } else {
           console.log('[WebSocket] アクティブな通話が見つからない');
@@ -571,9 +601,7 @@ class WebSocketService {
       
       // 電話番号ベースのルームにのみ送信（重複を防ぐため）
       if (transcriptData.phoneNumber) {
-        const normalizedPhone = transcriptData.phoneNumber.startsWith('+81') 
-          ? '0' + transcriptData.phoneNumber.substring(3) 
-          : transcriptData.phoneNumber;
+        const normalizedPhone = this.normalizePhoneNumber(transcriptData.phoneNumber);
         this.io.to(`call-${normalizedPhone}`).emit('transcript-update', dataWithCallId);
         console.log(`[WebSocket会話ログ] 電話番号ルーム call-${normalizedPhone} に送信`);
       } else {
