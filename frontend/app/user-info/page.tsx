@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Sidebar } from "@/components/sidebar"
 import { User, Mail, Building, Calendar, Shield, Edit2, Save, X } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { authenticatedApiRequest } from "@/lib/apiHelper"
 
 export default function UserInfoPage() {
   const [userData, setUserData] = useState<any>(null)
@@ -35,16 +36,8 @@ export default function UserInfoPage() {
       }
 
       // APIから最新のユーザー情報を取得
-      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'
-      const response = await fetch(`${apiUrl}/api/auth/me`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        const user = result.data || result.user || result
+      const result = await authenticatedApiRequest('/api/auth/me')
+      const user = result.data || result.user || result
         
         // LocalStorageも更新
         localStorage.setItem('userData', JSON.stringify({ user }))
@@ -80,16 +73,9 @@ export default function UserInfoPage() {
 
   const handleSave = async () => {
     try {
-      const token = localStorage.getItem('token')
-      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'
-      
       // APIに送信
-      const response = await fetch(`${apiUrl}/api/auth/users/profile`, {
+      const responseData = await authenticatedApiRequest('/api/auth/users/profile', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify({
           name: `${editedData.lastName || ''} ${editedData.firstName || ''}`.trim() || editedData.name || editedData.fullName,
           email: editedData.email,
@@ -98,15 +84,6 @@ export default function UserInfoPage() {
           aiCallName: editedData.aiCallName
         })
       })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        console.error('API Error:', response.status, errorData)
-        throw new Error(errorData.error || `HTTP ${response.status}: Failed to save user data`)
-      }
-
-      // Get the updated user data from the response
-      const responseData = await response.json()
       const updatedUser = responseData.data || responseData.user || responseData
       
       // Update LocalStorage with the response data

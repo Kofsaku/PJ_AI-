@@ -127,13 +127,11 @@ export default function SalesPitchSettingsPage() {
           }
         })
       });
-        toast({
-          title: "保存完了",
-          description: "トークスクリプト設定が保存されました。"
-        });
-      } else {
-        throw new Error('保存に失敗しました');
-      }
+      
+      toast({
+        title: "保存完了",
+        description: "トークスクリプト設定が保存されました。"
+      });
     } catch (error) {
       console.error('Error saving settings:', error);
       toast({
