@@ -334,10 +334,12 @@ export async function GET(request: NextRequest) {
         success: true,
         data: formattedSessions,
         pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit)
+          currentPage: page,
+          totalPages: Math.ceil(total / limit),
+          totalItems: total,
+          itemsPerPage: limit,
+          hasNext: page < Math.ceil(total / limit),
+          hasPrev: page > 1
         }
       })
     }

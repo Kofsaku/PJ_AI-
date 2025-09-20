@@ -181,7 +181,14 @@ export default function CallHistoryPage() {
         const callsData = Array.isArray(data.data) ? data.data : []
         console.log('[Call History] Received data:', callsData)
         setCalls(callsData)
-        setPagination(data.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 })
+        setPagination(data.pagination || {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 10,
+          hasNext: false,
+          hasPrev: false
+        })
       } else {
         console.error('[Call History] API returned error:', data.error)
         throw new Error(data.error || "データの取得に失敗しました")
