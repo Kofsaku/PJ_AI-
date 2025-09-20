@@ -17,6 +17,7 @@ import { Search, ChevronLeft, ChevronRight, Upload, FileUp, X, Phone, Loader2 } 
 import Link from "next/link";
 import { Sidebar } from "@/components/sidebar";
 import { useToast } from "@/components/ui/use-toast";
+import { authenticatedApiRequest, getApiUrl } from "@/lib/apiHelper";
 import { parseCSV, formatCustomerForImport } from "@/lib/csvParser";
 import { normalizeApiResponse, getCustomerId, getCustomerIds } from "@/lib/utils/id-normalizer";
 import {
@@ -409,23 +410,13 @@ export default function DashboardPage() {
         setIsCallStatusModalOpen(true);
       }
 
-      const response = await fetch('/api/calls/bulk', {
+      const result = await authenticatedApiRequest('/api/calls/bulk', {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
         body: JSON.stringify({ 
           phoneNumbers,
           customerIds 
         })
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to initiate bulk calls');
-      }
-
-      const result = await response.json();
       
       // Update progress and results - 修正: result.results を result.sessions に変更
       setCallProgress(100);
@@ -466,16 +457,7 @@ export default function DashboardPage() {
     // 通話状態を取得する関数
     const fetchCallStatuses = async () => {
       try {
-        const response = await fetch('/api/calls/bulk', {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json"
-          }
-        });
-
-        if (!response.ok) return;
-
-        const data = await response.json();
+        const data = await authenticatedApiRequest('/api/calls/bulk');
         if (!data.success || !data.sessions) return;
 
         // アクティブな通話セッションを特定

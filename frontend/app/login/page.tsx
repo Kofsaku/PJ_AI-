@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { apiRequest } from "@/lib/apiHelper";
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({
@@ -29,19 +30,10 @@ export default function LoginPage() {
     setError("")
 
     try {
-      const response = await fetch('/api/auth/login', {
+      const data = await apiRequest('/api/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(formData),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Login failed')
-      }
+      });
 
       // Store the token (you might want to use secure cookies instead)
       if (data.token) {
