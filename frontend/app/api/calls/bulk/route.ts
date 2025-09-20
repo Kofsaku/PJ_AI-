@@ -314,6 +314,23 @@ async function initiateTwilioCall(phoneNumber, callSession) {
   try {
     console.log(`[Twilio Call] Initiating call to ${phoneNumber}`)
 
+    // 電話番号をE.164形式に正規化
+    let formattedNumber = phoneNumber.replace(/[^\d+]/g, '')
+
+    // Add country code if not present (assuming Japan)
+    if (!formattedNumber.startsWith('+')) {
+      if (formattedNumber.startsWith('0')) {
+        // Remove leading 0 and add Japan country code
+        formattedNumber = '+81' + formattedNumber.substring(1)
+      } else if (!formattedNumber.startsWith('81')) {
+        formattedNumber = '+81' + formattedNumber
+      } else {
+        formattedNumber = '+' + formattedNumber
+      }
+    }
+
+    console.log(`[Twilio Call] Formatted phone number: ${phoneNumber} → ${formattedNumber}`)
+
     // Twilioクライアント初期化
     const twilio = require('twilio')
     const accountSid = process.env.TWILIO_ACCOUNT_SID
@@ -331,7 +348,7 @@ async function initiateTwilioCall(phoneNumber, callSession) {
 
     const call = await client.calls.create({
       url: webhookUrl,
-      to: phoneNumber,
+      to: formattedNumber,
       from: fromNumber,
       statusCallback: `${webhookUrl}/status`,
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
