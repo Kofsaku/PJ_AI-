@@ -28,10 +28,58 @@ router.post('/', protect, async (req, res) => {
   }
 });
 
-// Get all customers
+// Get all customers OR get specific customer by query parameter
 router.get('/', protect, async (req, res) => {
   try {
     console.log('[Customer API] GET request from user:', req.user.email, 'companyId:', req.user.companyId);
+    
+    // Check if this is a specific customer request with query parameter
+    if (req.query.id) {
+      console.log('[Customer API] GET with query id:', req.query.id, 'call-history:', req.query['call-history']);
+      
+      // Check if call history is requested
+      if (req.query['call-history'] === 'true') {
+        console.log('[Customer API] Fetching call history for customer:', req.query.id);
+        
+        // First verify customer exists and user has access
+        const customer = await Customer.findOne({ 
+          _id: req.query.id, 
+          companyId: req.user.companyId 
+        });
+        
+        if (!customer) {
+          console.log('[Customer API] Customer not found for call history request');
+          return res.status(404).send({ error: 'Customer not found' });
+        }
+        
+        // Get call sessions for this customer
+        const callSessions = await CallSession.find({ 
+          customerId: req.query.id 
+        })
+        .sort({ createdAt: -1 })
+        .populate('customerId', 'customer phone')
+        .select('createdAt endTime duration status callResult transcript notes phoneNumber twilioCallSid');
+        
+        console.log('[Customer API] Found', callSessions.length, 'call history records');
+        return res.send(callSessions);
+      }
+      
+      // Get specific customer by query parameter
+      const customer = await Customer.findOne({ 
+        _id: req.query.id, 
+        companyId: req.user.companyId 
+      });
+      
+      if (!customer) {
+        console.log('[Customer API] Customer not found or access denied');
+        return res.status(404).send({ error: 'Customer not found' });
+      }
+      
+      console.log('[Customer API] Customer found and authorized via query');
+      return res.send(customer);
+    }
+    
+    // Get all customers
     const customers = await Customer.find({ 
       companyId: req.user.companyId 
     });
@@ -125,6 +173,42 @@ router.get('/:id/call-history', protect, async (req, res) => {
   } catch (error) {
     console.error('Error fetching call history:', error);
     res.status(500).send({ error: 'Failed to fetch call history' });
+  }
+});
+
+// Update a customer via query parameter
+router.patch('/', protect, async (req, res) => {
+  if (req.query.id) {
+    const updates = Object.keys(req.body);
+    const allowedUpdates = ['customer', 'date', 'time', 'duration', 'result', 'callResult', 'notes', 'address', 'email', 'phone', 'company', 'position', 'zipCode'];
+    const isValidOperation = updates.every(update => allowedUpdates.includes(update));
+
+    console.log('[Customer API] PATCH via query from user:', req.user.email, 'companyId:', req.user.companyId, 'customerId:', req.query.id, 'updates:', updates);
+
+    if (!isValidOperation) {
+      console.log('[Customer API] PATCH Invalid updates:', updates.filter(u => !allowedUpdates.includes(u)));
+      return res.status(400).send({ error: 'Invalid updates!' });
+    }
+
+    try {
+      const customer = await Customer.findOneAndUpdate(
+        { _id: req.query.id, companyId: req.user.companyId },
+        req.body,
+        { new: true, runValidators: true }
+      );
+      if (!customer) {
+        console.log('[Customer API] PATCH Customer not found or access denied via query');
+        return res.status(404).send({ error: 'Customer not found' });
+      }
+      
+      console.log('[Customer API] PATCH Customer updated successfully via query');
+      res.send(customer);
+    } catch (error) {
+      console.error('[Customer API] PATCH Error via query:', error);
+      res.status(400).send(error);
+    }
+  } else {
+    res.status(400).send({ error: 'Customer ID required' });
   }
 });
 

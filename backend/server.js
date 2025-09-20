@@ -10,8 +10,16 @@ const connectDB = require('./config/db');
 // 本番環境では環境変数が最優先される
 if (process.env.NODE_ENV !== 'production') {
   // 開発環境: .env.local → .env の順で読み込み
-  dotenv.config({ path: './.env.local' });
-  dotenv.config({ path: './.env' });
+  const result1 = dotenv.config({ path: './.env.local' });
+  const result2 = dotenv.config({ path: './.env', override: true });
+  
+  console.log('[Server] result2.parsed:', result2.parsed ? Object.keys(result2.parsed) : 'NO PARSED DATA');
+  
+  console.log('[Server] .env.local result:', result1.error ? 'FAILED' : 'SUCCESS');
+  console.log('[Server] .env result:', result2.error ? 'FAILED' : 'SUCCESS');
+  console.log('[Server] TWILIO_ACCOUNT_SID after loading:', process.env.TWILIO_ACCOUNT_SID ? 'SET' : 'NOT SET');
+  console.log('[Server] TWILIO_ACCOUNT_SID value:', process.env.TWILIO_ACCOUNT_SID);
+  console.log('[Server] All env keys containing TWILIO:', Object.keys(process.env).filter(k => k.includes('TWILIO')));
 } else {
   // 本番環境: 環境変数のみ使用（.envファイルは読み込まない）
   console.log('Production mode: Using environment variables only');

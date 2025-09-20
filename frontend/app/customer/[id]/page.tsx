@@ -173,7 +173,8 @@ export default function CustomerDetailPage() {
       })
       if (response.ok) {
         const history = await response.json()
-        setCallHistory(history)
+        // Ensure history is always an array
+        setCallHistory(Array.isArray(history) ? history : [])
       }
     } catch (error) {
       console.error('通話履歴の取得に失敗しました:', error)
