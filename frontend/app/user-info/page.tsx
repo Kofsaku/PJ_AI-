@@ -39,21 +39,11 @@ export default function UserInfoPage() {
       const result = await authenticatedApiRequest('/api/auth/me')
       const user = result.data || result.user || result
         
-        // LocalStorageも更新
-        localStorage.setItem('userData', JSON.stringify({ user }))
+      // LocalStorageも更新
+      localStorage.setItem('userData', JSON.stringify({ user }))
         
-        setUserData(user)
-        setEditedData(user)
-      } else {
-        // APIが失敗した場合はLocalStorageから取得
-        const storedUserData = localStorage.getItem('userData')
-        if (storedUserData) {
-          const data = JSON.parse(storedUserData)
-          const user = data.user || data.data || data
-          setUserData(user)
-          setEditedData(user)
-        }
-      }
+      setUserData(user)
+      setEditedData(user)
     } catch (error) {
       console.error("Error fetching user data:", error)
       // エラーの場合もLocalStorageから取得
