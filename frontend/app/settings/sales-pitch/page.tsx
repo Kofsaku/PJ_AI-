@@ -123,7 +123,21 @@ export default function SalesPitchSettingsPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(settings)
+        body: JSON.stringify({
+          conversationSettings: {
+            companyName: settings.companyName,
+            serviceName: settings.serviceName,
+            representativeName: settings.representativeName,
+            targetDepartment: settings.targetDepartment,
+            serviceDescription: settings.serviceDescription,
+            targetPerson: settings.targetPerson,
+            salesPitch: {
+              companyDescription: settings.companyDescription,
+              callToAction: settings.callToAction,
+              keyBenefits: settings.keyBenefits
+            }
+          }
+        })
       });
 
       if (response.ok) {

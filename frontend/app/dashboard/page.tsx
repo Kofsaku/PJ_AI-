@@ -359,7 +359,7 @@ export default function DashboardPage() {
     } finally {
       setIsUpdatingStatus(null);
     }
-  };;
+  };
 
   // Handle bulk call
   const handleBulkCall = async () => {
@@ -426,23 +426,23 @@ export default function DashboardPage() {
 
       const result = await response.json();
       
-      // Update progress and results
+      // Update progress and results - 修正: result.results を result.sessions に変更
       setCallProgress(100);
-      setCallResults(result.results || []);
+      setCallResults(result.sessions || []);
       setIsCalling(false);
-      
+
       toast({
         title: "一斉コール開始",
         description: `${phoneNumbers.length}件の電話を開始しました`,
       });
-      
+
       // Clear selection after starting calls
       setSelectedCustomers(new Set());
       setSelectAll(false);
-      
+
       // ポーリングで通話状態を監視するため、ここではクリアしない
       // 実際の通話終了イベントでクリアされる
-      
+
     } catch (error) {
       setIsCalling(false);
       setCallingSessions(new Set()); // エラー時も通話中状態をクリア
