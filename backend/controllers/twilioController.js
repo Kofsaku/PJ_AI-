@@ -162,31 +162,31 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
     console.log(`[TwiML Conference] Using immediate initial message: ${initialMessage}`);
     console.log('[TwiML Conference] Testing CoeFont service...');
     
-    // 完全に即座にAIが話し始める - 遅延ゼロ
-    console.log(`[TwiML Conference] ZERO DELAY - AI speaks immediately on call connect`);
-    
-    // AIが即座に話し、同時に音声認識開始
+    // 顧客の発話を先に待つ（挨拶する場合 / 無音の場合の両方に対応）
+    console.log(`[TwiML Conference] WAITING FOR CUSTOMER - will speak if silence detected`);
+
+    // 顧客の発話を待つGatherを設定（無音の場合AIが話す）
     const gather = twiml.gather({
       input: 'speech',
       language: 'ja-JP',
       speechModel: 'enhanced',
-      speechTimeout: 'auto',
-      timeout: 10,
+      speechTimeout: 3,  // 3秒間音声を待つ
+      timeout: 5,        // 全体で5秒待つ
       action: `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}?isFirst=true`,
       method: 'POST',
       partialResultCallback: `${process.env.BASE_URL}/api/twilio/voice/partial/${callId}`,
       partialResultCallbackMethod: 'POST'
     });
-    
-    // AI音声を即座に再生（CoeFontを使用）
-    await coefontService.getTwilioPlayElement(gather, initialMessage);
-    
+
+    // 何も話さずに顧客の発話を待機
+    // （無音の場合、gatherのtimeoutでhandleSpeechInputに空のSpeechResultが送られる）
+
     // フォールバック
     twiml.redirect({
       method: 'POST'
     }, `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}?isFirst=true`);
     
-    console.log(`[TwiML Conference] Structure: immediate gather+say -> redirect`);
+    console.log(`[TwiML Conference] Structure: silent wait -> gather -> redirect`);
 
     // TwiMLを即座に返す（会話エンジン初期化は後で行う）
     const twimlResponse = twiml.toString();
@@ -194,9 +194,8 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
     // 会話エンジンを非同期で初期化（レスポンス送信後）
     setImmediate(() => {
       conversationEngine.initializeConversation(callId, callSession.aiConfiguration);
-      // システムが即座に話すことをマーク（turnCountは顧客応答時に判定）
-      conversationEngine.updateConversationState(callId, { systemSpokeFirst: true });
-      console.log(`[TwiML Conference] System will speak first - marked systemSpokeFirst: true`);
+      // 顧客の発話を待つため、systemSpokeFirstはまだfalseのまま
+      console.log(`[TwiML Conference] Waiting for customer first - systemSpokeFirst remains false`);
     });
 
     res.type('text/xml').send(twimlResponse);
@@ -308,9 +307,9 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
 
     // 初回発話判定: 初回の顧客応答かどうかを判定
     const conversationState = conversationEngine.getConversationState(callId);
-    // 顧客が先に話した場合、または2回目以降の応答でないかを判定
+    // 修正: AIが先に話している場合は、顧客の初回応答でも通常分類を行う
     const isFirstCustomerSpeech = !conversationState ||
-      (!conversationState.customerSpokeFirst && conversationState.turnCount === 0);
+      (!conversationState.customerSpokeFirst && !conversationState.systemSpokeFirst && conversationState.turnCount === 0);
     console.log(`[Speech Input] Conversation state:`, {
       exists: !!conversationState,
       turnCount: conversationState?.turnCount || 0,
@@ -324,6 +323,8 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
       // 最初の無音の場合、AIが名乗る
       if (isFirstCustomerSpeech) {
         console.log(`[Speech Input] First silence detected - AI will introduce itself`);
+        // AIが初回メッセージを発声したことを記録
+        conversationEngine.updateConversationState(callId, { systemSpokeFirst: true });
         const initialMessage = await conversationEngine.generateResponse(callId, 'initial');
         
         const gather = twiml.gather({
