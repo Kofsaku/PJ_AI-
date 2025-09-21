@@ -675,4 +675,50 @@ exports.cleanupOldSessions = async (req, res) => {
   }
 };
 
+// Get bulk call status
+exports.getBulkCallStatus = async (req, res) => {
+  try {
+    const userId = req.user._id || req.user.id;
+    const companyId = req.user.companyId;
+    
+    console.log('[BulkCallStatus] Request from user:', userId, 'companyId:', companyId);
+    
+    // Get active sessions for this user/company
+    const query = {
+      assignedAgent: userId,
+      status: { $in: ['queued', 'calling', 'in-progress', 'ai-responding', 'completed'] }
+    };
+    
+    const sessions = await CallSession.find(query)
+      .populate('customerId', 'customer phone')
+      .sort('-createdAt')
+      .limit(100);
+    
+    console.log('[BulkCallStatus] Found', sessions.length, 'sessions');
+    
+    const sessionData = sessions.map(s => ({
+      id: s._id,
+      phoneNumber: s.phoneNumber,
+      customer: s.customerId,
+      status: s.status,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      duration: s.duration,
+      twilioCallSid: s.twilioCallSid,
+      callResult: s.callResult
+    }));
+    
+    res.status(200).json({
+      success: true,
+      sessions: sessionData
+    });
+  } catch (error) {
+    console.error('[BulkCallStatus] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
 module.exports = exports;

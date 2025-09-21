@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { register, login, getMe, updateProfile, sendVerificationCode, verifyEmailCode, completeRegistration } = require('../controllers/authController');
+const { register, login, adminLogin, getMe, updateProfile, sendVerificationCode, verifyEmailCode, completeRegistration } = require('../controllers/authController');
 const { protect } = require('../middlewares/authMiddleware');
 
 router.post('/signup', register);
 router.post('/login', login);
+router.post('/admin-login', adminLogin);
 router.get('/me', protect, getMe);
 
 // Email verification routes
