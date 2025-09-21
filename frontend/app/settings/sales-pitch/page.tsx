@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Save, RotateCcw, Play } from "lucide-react";
 import { Sidebar } from "@/components/sidebar";
+import { authenticatedApiRequest } from "@/lib/apiHelper";
 
 interface SalesPitchSettings {
   // 基本設定
@@ -55,15 +56,8 @@ export default function SalesPitchSettingsPage() {
 
   const loadSettings = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/users/sales-pitch', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
+      const data = await authenticatedApiRequest('/api/users/sales-pitch');
+      if (data && data.data) {
         const agentData = data.data;
         setSettings({
           // 基本設定
@@ -115,25 +109,29 @@ export default function SalesPitchSettingsPage() {
   const saveSettings = async () => {
     try {
       setSaving(true);
-      const token = localStorage.getItem('token');
-
-      const response = await fetch('/api/users/sales-pitch', {
+      await authenticatedApiRequest('/api/users/sales-pitch', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(settings)
+        body: JSON.stringify({
+          conversationSettings: {
+            companyName: settings.companyName,
+            serviceName: settings.serviceName,
+            representativeName: settings.representativeName,
+            targetDepartment: settings.targetDepartment,
+            serviceDescription: settings.serviceDescription,
+            targetPerson: settings.targetPerson,
+            salesPitch: {
+              companyDescription: settings.companyDescription,
+              callToAction: settings.callToAction,
+              keyBenefits: settings.keyBenefits
+            }
+          }
+        })
       });
-
-      if (response.ok) {
-        toast({
-          title: "保存完了",
-          description: "トークスクリプト設定が保存されました。"
-        });
-      } else {
-        throw new Error('保存に失敗しました');
-      }
+      
+      toast({
+        title: "保存完了",
+        description: "トークスクリプト設定が保存されました。"
+      });
     } catch (error) {
       console.error('Error saving settings:', error);
       toast({
