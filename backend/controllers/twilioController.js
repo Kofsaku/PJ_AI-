@@ -315,8 +315,38 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
       turnCount: conversationState?.turnCount || 0,
       customerSpokeFirst: conversationState?.customerSpokeFirst || false,
       systemSpokeFirst: conversationState?.systemSpokeFirst || false,
+      isTransferred: conversationState?.isTransferred || false,
       isFirstCustomerSpeech
     });
+
+    // 転送済みの場合はAI応答をスキップ（ログのみ記録）
+    if (conversationState?.isTransferred) {
+      console.log(`[Speech Input] Call transferred - AI listening only, logging: "${SpeechResult || '(無音)'}"`);
+
+      // トランスクリプトは更新（ログ収集のため）
+      if (SpeechResult && SpeechResult.trim() !== '') {
+        await CallSession.findByIdAndUpdate(callId, {
+          $push: {
+            transcript: {
+              speaker: 'customer',
+              message: SpeechResult,
+              confidence: parseFloat(Confidence) || 0
+            }
+          }
+        });
+
+        // WebSocketでトランスクリプト更新を送信
+        webSocketService.sendTranscriptUpdate(callId, {
+          speaker: 'customer',
+          message: SpeechResult,
+          confidence: parseFloat(Confidence) || 0,
+          timestamp: new Date()
+        });
+      }
+
+      // 空のレスポンスを返す（AI応答なし）
+      return res.type('text/xml').send('<Response></Response>');
+    }
 
     // 無音や無入力の場合の処理
     if (!SpeechResult || SpeechResult.trim() === '') {
@@ -1158,50 +1188,36 @@ exports.agentJoinCall = asyncHandler(async (req, res) => {
     }
     twiml.say(connectionMessage, { voice: 'Polly.Mizuki', language: 'ja-JP' });
     
-    // 顧客の電話にブリッジ接続（シンプルな方法）
-    if (callSession.twilioCallSid) {
-      console.log(`[AgentJoin] Bridging to customer call ${callSession.twilioCallSid}`);
-      
-      // ブリッジ通話を作成
-      const dial = twiml.dial({
-        callerId: process.env.TWILIO_PHONE_NUMBER,
-        timeout: 30
-      });
-      
-      // 顧客のCallSidに直接接続
-      dial.call(callSession.twilioCallSid);
-      
-      // CallSessionのステータスを更新
-      await CallSession.findByIdAndUpdate(callId, {
-        status: 'human-connected',
-        'handoffDetails.connectedAt': new Date()
-      });
+    // Conference転送に対応 - 同じconferenceに参加
+    console.log(`[AgentJoin] Joining conference for call ${callId}`);
 
-      // WebSocketで通知
-      webSocketService.broadcastCallEvent('handoff-connected', {
-        callId,
-        timestamp: new Date()
-      });
-    } else {
-      console.error(`[AgentJoin] No valid Twilio CallSid for customer`);
-      // AgentSettingsからシステムエラーメッセージを取得
-      let errorMessage = 'お客様との接続に失敗しました。';
-      try {
-        const agentSettings = await AgentSettings.findOne({});
-        if (agentSettings) {
-          const processedMessage = conversationEngine.processTemplate('systemError', {});
-          if (processedMessage) {
-            errorMessage = processedMessage;
-          }
-        }
-      } catch (error) {
-        console.error('[AgentJoin] Error getting systemError message:', error);
-      }
-      twiml.say(errorMessage, { voice: 'Polly.Mizuki', language: 'ja-JP' });
-      twiml.hangup();
-    }
+    const conferenceName = `call-${callId}`;
+    const dial = twiml.dial({
+      callerId: process.env.TWILIO_PHONE_NUMBER,
+      timeout: 30
+    });
 
-    console.log(`[AgentJoin] TwiML response sent for agent`);
+    // 同じconferenceに参加（顧客とAIが既に参加している）
+    dial.conference({
+      beep: false,
+      statusCallback: `${process.env.BASE_URL}/api/twilio/conference/agent-events/${callId}`,
+      statusCallbackEvent: 'start end join leave',
+      statusCallbackMethod: 'POST'
+    }, conferenceName);
+
+    // CallSessionのステータスを更新
+    await CallSession.findByIdAndUpdate(callId, {
+      status: 'human-connected',
+      'handoffDetails.connectedAt': new Date()
+    });
+
+    // WebSocketで通知
+    webSocketService.broadcastCallEvent('handoff-connected', {
+      callId,
+      timestamp: new Date()
+    });
+
+    console.log(`[AgentJoin] TwiML response sent for agent to join conference: ${conferenceName}`);
     res.type('text/xml').send(twiml.toString());
   } catch (error) {
     console.error('[AgentJoin] Error:', error);
@@ -1578,19 +1594,34 @@ async function initiateSimpleTransfer(callId, twiml) {
       timestamp: new Date()
     });
     
-    // Use Twilio's <Dial> with <Number> for simple transfer
-    // This will connect the customer directly to the agent
+    // Use Conference for 3-way calling to enable AI logging
+    // This will connect customer, agent, and AI in the same conference
+    const conferenceName = `call-${callId}`;
     const dial = twiml.dial({
       callerId: fromNumber,
       timeout: 30,
       action: `${process.env.BASE_URL}/api/twilio/transfer/status/${callId}`,
       method: 'POST'
     });
+
+    // Connect customer to conference
+    dial.conference({
+      beep: false,
+      statusCallback: `${process.env.BASE_URL}/api/twilio/conference/transfer-events/${callId}`,
+      statusCallbackEvent: 'start end join leave',
+      statusCallbackMethod: 'POST'
+    }, conferenceName);
+
+    // Separately call the agent to join the conference
+    await client.calls.create({
+      url: `${process.env.BASE_URL}/api/twilio/voice/agent-join/${callId}`,
+      to: agentPhoneNumber,
+      from: fromNumber,
+      statusCallback: `${process.env.BASE_URL}/api/twilio/call/status/${callId}`,
+      statusCallbackMethod: 'POST'
+    });
     
-    // Direct dial to agent's number - this creates a simple bridge
-    dial.number(agentPhoneNumber);
-    
-    console.log(`[SimpleTransfer] Simple transfer TwiML generated - customer will be connected directly to agent`);
+    console.log(`[SimpleTransfer] Conference transfer TwiML generated - customer and agent will join conference with AI`);
     
     // Send transcript update
     webSocketService.sendTranscriptUpdate(callId, {
@@ -1630,13 +1661,16 @@ exports.handleTransferStatus = asyncHandler(async (req, res) => {
           'handoffDetails.disconnectedAt': new Date()
         };
         callResult = '成功';
-        
+
         if (DialCallDuration) {
           updateData.duration = parseInt(DialCallDuration);
         }
-        
-        // Clear conversation engine
-        conversationEngine.clearConversation(callId);
+
+        // Mark as transferred but keep conversation engine for logging
+        conversationEngine.updateConversationState(callId, {
+          isTransferred: true,
+          transferCompletedAt: new Date()
+        });
         
         console.log(`[TransferStatus] Transfer completed successfully`);
         break;
@@ -1646,6 +1680,15 @@ exports.handleTransferStatus = asyncHandler(async (req, res) => {
           status: 'human-connected',
           'handoffDetails.connectedAt': new Date()
         };
+
+        // Mark as transferred but keep conversation engine for logging
+        console.log(`[TransferStatus] Setting isTransferred flag for call: ${callId}`);
+        conversationEngine.updateConversationState(callId, {
+          isTransferred: true,
+          transferCompletedAt: new Date()
+        });
+        console.log(`[TransferStatus] isTransferred flag set successfully for call: ${callId}`);
+
         console.log(`[TransferStatus] Agent answered - transfer successful`);
         break;
         
@@ -1672,8 +1715,12 @@ exports.handleTransferStatus = asyncHandler(async (req, res) => {
             break;
         }
 
-        // Clear conversation engine
-        conversationEngine.clearConversation(callId);
+        // Mark as transfer failed but keep conversation engine for logging
+        conversationEngine.updateConversationState(callId, {
+          isTransferred: false,
+          transferFailedAt: new Date(),
+          transferFailReason: DialCallStatus
+        });
 
         console.log(`[TransferStatus] Transfer failed: ${DialCallStatus} -> callResult: ${callResult}`);
         break;

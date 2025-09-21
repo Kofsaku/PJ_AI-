@@ -268,5 +268,9 @@ router.post('/conference/customer-status/:callId', (req, res) => {
   console.log(`[Conference Customer Status] ${req.params.callId}:`, req.body);
   res.status(200).send('OK');
 });
+router.post('/conference/transfer-events/:callId', (req, res) => {
+  console.log(`[Conference Transfer Events] ${req.params.callId}:`, req.body);
+  res.status(200).send('OK');
+});
 
 module.exports = router;
