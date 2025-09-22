@@ -35,6 +35,7 @@ export default function AdminLoginPage() {
       console.log('Password length:', formData.password.length);
       console.log('Attempting login to /api/auth/admin-login');
 
+      // Use Next.js API route for consistent behavior
       const response = await fetch('/api/auth/admin-login', {
         method: 'POST',
         headers: {
