@@ -62,7 +62,8 @@ app.use(cors({
       process.env.FRONTEND_URL,
       process.env.FRONTEND_URL_PROD,
       'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app',
-      'https://pj-ai-2t27-git-fixmerge-kofsakus-projects.vercel.app'
+      'https://pj-ai-2t27-git-fixmerge-kofsakus-projects.vercel.app',
+      'https://pj-ai-2t27-git-fixservererros-kofsakus-projects.vercel.app'
     ].filter(Boolean);
     
     // Debug logging for CORS
