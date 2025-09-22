@@ -61,7 +61,7 @@ interface Statistics {
 }
 
 // 定義されているステータス値
-const VALID_CALL_RESULTS = ['成功', '不在', '拒否', '要フォロー', '失敗', '通話中'];
+const VALID_CALL_RESULTS = ['成功', '不在', '拒否', '要フォロー', '失敗', '通話中', '未対応', '見積依頼', '資料請求', '導入検討', '競合比較中'];
 
 const statusColors: Record<string, string> = {
   成功: "bg-green-500",
