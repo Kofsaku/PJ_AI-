@@ -142,8 +142,8 @@ export default function SalesPitchSettingsPage() {
         })
       });
       
-      const result = await response.json();
-      console.log('[Sales Pitch] Save result:', result);
+      const saveResult = await response.json();
+      console.log('[Sales Pitch] Save result:', saveResult);
       
       toast({
         title: "保存完了",
