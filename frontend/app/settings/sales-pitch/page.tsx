@@ -56,7 +56,14 @@ export default function SalesPitchSettingsPage() {
 
   const loadSettings = async () => {
     try {
-      const data = await authenticatedApiRequest('/api/users/sales-pitch');
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/users/sales-pitch', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const data = await response.json();
       if (data && data.data) {
         const agentData = data.data;
         setSettings({
@@ -111,8 +118,13 @@ export default function SalesPitchSettingsPage() {
       setSaving(true);
       console.log('[Sales Pitch] Saving settings...', settings);
       
-      const result = await authenticatedApiRequest('/api/users/sales-pitch', {
+      const token = localStorage.getItem('token');
+      const result = await fetch('/api/users/sales-pitch', {
         method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           conversationSettings: {
             companyName: settings.companyName,
@@ -130,6 +142,7 @@ export default function SalesPitchSettingsPage() {
         })
       });
       
+      const result = await response.json();
       console.log('[Sales Pitch] Save result:', result);
       
       toast({
