@@ -122,7 +122,29 @@ export default function DashboardPage() {
     const fetchCustomers = async () => {
       try {
         const data = await authenticatedApiRequest('/api/customers');
-        setCustomers(normalizeApiResponse(data));
+        const newCustomers = normalizeApiResponse(data);
+        
+        // 手動変更されたステータスを保持
+        setCustomers(prevCustomers => {
+          return newCustomers.map(newCustomer => {
+            const existingCustomer = prevCustomers.find(prev => 
+              getCustomerId(prev) === getCustomerId(newCustomer)
+            );
+            
+            // 既存データがあり、手動変更されている場合は保持
+            if (existingCustomer && 
+                (existingCustomer.result !== newCustomer.result || 
+                 existingCustomer.callResult !== newCustomer.callResult)) {
+              return {
+                ...newCustomer,
+                result: existingCustomer.result,
+                callResult: existingCustomer.callResult
+              };
+            }
+            
+            return newCustomer;
+          });
+        });
       } catch (error) {
         toast({
           title: "Error",
