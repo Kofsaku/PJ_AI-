@@ -53,7 +53,7 @@ type Customer = {
 };
 
 // 定義されているステータス値
-const VALID_CALL_RESULTS = ['成功', '不在', '拒否', '要フォロー', '失敗', '通話中', '未対応',];
+const VALID_CALL_RESULTS = ['成功', '不在', '拒否', '要フォロー', '失敗', '通話中', '未対応'];
 
 const statusColors = {
   不在: "bg-yellow-500",
@@ -63,11 +63,7 @@ const statusColors = {
   失敗: "bg-gray-500",
   通話中: "bg-blue-500",
   未対応: "bg-gray-600",
-  未設定: "bg-gray-400",
-  見積依頼: "bg-orange-500",
-  資料請求: "bg-cyan-500",
-  導入検討: "bg-indigo-500",
-  競合比較中: "bg-pink-500"
+  未設定: "bg-gray-400"
 };
 
 // ステータス値を正規化する関数
