@@ -76,7 +76,18 @@ const statusColors: Record<string, string> = {
 // ステータス値を正規化する関数
 const normalizeStatus = (status: string | null | undefined): string => {
   if (!status) return "未設定";
+  
+  // "失敗: timeout" のような形式のステータスを処理
+  if (status.includes("失敗")) return "失敗";
+  if (status.includes("成功")) return "成功";
+  if (status.includes("不在")) return "不在";
+  if (status.includes("拒否")) return "拒否";
+  if (status.includes("要フォロー")) return "要フォロー";
+  if (status.includes("通話中")) return "通話中";
+  
+  // 完全一致のチェック
   if (VALID_CALL_RESULTS.includes(status)) return status;
+  
   console.warn(`[CallHistory] Invalid status detected: ${status}, using "未設定"`);
   return "未設定";
 }

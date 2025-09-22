@@ -165,8 +165,20 @@ export function CallDetailModal({ isOpen, onClose, callId }: CallDetailModalProp
 
   const normalizeStatus = (status: string | null | undefined): string => {
     if (!status) return "未設定";
-    const validResults = ['成功', '不在', '拒否', '要フォロー', '失敗', '未対応'];
+    
+    // "失敗: timeout" のような形式のステータスを処理
+    if (status.includes("失敗")) return "失敗";
+    if (status.includes("成功")) return "成功";
+    if (status.includes("不在")) return "不在";
+    if (status.includes("拒否")) return "拒否";
+    if (status.includes("要フォロー")) return "要フォロー";
+    if (status.includes("通話中")) return "通話中";
+    if (status.includes("未対応")) return "未対応";
+    
+    const validResults = ['成功', '不在', '拒否', '要フォロー', '失敗', '未対応', '通話中'];
     if (validResults.includes(status)) return status;
+    
+    console.warn(`[CallDetailModal] Invalid status detected: ${status}, using "未設定"`);
     return "未設定";
   }
 
