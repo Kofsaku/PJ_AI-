@@ -109,7 +109,9 @@ export default function SalesPitchSettingsPage() {
   const saveSettings = async () => {
     try {
       setSaving(true);
-      await authenticatedApiRequest('/api/users/sales-pitch', {
+      console.log('[Sales Pitch] Saving settings...', settings);
+      
+      const result = await authenticatedApiRequest('/api/users/sales-pitch', {
         method: 'PUT',
         body: JSON.stringify({
           conversationSettings: {
@@ -128,10 +130,15 @@ export default function SalesPitchSettingsPage() {
         })
       });
       
+      console.log('[Sales Pitch] Save result:', result);
+      
       toast({
         title: "保存完了",
         description: "トークスクリプト設定が保存されました。"
       });
+      
+      // 保存後に設定を再読み込み
+      await loadSettings();
     } catch (error) {
       console.error('Error saving settings:', error);
       toast({
