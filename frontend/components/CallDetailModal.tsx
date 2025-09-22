@@ -178,8 +178,9 @@ export function CallDetailModal({ isOpen, onClose, callId }: CallDetailModalProp
     const validResults = ['成功', '不在', '拒否', '要フォロー', '失敗', '未対応', '通話中'];
     if (validResults.includes(status)) return status;
     
-    console.warn(`[CallDetailModal] Invalid status detected: ${status}, using "未設定"`);
-    return "未設定";
+    // 無効なステータスでもそのまま保持（警告のみ）
+    console.warn(`[CallDetailModal] Unknown status: ${status}, keeping as-is`);
+    return status;
   }
 
   return (

@@ -89,8 +89,9 @@ const normalizeStatus = (status: string | null | undefined): string => {
   // 完全一致のチェック
   if (VALID_CALL_RESULTS.includes(status)) return status;
   
-  console.warn(`[CallHistory] Invalid status detected: ${status}, using "未設定"`);
-  return "未設定";
+  // 無効なステータスでもそのまま保持（警告のみ）
+  console.warn(`[CallHistory] Unknown status: ${status}, keeping as-is`);
+  return status;
 }
 
 const statusOptions = [
