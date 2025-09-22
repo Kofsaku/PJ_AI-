@@ -103,6 +103,7 @@ export default function DashboardPage() {
   const [callResults, setCallResults] = useState<any[]>([]);
   const [isCalling, setIsCalling] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
+  const [pausePolling, setPausePolling] = useState(false);
   const [activeCallModal, setActiveCallModal] = useState<{
     isOpen: boolean;
     customerName: string;
@@ -336,6 +337,7 @@ export default function DashboardPage() {
     if (isUpdatingStatus === customerId) return; // 重複更新を防ぐ
     
     setIsUpdatingStatus(customerId);
+    setPausePolling(true); // ポーリングを一時停止
     try {
       await authenticatedApiRequest(`/api/customers?id=${customerId}`, {
         method: 'PATCH',
@@ -367,6 +369,8 @@ export default function DashboardPage() {
       });
     } finally {
       setIsUpdatingStatus(null);
+      // 1秒後にポーリング再開（サーバー更新の反映時間を考慮）
+      setTimeout(() => setPausePolling(false), 1000);
     }
   };
 
@@ -463,6 +467,11 @@ export default function DashboardPage() {
 
     // 通話状態を取得する関数
     const fetchCallStatuses = async () => {
+      if (pausePolling) {
+        console.log("[Dashboard] Polling paused for status update");
+        return;
+      }
+      
       try {
         const data = await authenticatedApiRequest('/api/calls/bulk');
         if (!data.success || !data.sessions) return;
@@ -538,14 +547,14 @@ export default function DashboardPage() {
 
     // 3秒間隔でポーリング（通話中の場合は頻度を上げる）
     const pollingInterval = setInterval(() => {
-      if (isBulkCallActive || callingSessions.size > 0) {
+      if ((isBulkCallActive || callingSessions.size > 0) && !pausePolling) {
         fetchCallStatuses();
       }
     }, 3000);
 
     // 通話状態が非アクティブの場合は低頻度ポーリング
     const lowFrequencyInterval = setInterval(() => {
-      if (!isBulkCallActive && callingSessions.size === 0) {
+      if (!isBulkCallActive && callingSessions.size === 0 && !pausePolling) {
         fetchCallStatuses();
       }
     }, 10000);
@@ -555,7 +564,7 @@ export default function DashboardPage() {
       clearInterval(lowFrequencyInterval);
       console.log('[Dashboard] Stopped polling for call status updates');
     };
-  }, [customers, isBulkCallActive, callingSessions.size]);
+  }, [customers, isBulkCallActive, callingSessions.size, pausePolling]);
 
   // 通話状態監視 - 全通話終了時に一斉通話状態を自動リセット（遅延実行）
   useEffect(() => {
