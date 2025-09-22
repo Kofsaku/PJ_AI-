@@ -1,14 +1,7 @@
 // Common API helper functions for environment-aware API calls
 
 export function getApiBaseUrl(): string {
-  // 本番環境では直接バックエンドサーバーにアクセス
-  if (process.env.NODE_ENV === 'production') {
-    return process.env.NEXT_PUBLIC_BACKEND_URL_PROD || 
-           process.env.NEXT_PUBLIC_BACKEND_URL || 
-           process.env.NEXT_PUBLIC_API_URL || '';
-  }
-  
-  // 開発環境ではNext.jsのrewriteを使用
+  // 本番環境と開発環境の両方でNext.jsのプロキシを使用
   return '';
 }
 

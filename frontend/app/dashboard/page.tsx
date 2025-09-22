@@ -53,7 +53,7 @@ type Customer = {
 };
 
 // 定義されているステータス値
-const VALID_CALL_RESULTS = ['成功', '不在', '拒否', '要フォロー', '失敗', '通話中', '未対応', '競合比較中', '見積依頼', '資料請求', '導入検討'];
+const VALID_CALL_RESULTS = ['成功', '不在', '拒否', '要フォロー', '失敗', '通話中', '未対応'];
 
 const statusColors = {
   不在: "bg-yellow-500",
@@ -63,17 +63,25 @@ const statusColors = {
   失敗: "bg-gray-500",
   通話中: "bg-blue-500",
   未対応: "bg-gray-600",
-  未設定: "bg-gray-400",
-  競合比較中: "bg-orange-500",
-  見積依頼: "bg-cyan-500",
-  資料請求: "bg-indigo-500",
-  導入検討: "bg-emerald-500"
+  未設定: "bg-gray-400"
 };
 
 // ステータス値を正規化する関数
 const normalizeStatus = (status: string | null | undefined): string => {
   if (!status) return "未設定";
+  
+  // "失敗: timeout" のような形式のステータスを処理
+  if (status.includes("失敗")) return "失敗";
+  if (status.includes("成功")) return "成功";
+  if (status.includes("不在")) return "不在";
+  if (status.includes("拒否")) return "拒否";
+  if (status.includes("要フォロー")) return "要フォロー";
+  if (status.includes("通話中")) return "通話中";
+  if (status.includes("未対応")) return "未対応";
+  
+  // 完全一致のチェック
   if (VALID_CALL_RESULTS.includes(status)) return status;
+  
   console.warn(`[Dashboard] Invalid status detected: ${status}, using "未設定"`);
   return "未設定";
 };
@@ -306,20 +314,13 @@ export default function DashboardPage() {
     
     setIsUpdatingStatus(customerId);
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/customers?id=${customerId}`, {
+      await authenticatedApiRequest(`/api/customers?id=${customerId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify({ 
           result: newStatus,
           callResult: newStatus 
         }),
       });
-
-      if (!response.ok) throw new Error('Failed to update status');
 
       // Update local state
       setCustomers(prevCustomers => 
@@ -778,10 +779,6 @@ export default function DashboardPage() {
                 <SelectItem value="要フォロー">要フォロー</SelectItem>
                 <SelectItem value="拒否">拒否</SelectItem>
                 <SelectItem value="失敗">失敗</SelectItem>
-                <SelectItem value="競合比較中">競合比較中</SelectItem>
-                <SelectItem value="見積依頼">見積依頼</SelectItem>
-                <SelectItem value="資料請求">資料請求</SelectItem>
-                <SelectItem value="導入検討">導入検討</SelectItem>
               </SelectContent>
             </Select>
 
@@ -907,18 +904,6 @@ export default function DashboardPage() {
                               </SelectItem>
                               <SelectItem value="失敗">
                                 <Badge className="bg-gray-500 text-white">失敗</Badge>
-                              </SelectItem>
-                              <SelectItem value="競合比較中">
-                                <Badge className="bg-orange-500 text-white">競合比較中</Badge>
-                              </SelectItem>
-                              <SelectItem value="見積依頼">
-                                <Badge className="bg-cyan-500 text-white">見積依頼</Badge>
-                              </SelectItem>
-                              <SelectItem value="資料請求">
-                                <Badge className="bg-indigo-500 text-white">資料請求</Badge>
-                              </SelectItem>
-                              <SelectItem value="導入検討">
-                                <Badge className="bg-emerald-500 text-white">導入検討</Badge>
                               </SelectItem>
                             </SelectContent>
                           </Select>
