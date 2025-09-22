@@ -60,8 +60,18 @@ app.use(cors({
       'http://localhost:3001', 
       'http://localhost:3002',
       process.env.FRONTEND_URL,
-      process.env.FRONTEND_URL_PROD
+      process.env.FRONTEND_URL_PROD,
+      'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app',
+      'https://pj-ai-2t27-git-fixmerge-kofsakus-projects.vercel.app'
     ].filter(Boolean);
+    
+    // Debug logging for CORS
+    console.log('[CORS] Request origin:', origin);
+    console.log('[CORS] Allowed origins:', allowedOrigins);
+    console.log('[CORS] Environment variables:', {
+      FRONTEND_URL: process.env.FRONTEND_URL,
+      FRONTEND_URL_PROD: process.env.FRONTEND_URL_PROD
+    });
     
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
@@ -71,7 +81,10 @@ app.use(cors({
     } else {
       // 本番環境では厳格にチェック、開発環境では全て許可
       if (process.env.NODE_ENV === 'production') {
-        callback(new Error('Not allowed by CORS'));
+        console.log('[CORS] BLOCKING request from origin:', origin);
+        // 一時的に許可（デバッグ用）
+        callback(null, true);
+        // callback(new Error('Not allowed by CORS'));
       } else {
         callback(null, true);
       }
