@@ -69,9 +69,22 @@ const statusColors = {
 // ステータス値を正規化する関数
 const normalizeStatus = (status: string | null | undefined): string => {
   if (!status) return "未設定";
+  
+  // "失敗: timeout" のような形式のステータスを処理
+  if (status.includes("失敗")) return "失敗";
+  if (status.includes("成功")) return "成功";
+  if (status.includes("不在")) return "不在";
+  if (status.includes("拒否")) return "拒否";
+  if (status.includes("要フォロー")) return "要フォロー";
+  if (status.includes("通話中")) return "通話中";
+  if (status.includes("未対応")) return "未対応";
+  
+  // 完全一致のチェック
   if (VALID_CALL_RESULTS.includes(status)) return status;
-  console.warn(`[Dashboard] Invalid status detected: ${status}, using "未設定"`);
-  return "未設定";
+  
+  // 無効なステータスでもそのまま保持（警告のみ）
+  console.warn(`[Dashboard] Unknown status: ${status}, keeping as-is`);
+  return status;
 };
 
 export default function DashboardPage() {
@@ -90,6 +103,7 @@ export default function DashboardPage() {
   const [callResults, setCallResults] = useState<any[]>([]);
   const [isCalling, setIsCalling] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
+  const [pausePolling, setPausePolling] = useState(false);
   const [activeCallModal, setActiveCallModal] = useState<{
     isOpen: boolean;
     customerName: string;
@@ -109,7 +123,29 @@ export default function DashboardPage() {
     const fetchCustomers = async () => {
       try {
         const data = await authenticatedApiRequest('/api/customers');
-        setCustomers(normalizeApiResponse(data));
+        const newCustomers = normalizeApiResponse(data);
+        
+        // 手動変更されたステータスを保持
+        setCustomers(prevCustomers => {
+          return newCustomers.map(newCustomer => {
+            const existingCustomer = prevCustomers.find(prev => 
+              getCustomerId(prev) === getCustomerId(newCustomer)
+            );
+            
+            // 既存データがあり、手動変更されている場合は保持
+            if (existingCustomer && 
+                (existingCustomer.result !== newCustomer.result || 
+                 existingCustomer.callResult !== newCustomer.callResult)) {
+              return {
+                ...newCustomer,
+                result: existingCustomer.result,
+                callResult: existingCustomer.callResult
+              };
+            }
+            
+            return newCustomer;
+          });
+        });
       } catch (error) {
         toast({
           title: "Error",
@@ -301,21 +337,15 @@ export default function DashboardPage() {
     if (isUpdatingStatus === customerId) return; // 重複更新を防ぐ
     
     setIsUpdatingStatus(customerId);
+    setPausePolling(true); // ポーリングを一時停止
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/customers?id=${customerId}`, {
+      await authenticatedApiRequest(`/api/customers?id=${customerId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
         body: JSON.stringify({ 
           result: newStatus,
           callResult: newStatus 
         }),
       });
-
-      if (!response.ok) throw new Error('Failed to update status');
 
       // Update local state
       setCustomers(prevCustomers => 
@@ -339,6 +369,8 @@ export default function DashboardPage() {
       });
     } finally {
       setIsUpdatingStatus(null);
+      // 1秒後にポーリング再開（サーバー更新の反映時間を考慮）
+      setTimeout(() => setPausePolling(false), 1000);
     }
   };
 
@@ -435,6 +467,11 @@ export default function DashboardPage() {
 
     // 通話状態を取得する関数
     const fetchCallStatuses = async () => {
+      if (pausePolling) {
+        console.log("[Dashboard] Polling paused for status update");
+        return;
+      }
+      
       try {
         const data = await authenticatedApiRequest('/api/calls/bulk');
         if (!data.success || !data.sessions) return;
@@ -510,14 +547,14 @@ export default function DashboardPage() {
 
     // 3秒間隔でポーリング（通話中の場合は頻度を上げる）
     const pollingInterval = setInterval(() => {
-      if (isBulkCallActive || callingSessions.size > 0) {
+      if ((isBulkCallActive || callingSessions.size > 0) && !pausePolling) {
         fetchCallStatuses();
       }
     }, 3000);
 
     // 通話状態が非アクティブの場合は低頻度ポーリング
     const lowFrequencyInterval = setInterval(() => {
-      if (!isBulkCallActive && callingSessions.size === 0) {
+      if (!isBulkCallActive && callingSessions.size === 0 && !pausePolling) {
         fetchCallStatuses();
       }
     }, 10000);
@@ -527,7 +564,7 @@ export default function DashboardPage() {
       clearInterval(lowFrequencyInterval);
       console.log('[Dashboard] Stopped polling for call status updates');
     };
-  }, [customers, isBulkCallActive, callingSessions.size]);
+  }, [customers, isBulkCallActive, callingSessions.size, pausePolling]);
 
   // 通話状態監視 - 全通話終了時に一斉通話状態を自動リセット（遅延実行）
   useEffect(() => {
