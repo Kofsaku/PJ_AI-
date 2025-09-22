@@ -119,7 +119,7 @@ export default function SalesPitchSettingsPage() {
       console.log('[Sales Pitch] Saving settings...', settings);
       
       const token = localStorage.getItem('token');
-      const result = await fetch('/api/users/sales-pitch', {
+      const response = await fetch('/api/users/sales-pitch', {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
