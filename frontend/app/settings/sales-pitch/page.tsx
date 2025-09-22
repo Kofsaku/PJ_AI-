@@ -9,7 +9,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Save, RotateCcw, Play } from "lucide-react";
 import { Sidebar } from "@/components/sidebar";
-import { authenticatedApiRequest } from "@/lib/apiHelper";
 
 interface SalesPitchSettings {
   // 基本設定
@@ -146,8 +145,8 @@ export default function SalesPitchSettingsPage() {
         description: "トークスクリプト設定が保存されました。"
       });
       
-      // 保存後に設定を再読み込み
-      await loadSettings();
+      // 保存後に設定を再読み込み（一時的に無効化）
+      // await loadSettings();
     } catch (error) {
       console.error('Error saving settings:', error);
       toast({
