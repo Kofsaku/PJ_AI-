@@ -162,40 +162,41 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
     console.log(`[TwiML Conference] Using immediate initial message: ${initialMessage}`);
     console.log('[TwiML Conference] Testing CoeFont service...');
     
-    // 顧客の発話を先に待つ（挨拶する場合 / 無音の場合の両方に対応）
-    console.log(`[TwiML Conference] WAITING FOR CUSTOMER - will speak if silence detected`);
+    // AI即座応答戦略（checkpointブランチから移植）
+    console.log(`[TwiML Conference] IMMEDIATE AI RESPONSE - AI speaks immediately on call connect`);
 
-    // 顧客の発話を待つGatherを設定（無音の場合AIが話す）
+    // AI音声を即座に再生するGatherを設定
     const gather = twiml.gather({
       input: 'speech',
       language: 'ja-JP',
       speechModel: 'enhanced',
-      speechTimeout: 3,  // 3秒間音声を待つ
-      timeout: 5,        // 全体で5秒待つ
-      action: `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}?isFirst=true`,
+      speechTimeout: 'auto',
+      timeout: 10,
+      action: `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`,
       method: 'POST',
       partialResultCallback: `${process.env.BASE_URL}/api/twilio/voice/partial/${callId}`,
       partialResultCallbackMethod: 'POST'
     });
 
-    // 何も話さずに顧客の発話を待機
-    // （無音の場合、gatherのtimeoutでhandleSpeechInputに空のSpeechResultが送られる）
+    // AI音声を即座に再生（CoeFontを使用）
+    await coefontService.getTwilioPlayElement(gather, initialMessage);
 
     // フォールバック
     twiml.redirect({
       method: 'POST'
-    }, `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}?isFirst=true`);
-    
-    console.log(`[TwiML Conference] Structure: silent wait -> gather -> redirect`);
+    }, `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`);
+
+    console.log(`[TwiML Conference] Structure: immediate AI response -> gather -> redirect`);
 
     // TwiMLを即座に返す（会話エンジン初期化は後で行う）
     const twimlResponse = twiml.toString();
-    
+
     // 会話エンジンを非同期で初期化（レスポンス送信後）
     setImmediate(() => {
       conversationEngine.initializeConversation(callId, callSession.aiConfiguration);
-      // 顧客の発話を待つため、systemSpokeFirstはまだfalseのまま
-      console.log(`[TwiML Conference] Waiting for customer first - systemSpokeFirst remains false`);
+      // AIが先に話したことを記録
+      conversationEngine.updateConversationState(callId, { systemSpokeFirst: true });
+      console.log(`[TwiML Conference] AI spoke first - systemSpokeFirst set to true`);
     });
 
     res.type('text/xml').send(twimlResponse);
@@ -305,7 +306,7 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
       console.log(`[Speech Input] Conversation already exists for ${callId}`);
     }
 
-    // 初回発話判定: 初回の顧客応答かどうかを判定
+    // 初回発話判定: 初回の顧客応答かどうかを判定（挨拶無視機能のため）
     const conversationState = conversationEngine.getConversationState(callId);
     // 修正: AIが先に話している場合は、顧客の初回応答でも通常分類を行う
     const isFirstCustomerSpeech = !conversationState ||
@@ -1587,12 +1588,6 @@ async function initiateSimpleTransfer(callId, twiml) {
       'handoffDetails.handoffMethod': 'ai-triggered'
     });
     
-    // WebSocket notification for transfer start
-    webSocketService.broadcastCallEvent('transfer-initiated', {
-      callId,
-      agentPhoneNumber: agentPhoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
-      timestamp: new Date()
-    });
     
     // Use Conference for 3-way calling to enable AI logging
     // This will connect customer, agent, and AI in the same conference
@@ -1623,12 +1618,17 @@ async function initiateSimpleTransfer(callId, twiml) {
     
     console.log(`[SimpleTransfer] Conference transfer TwiML generated - customer and agent will join conference with AI`);
     
-    // Send transcript update
-    webSocketService.sendTranscriptUpdate(callId, {
+    // Send transcript update with phone number
+    const systemMessage = {
       speaker: 'system',
-      message: `転送中: ${agentPhoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}`,
+      message: '担当者に転送中です。少々お待ちください。',
+      phoneNumber: callSession.phoneNumber, // Add phoneNumber from callSession
       timestamp: new Date()
-    });
+    };
+    console.log(`[SimpleTransfer] Sending system message via sendTranscriptUpdate:`, systemMessage);
+    console.log(`[SimpleTransfer] Phone number from callSession: ${callSession.phoneNumber}`);
+    webSocketService.sendTranscriptUpdate(callId, systemMessage);
+    console.log(`[SimpleTransfer] System message sent for callId: ${callId}`);
     
     // Note: No return statement here as twiml is modified by reference
     
@@ -1736,25 +1736,19 @@ exports.handleTransferStatus = asyncHandler(async (req, res) => {
     // Update call session
     const updatedCallSession = await CallSession.findByIdAndUpdate(callId, updateData, { new: true });
     
-    // WebSocket notifications
-    webSocketService.broadcastCallEvent('transfer-status', {
-      callId,
-      status: DialCallStatus,
-      callSid: CallSid,
-      duration: DialCallDuration,
-      timestamp: new Date()
-    });
     
     if (DialCallStatus === 'answered') {
       webSocketService.sendTranscriptUpdate(callId, {
         speaker: 'system',
         message: '担当者に接続されました。',
+        phoneNumber: updatedCallSession?.phoneNumber, // Add phoneNumber
         timestamp: new Date()
       });
     } else if (['busy', 'no-answer', 'failed', 'cancelled'].includes(DialCallStatus)) {
       webSocketService.sendTranscriptUpdate(callId, {
         speaker: 'system',
         message: `転送に失敗しました: ${DialCallStatus}`,
+        phoneNumber: updatedCallSession?.phoneNumber, // Add phoneNumber
         timestamp: new Date()
       });
     }

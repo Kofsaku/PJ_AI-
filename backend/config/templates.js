@@ -10,7 +10,7 @@ const intentToTemplate = {
   positive_response: 'positive_response',
 
   // 担当者変更・転送系
-  person_changed: 'transfer_explanation',
+  person_changed: 'transfer_accepted',
   transfer_explanation: 'transfer_explanation',
   prepare_transfer: 'prepare_transfer',
   transfer_wait: 'positive_response',

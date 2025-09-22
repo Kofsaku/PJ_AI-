@@ -165,13 +165,22 @@ export function CallStatusModal({
 
       // Listen for transcript updates
       newSocket.on("transcript-update", (data) => {
+        console.log("[CallStatusModal] transcript-update received:", data);
         const normalizedDataPhone = normalizePhoneNumber(data.phoneNumber || '');
         const normalizedTargetPhone = normalizedPhone;
-        
+
         // より柔軟な判定: CallSidが一致するか、電話番号が一致する場合
-        const isCurrentCall = (callSid && data.callSid === callSid) || 
+        const isCurrentCall = (callSid && data.callSid === callSid) ||
                              (normalizedDataPhone === normalizedTargetPhone);
-        
+
+        console.log("[CallStatusModal] isCurrentCall check:", {
+          callSid,
+          data_callSid: data.callSid,
+          normalizedDataPhone,
+          normalizedTargetPhone,
+          isCurrentCall
+        });
+
         if (isCurrentCall) {
           // 重複チェック：秒単位で同じメッセージをチェック（ミリ秒の違いは無視）
           const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleTimeString("ja-JP") : new Date().toLocaleTimeString("ja-JP");
@@ -195,6 +204,7 @@ export function CallStatusModal({
               speakerType = "Customer";
             } else if (data.speaker === "system" || data.speaker === "System") {
               speakerType = "System";
+              console.log("[CallStatusModal] System message detected:", data.message || data.text);
             }
             
             const newEntry: TranscriptEntry = {
@@ -247,6 +257,7 @@ export function CallStatusModal({
           ]);
         }
       });
+
 
       setSocket(newSocket);
 
