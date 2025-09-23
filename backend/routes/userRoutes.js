@@ -25,17 +25,39 @@ router.get('/', protect, authorize('admin'), async (req, res) => {
 router.put('/sales-pitch', protect, async (req, res) => {
   try {
     const userId = req.user.id;
+    const { conversationSettings } = req.body;
+    
+    if (!conversationSettings) {
+      return res.status(400).json({
+        success: false,
+        message: 'conversationSettings is required'
+      });
+    }
+    
     const {
       // 基本設定
       companyName, serviceName, representativeName, targetDepartment,
       // その他設定
       serviceDescription, targetPerson,
       // セールスピッチ設定
-      companyDescription, callToAction, keyBenefits
-    } = req.body;
+      salesPitch
+    } = conversationSettings;
+    
+    const { companyDescription, callToAction, keyBenefits } = salesPitch || {};
 
     console.log('[Sales Pitch Update] User ID:', userId);
     console.log('[Sales Pitch Update] Data:', req.body);
+    console.log('[Sales Pitch Update] Received fields:', {
+      companyName,
+      serviceName, 
+      representativeName,
+      targetDepartment,
+      serviceDescription,
+      targetPerson,
+      companyDescription,
+      callToAction,
+      keyBenefits
+    });
 
     // Find or create agent settings
     let agentSettings = await AgentSettings.findOne({ userId });
@@ -111,8 +133,22 @@ router.put('/sales-pitch', protect, async (req, res) => {
     console.log('- representativeName:', agentSettings.conversationSettings.representativeName);
     console.log('- serviceName:', agentSettings.conversationSettings.serviceName);
 
+    console.log('[Sales Pitch Update] 保存前のagentSettings:', {
+      id: agentSettings._id,
+      userId: agentSettings.userId,
+      conversationSettings: agentSettings.conversationSettings
+    });
+    
     await agentSettings.save();
     console.log('[Sales Pitch Update] データベースに保存完了');
+    
+    // 保存後に再度読み込んで確認
+    const savedSettings = await AgentSettings.findById(agentSettings._id);
+    console.log('[Sales Pitch Update] 保存後確認:', {
+      companyName: savedSettings.conversationSettings.companyName,
+      representativeName: savedSettings.conversationSettings.representativeName,
+      serviceName: savedSettings.conversationSettings.serviceName
+    });
 
     res.json({
       success: true,

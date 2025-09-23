@@ -9,7 +9,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Save, RotateCcw, Play } from "lucide-react";
 import { Sidebar } from "@/components/sidebar";
-import { authenticatedApiRequest } from "@/lib/apiHelper";
 
 interface SalesPitchSettings {
   // 基本設定
@@ -56,7 +55,14 @@ export default function SalesPitchSettingsPage() {
 
   const loadSettings = async () => {
     try {
-      const data = await authenticatedApiRequest('/api/users/sales-pitch');
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/users/sales-pitch', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      const data = await response.json();
       if (data && data.data) {
         const agentData = data.data;
         setSettings({
@@ -109,8 +115,15 @@ export default function SalesPitchSettingsPage() {
   const saveSettings = async () => {
     try {
       setSaving(true);
-      await authenticatedApiRequest('/api/users/sales-pitch', {
+      console.log('[Sales Pitch] Saving settings...', settings);
+      
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/users/sales-pitch', {
         method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           conversationSettings: {
             companyName: settings.companyName,
@@ -128,10 +141,16 @@ export default function SalesPitchSettingsPage() {
         })
       });
       
+      const saveResult = await response.json();
+      console.log('[Sales Pitch] Save result:', saveResult);
+      
       toast({
         title: "保存完了",
         description: "トークスクリプト設定が保存されました。"
       });
+      
+      // 保存後に設定を再読み込み（一時的に無効化）
+      // await loadSettings();
     } catch (error) {
       console.error('Error saving settings:', error);
       toast({

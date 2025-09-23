@@ -2,14 +2,7 @@ import axios from 'axios';
 
 // API base URL configuration for different environments
 function getApiBaseUrl(): string {
-  // 本番環境では直接バックエンドサーバーにアクセス
-  if (process.env.NODE_ENV === 'production') {
-    return process.env.NEXT_PUBLIC_BACKEND_URL_PROD || 
-           process.env.NEXT_PUBLIC_BACKEND_URL || 
-           process.env.NEXT_PUBLIC_API_URL || '';
-  }
-  
-  // 開発環境ではNext.jsのrewriteを使用
+  // 常にNext.js API Routesを使用（開発・本番環境共通）
   return '/api';
 }
 
