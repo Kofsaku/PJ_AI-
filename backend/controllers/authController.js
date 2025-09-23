@@ -730,3 +730,55 @@ exports.completeRegistration = asyncHandler(async (req, res, next) => {
   }
 });
 
+
+// @desc    Get all users (admin only)
+// @route   GET /api/admin/users
+// @access  Private/Admin
+exports.getAllUsers = asyncHandler(async (req, res, next) => {
+  console.log('=== GET ALL USERS REQUEST ===');
+  console.log('User ID:', req.user.id);
+  console.log('User role:', req.user.role);
+
+  // Check if user is admin
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      error: 'Not authorized to access this resource'
+    });
+  }
+
+  try {
+    // Get all users with company information
+    const users = await User.find()
+      .select('-password')
+      .populate('companyId', 'name companyId')
+      .sort({ createdAt: -1 });
+
+    const formattedUsers = users.map(user => ({
+      _id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      companyName: user.companyId?.name || 'No Company',
+      phone: user.phone,
+      twilioPhoneNumber: user.twilioPhoneNumber,
+      twilioPhoneNumberStatus: user.twilioPhoneNumberStatus || 'inactive',
+      role: user.role,
+      createdAt: user.createdAt
+    }));
+
+    console.log(`Returning ${formattedUsers.length} users`);
+
+    res.status(200).json({
+      success: true,
+      count: formattedUsers.length,
+      users: formattedUsers
+    });
+  } catch (error) {
+    console.error('Get all users error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Server error while fetching users'
+    });
+  }
+});

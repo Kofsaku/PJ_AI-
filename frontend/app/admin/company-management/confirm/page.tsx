@@ -12,6 +12,9 @@ type CompanyData = {
   url: string;
   postalCode: string;
   address: string;
+  businessType: string;
+  employees: string;
+  annualRevenue: string;
 }
 
 function CompanyConfirmContent() {
@@ -24,7 +27,10 @@ function CompanyConfirmContent() {
     email: "",
     url: "",
     postalCode: "",
-    address: ""
+    address: "",
+    businessType: "",
+    employees: "",
+    annualRevenue: ""
   })
 
   useEffect(() => {
@@ -46,7 +52,10 @@ function CompanyConfirmContent() {
       email: searchParams.get('email') || '',
       url: searchParams.get('url') || '',
       postalCode: searchParams.get('postalCode') || '',
-      address: searchParams.get('address') || ''
+      address: searchParams.get('address') || '',
+      businessType: searchParams.get('businessType') || '',
+      employees: searchParams.get('employees') || '',
+      annualRevenue: searchParams.get('annualRevenue') || ''
     }
 
     // 必須項目のチェック
@@ -61,12 +70,14 @@ function CompanyConfirmContent() {
 
   const handleRegister = async () => {
     setLoading(true);
-    
+
     try {
+      const token = localStorage.getItem('token');
       const response = await fetch('/api/companies', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(companyData),
       });
@@ -134,6 +145,48 @@ function CompanyConfirmContent() {
             <div className="w-40 text-gray-600 pr-6">住所</div>
             <div className="font-semibold flex-1">{companyData.address}</div>
           </div>
+
+          {companyData.businessType && (
+            <div className="flex border-b pb-3">
+              <div className="w-40 text-gray-600 pr-6">業種</div>
+              <div className="font-semibold">
+                {companyData.businessType === 'it' ? 'IT・通信' :
+                 companyData.businessType === 'manufacturing' ? '製造業' :
+                 companyData.businessType === 'retail' ? '小売業' :
+                 companyData.businessType === 'service' ? 'サービス業' :
+                 companyData.businessType === 'construction' ? '建設業' :
+                 companyData.businessType === 'finance' ? '金融業' :
+                 companyData.businessType === 'healthcare' ? '医療・福祉' :
+                 companyData.businessType === 'education' ? '教育' : companyData.businessType}
+              </div>
+            </div>
+          )}
+
+          {companyData.employees && (
+            <div className="flex border-b pb-3">
+              <div className="w-40 text-gray-600 pr-6">社員数</div>
+              <div className="font-semibold">
+                {companyData.employees === '1-10' ? '1-10名' :
+                 companyData.employees === '11-50' ? '11-50名' :
+                 companyData.employees === '51-100' ? '51-100名' :
+                 companyData.employees === '100+' ? '100名以上' : companyData.employees}
+              </div>
+            </div>
+          )}
+
+          {companyData.annualRevenue && (
+            <div className="flex border-b pb-3">
+              <div className="w-40 text-gray-600 pr-6">年間売上</div>
+              <div className="font-semibold">
+                {companyData.annualRevenue === 'under-10M' ? '1000万円未満' :
+                 companyData.annualRevenue === '10M-50M' ? '1000万円〜5000万円' :
+                 companyData.annualRevenue === '50M-100M' ? '5000万円〜1億円' :
+                 companyData.annualRevenue === '100M-500M' ? '1億円〜5億円' :
+                 companyData.annualRevenue === '500M-1B' ? '5億円〜10億円' :
+                 companyData.annualRevenue === '1B+' ? '10億円以上' : companyData.annualRevenue}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="pt-6 flex gap-4">

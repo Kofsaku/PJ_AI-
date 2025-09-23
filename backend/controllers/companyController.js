@@ -89,7 +89,7 @@ exports.getCompanyByCompanyId = asyncHandler(async (req, res) => {
 });
 
 exports.createCompany = asyncHandler(async (req, res) => {
-  const { name, address, url, phone, email, postalCode } = req.body;
+  const { name, address, url, phone, email, postalCode, businessType, employees, annualRevenue } = req.body;
   
   const existingCompany = await Company.findOne({ 
     $or: [
@@ -112,6 +112,9 @@ exports.createCompany = asyncHandler(async (req, res) => {
     phone,
     email: email || '',
     postalCode: postalCode || '',
+    businessType: businessType || '',
+    employees: employees || '',
+    annualRevenue: annualRevenue || '',
     createdBy: req.user?.id || 'admin'
   });
 
@@ -183,6 +186,13 @@ exports.validateCompanyId = asyncHandler(async (req, res) => {
     data: {
       companyId: company.companyId,
       name: company.name,
+      phone: company.phone,
+      email: company.email,
+      postalCode: company.postalCode,
+      address: company.address,
+      businessType: company.businessType,
+      employees: company.employees,
+      annualRevenue: company.annualRevenue,
       hasAdmin: !!existingAdmin
     }
   });
