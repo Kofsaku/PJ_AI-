@@ -1006,10 +1006,18 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
         break;
       case 'completed':
         updateData.status = sanitizeStatus('completed');
-        updateData.endTime = new Date();
-        if (Duration) {
-          updateData.duration = parseInt(Duration);
+        const completedAt = new Date();
+        updateData.endTime = completedAt;
+
+        let completedDuration = 0;
+        if (existingSession?.startTime) {
+          const start = new Date(existingSession.startTime);
+          completedDuration = Math.max(0, Math.floor((completedAt.getTime() - start.getTime()) / 1000));
         }
+        if ((!completedDuration || Number.isNaN(completedDuration)) && Duration) {
+          completedDuration = parseInt(Duration);
+        }
+        updateData.duration = completedDuration;
 
         // 転送状況に基づいてcallResultを判定
         updateData.callResult = determineCallResultFromTransfer(existingSession);
@@ -1022,9 +1030,10 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
       case 'no-answer':
       case 'cancelled':
         updateData.status = sanitizeStatus('failed');
-        updateData.endTime = new Date();
+        const failedAt = new Date();
+        updateData.endTime = failedAt;
         updateData.error = `Call ${CallStatus}`;
-        
+
         // 詳細なエラー情報をログに記録
         console.error(`[CallStatusError] Call ${CallStatus} for session ${callId}:`);
         console.error(`[CallStatusError] Full request body:`, JSON.stringify(req.body, null, 2));
@@ -1036,9 +1045,15 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
           console.error(`[CallStatusError] Twilio Error Message: ${req.body.ErrorMessage}`);
         }
         
-        if (Duration) {
-          updateData.duration = parseInt(Duration);
+        let failedDuration = 0;
+        if (existingSession?.startTime) {
+          const start = new Date(existingSession.startTime);
+          failedDuration = Math.max(0, Math.floor((failedAt.getTime() - start.getTime()) / 1000));
         }
+        if ((!failedDuration || Number.isNaN(failedDuration)) && Duration) {
+          failedDuration = parseInt(Duration);
+        }
+        updateData.duration = failedDuration;
         // 会話エンジンをクリア
         conversationEngine.clearConversation(callId);
         break;

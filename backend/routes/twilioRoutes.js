@@ -89,10 +89,18 @@ router.post('/status', async (req, res) => {
           break;
         case 'completed':
           updateData.status = 'completed';
-          updateData.endTime = new Date();
-          if (Duration) {
-            updateData.duration = parseInt(Duration);
+          const completedAt = new Date();
+          updateData.endTime = completedAt;
+
+          let computedDuration = 0;
+          if (callSession.startTime) {
+            const start = new Date(callSession.startTime);
+            computedDuration = Math.max(0, Math.floor((completedAt.getTime() - start.getTime()) / 1000));
           }
+          if ((!computedDuration || Number.isNaN(computedDuration)) && Duration) {
+            computedDuration = parseInt(Duration);
+          }
+          updateData.duration = computedDuration;
           // HangupCauseから切断理由と通話結果を判定
           console.log(`[Twilio Status] Hangup cause: ${HangupCause}`);
           if (HangupCause) {
@@ -149,11 +157,19 @@ router.post('/status', async (req, res) => {
         case 'canceled':
         case 'cancelled':
           updateData.status = 'failed';
-          updateData.endTime = new Date();
+          const failedAt = new Date();
+          updateData.endTime = failedAt;
           updateData.error = `Call ${CallStatus}`;
-          if (Duration) {
-            updateData.duration = parseInt(Duration);
+
+          let failedDuration = 0;
+          if (callSession.startTime) {
+            const start = new Date(callSession.startTime);
+            failedDuration = Math.max(0, Math.floor((failedAt.getTime() - start.getTime()) / 1000));
           }
+          if ((!failedDuration || Number.isNaN(failedDuration)) && Duration) {
+            failedDuration = parseInt(Duration);
+          }
+          updateData.duration = failedDuration;
           // 失敗理由を設定
           switch (CallStatus) {
             case 'busy':
