@@ -980,6 +980,8 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
   console.log(`[handleCallStatus] CallStatus: ${CallStatus}, CallId: ${callId}, Phone: ${CallSid}`);
 
   try {
+    const existingSession = await CallSession.findById(callId);
+
     const updateData = {
       twilioCallSid: CallSid
     };
@@ -993,6 +995,14 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
       case 'answered':
       case 'in-progress':
         updateData.status = sanitizeStatus('in-progress');
+
+        if (
+          !existingSession?.startTime ||
+          ['queued', 'calling', 'initiating', 'initiated', 'scheduled'].includes(existingSession?.status)
+        ) {
+          updateData.startTime = new Date();
+          updateData.duration = 0;
+        }
         break;
       case 'completed':
         updateData.status = sanitizeStatus('completed');
@@ -1002,8 +1012,7 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
         }
 
         // 転送状況に基づいてcallResultを判定
-        const callSession = await CallSession.findById(callId);
-        updateData.callResult = determineCallResultFromTransfer(callSession);
+        updateData.callResult = determineCallResultFromTransfer(existingSession);
 
         // 会話エンジンをクリア
         conversationEngine.clearConversation(callId);

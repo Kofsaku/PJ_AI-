@@ -89,10 +89,10 @@ router.get('/', async (req, res) => {
     const formattedCalls = calls.map(call => {
       // 通話時間を計算（秒単位）
       let duration = 0;
-      if (call.endTime && call.startTime) {
-        duration = Math.floor((new Date(call.endTime) - new Date(call.startTime)) / 1000);
-      } else if (call.duration) {
+      if (typeof call.duration === 'number' && !Number.isNaN(call.duration)) {
         duration = call.duration;
+      } else if (call.endTime && call.startTime) {
+        duration = Math.floor((new Date(call.endTime) - new Date(call.startTime)) / 1000);
       }
 
       // 分:秒形式に変換
@@ -179,10 +179,10 @@ router.get('/:id', async (req, res) => {
 
     // 通話時間を計算
     let duration = 0;
-    if (call.endTime && call.startTime) {
-      duration = Math.floor((new Date(call.endTime) - new Date(call.startTime)) / 1000);
-    } else if (call.duration) {
+    if (typeof call.duration === 'number' && !Number.isNaN(call.duration)) {
       duration = call.duration;
+    } else if (call.endTime && call.startTime) {
+      duration = Math.floor((new Date(call.endTime) - new Date(call.startTime)) / 1000);
     }
 
     const minutes = Math.floor(duration / 60);
@@ -295,9 +295,15 @@ router.get('/stats/summary', async (req, res) => {
         $addFields: {
           calculatedDuration: {
             $cond: {
-              if: { $and: [{ $ne: ['$endTime', null] }, { $ne: ['$startTime', null] }] },
-              then: { $divide: [{ $subtract: ['$endTime', '$startTime'] }, 1000] },
-              else: 0
+              if: { $ne: ['$duration', null] },
+              then: '$duration',
+              else: {
+                $cond: {
+                  if: { $and: [{ $ne: ['$endTime', null] }, { $ne: ['$startTime', null] }] },
+                  then: { $divide: [{ $subtract: ['$endTime', '$startTime'] }, 1000] },
+                  else: 0
+                }
+              }
             }
           }
         }

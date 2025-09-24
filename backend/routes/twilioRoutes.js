@@ -67,6 +67,16 @@ router.post('/status', async (req, res) => {
         case 'answered':
         case 'in-progress':
           updateData.status = 'in-progress';
+
+          // 実際の発信開始タイミングを記録
+          if (
+            !callSession.startTime ||
+            ['queued', 'calling', 'initiating', 'initiated', 'scheduled'].includes(callSession.status)
+          ) {
+            updateData.startTime = new Date();
+            updateData.duration = 0;
+          }
+
           shouldBroadcast = true;
 
           // 顧客のステータスを「通話中」に更新
