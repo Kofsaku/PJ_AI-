@@ -35,9 +35,19 @@ export function CallStatusModal({
   const [socket, setSocket] = useState<Socket | null>(null);
   const [callStatus, setCallStatus] = useState<"connecting" | "connected" | "ended">("connecting");
   const [callSid, setCallSid] = useState<string | null>(null);
+  const callSidRef = useRef<string | null>(null);
+  const callStatusRef = useRef<"connecting" | "connected" | "ended">("connecting");
   const [modalOpenTime, setModalOpenTime] = useState<Date | null>(null);
   const [processedMessages, setProcessedMessages] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    callSidRef.current = callSid;
+  }, [callSid]);
+
+  useEffect(() => {
+    callStatusRef.current = callStatus;
+  }, [callStatus]);
 
   useEffect(() => {
     if (isOpen && phoneNumber) {
@@ -127,13 +137,12 @@ export function CallStatusModal({
         }
       });
 
-      // Listen for call status updates
-      newSocket.on("call-status", (data) => {
+      const handleCallStatus = (data: any) => {
         const normalizedDataPhone = normalizePhoneNumber(data.phoneNumber);
         const normalizedTargetPhone = normalizedPhone;
-        
-        
-        if (normalizedDataPhone === normalizedTargetPhone || data.callSid === callSid || data.callId === callSid) {
+
+
+        if (normalizedDataPhone === normalizedTargetPhone || data.callSid === callSidRef.current || data.callId === callSidRef.current) {
           if (data.status === "in-progress" || data.status === "calling" || data.status === "ai-responding" || data.status === "initiated" || data.status === "human-connected") {
             setCallStatus("connected");
             const newCallSid = data.callSid || data.callId || data.twilioCallSid;
@@ -145,7 +154,34 @@ export function CallStatusModal({
             setCallStatus("ended");
           }
         }
-      });
+      };
+
+      newSocket.on("call-status", handleCallStatus);
+
+      const handleCallTerminated = (data: any) => {
+        const normalizedDataPhone = normalizePhoneNumber(data.phoneNumber || "");
+        const normalizedTargetPhone = normalizePhoneNumber(phoneNumber);
+
+        if (
+          normalizedDataPhone === normalizedTargetPhone ||
+          data.callSid === callSidRef.current ||
+          data.callId === callSidRef.current
+        ) {
+          if (callStatusRef.current !== "ended") {
+            setCallStatus("ended");
+            setTranscript((prev) => [
+              ...prev,
+              {
+                speaker: "System",
+                text: "通話が終了しました。",
+                timestamp: new Date().toLocaleTimeString("ja-JP"),
+              },
+            ]);
+          }
+        }
+      };
+
+      newSocket.on("call-terminated", handleCallTerminated);
 
       // Listen for existing call data response
       newSocket.on("existing-call-data", (data) => {
@@ -273,6 +309,8 @@ export function CallStatusModal({
       // }, 2000);
 
       return () => {
+        newSocket.off("call-status", handleCallStatus);
+        newSocket.off("call-terminated", handleCallTerminated);
         newSocket.emit("leave-call", { phoneNumber });
         newSocket.disconnect();
       };
@@ -285,6 +323,17 @@ export function CallStatusModal({
       setTranscript([]);
     }
   }, [isOpen, phoneNumber]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (callStatus !== "ended") return;
+
+    const timeout = setTimeout(() => {
+      onClose();
+    }, 1000);
+
+    return () => clearTimeout(timeout);
+  }, [callStatus, isOpen, onClose]);
 
   // Mock conversation for demonstration - 無効化
   // const simulateMockConversation = () => {
@@ -427,10 +476,6 @@ export function CallStatusModal({
         timestamp: new Date().toLocaleTimeString("ja-JP"),
       },
     ]);
-    
-    setTimeout(() => {
-      onClose();
-    }, 1500);
   };
 
   const getStatusColor = () => {
@@ -592,4 +637,3 @@ export function CallStatusModal({
     </Dialog>
   );
 }
-
