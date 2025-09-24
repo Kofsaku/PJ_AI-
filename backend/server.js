@@ -57,8 +57,10 @@ app.use(cors({
   origin: function(origin, callback) {
     const allowedOrigins = [
       'http://localhost:3000',
-      'http://localhost:3001', 
+      'http://localhost:3001',
       'http://localhost:3002',
+      'http://localhost:5001',
+      'http://localhost:5002',
       process.env.FRONTEND_URL,
       process.env.FRONTEND_URL_PROD,
       'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app',

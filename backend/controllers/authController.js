@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Company = require('../models/Company');
 const EmailVerification = require('../models/EmailVerification');
+const PasswordReset = require('../models/PasswordReset');
 const emailService = require('../services/emailService');
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('../middlewares/asyncHandler');
@@ -462,30 +463,29 @@ exports.sendVerificationCode = asyncHandler(async (req, res, next) => {
 
     console.log('Verification record created:', verification._id);
 
-    // 開発環境では実際のメール送信をスキップして、ログで認証コードを確認
-    if (process.env.NODE_ENV === 'development') {
-      console.log('=== DEVELOPMENT MODE: EMAIL VERIFICATION CODE ===');
-      console.log(`Email: ${email}`);
-      console.log(`Verification Code: ${verificationCode}`);
-      console.log(`Company: ${company.name}`);
-      console.log('=== EMAIL SENDING SKIPPED IN DEVELOPMENT ===');
-    } else {
-      // Send verification email
-      const emailResult = await emailService.sendVerificationCode(
-        email,
-        verificationCode,
-        company.name
-      );
+    // Send verification email (開発環境でもEthereal Emailで送信)
+    const emailResult = await emailService.sendVerificationCode(
+      email,
+      verificationCode,
+      company.name
+    );
 
-      if (!emailResult.success) {
-        console.error('Email sending failed:', emailResult.error);
-        return res.status(500).json({
-          success: false,
-          error: 'メールの送信に失敗しました',
-        });
-      }
+    if (!emailResult.success) {
+      console.error('Email sending failed:', emailResult.error);
+      return res.status(500).json({
+        success: false,
+        error: 'メールの送信に失敗しました',
+      });
+    }
 
-      console.log('Verification email sent successfully');
+    console.log('Verification email sent successfully');
+
+    // 開発環境ではプレビューURLを表示（本番環境と同じ体験のため、コードは表示しない）
+    if (process.env.NODE_ENV === 'development' && emailResult.previewUrl) {
+      console.log('=== EMAIL SENT ===');
+      console.log(`📧 メールプレビュー: ${emailResult.previewUrl}`);
+      console.log('このURLをブラウザで開いて、送信されたメールの内容を確認してください');
+      console.log('==================');
     }
 
     res.status(200).json({
@@ -723,6 +723,255 @@ exports.completeRegistration = asyncHandler(async (req, res, next) => {
     }
 
     console.error('Complete registration error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'サーバーエラーが発生しました',
+    });
+  }
+});
+
+// @desc    Request password reset
+// @route   POST /api/auth/forgot-password
+// @access  Public
+exports.forgotPassword = asyncHandler(async (req, res, next) => {
+  console.log('=== FORGOT PASSWORD REQUEST ===');
+  console.log('Request body:', req.body);
+
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      error: 'メールアドレスが必要です',
+    });
+  }
+
+  try {
+    // Find user by email
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      // セキュリティのため、ユーザーが存在しなくても成功レスポンスを返す
+      console.log('User not found for email:', email);
+      return res.status(200).json({
+        success: true,
+        message: 'メールアドレスが登録されている場合、パスワードリセットのリンクを送信しました',
+      });
+    }
+
+    // Rate limiting: Check if reset was requested recently
+    const recentReset = await PasswordReset.findOne({
+      userId: user._id,
+      createdAt: { $gt: new Date(Date.now() - 60000) }, // 1分以内
+    });
+
+    if (recentReset) {
+      return res.status(429).json({
+        success: false,
+        error: 'パスワードリセットの要求は1分間に1回までです',
+      });
+    }
+
+    // Delete any existing password reset records for this user
+    await PasswordReset.deleteMany({ userId: user._id });
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Create password reset record
+    const passwordReset = await PasswordReset.create({
+      userId: user._id,
+      email: user.email,
+      resetToken: crypto.createHash('sha256').update(resetToken).digest('hex'),
+      resetCode,
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30分間有効
+    });
+
+    console.log('Password reset record created:', passwordReset._id);
+
+    // Send password reset email (開発環境でもEthereal Emailで送信)
+    const emailResult = await emailService.sendPasswordResetEmail(
+      email,
+      resetCode,
+      resetToken
+    );
+
+    if (!emailResult.success) {
+      console.error('Password reset email failed:', emailResult.error);
+      return res.status(500).json({
+        success: false,
+        error: 'メールの送信に失敗しました',
+      });
+    }
+
+    // 開発環境ではプレビューURLを表示（本番環境と同じ体験のため、コードは表示しない）
+    if (process.env.NODE_ENV === 'development' && emailResult.previewUrl) {
+      console.log('=== PASSWORD RESET EMAIL SENT ===');
+      console.log(`📧 メールプレビュー: ${emailResult.previewUrl}`);
+      console.log('このURLをブラウザで開いて、送信されたメールの内容を確認してください');
+      console.log('=================================');
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'パスワードリセットのメールを送信しました',
+    });
+
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'サーバーエラーが発生しました',
+    });
+  }
+});
+
+// @desc    Verify password reset code
+// @route   POST /api/auth/verify-reset-code
+// @access  Public
+exports.verifyResetCode = asyncHandler(async (req, res, next) => {
+  console.log('=== VERIFY RESET CODE REQUEST ===');
+  const { email, resetCode } = req.body;
+
+  if (!email || !resetCode) {
+    return res.status(400).json({
+      success: false,
+      error: 'メールアドレスと認証コードが必要です',
+    });
+  }
+
+  try {
+    // Find password reset record
+    const passwordReset = await PasswordReset.findOne({
+      email,
+      isUsed: false,
+    }).sort({ createdAt: -1 });
+
+    if (!passwordReset) {
+      return res.status(400).json({
+        success: false,
+        error: '無効または期限切れのリセットコードです',
+      });
+    }
+
+    // Check if expired
+    if (passwordReset.expiresAt < new Date()) {
+      return res.status(400).json({
+        success: false,
+        error: 'リセットコードの有効期限が切れています',
+      });
+    }
+
+    // Check attempt limit
+    if (passwordReset.attempts >= 5) {
+      return res.status(429).json({
+        success: false,
+        error: '認証試行回数の上限に達しました',
+      });
+    }
+
+    // Increment attempt count
+    passwordReset.attempts += 1;
+    await passwordReset.save();
+
+    // Verify the code
+    const isValidCode = await passwordReset.compareResetCode(resetCode);
+
+    if (!isValidCode) {
+      return res.status(400).json({
+        success: false,
+        error: '認証コードが正しくありません',
+        attemptsRemaining: 5 - passwordReset.attempts,
+      });
+    }
+
+    // Create temporary token for password reset
+    const tempToken = jwt.sign(
+      {
+        userId: passwordReset.userId,
+        email: passwordReset.email,
+        type: 'password_reset',
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '10m' }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: '認証コードが確認されました',
+      tempToken,
+    });
+
+  } catch (error) {
+    console.error('Verify reset code error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'サーバーエラーが発生しました',
+    });
+  }
+});
+
+// @desc    Reset password
+// @route   POST /api/auth/reset-password
+// @access  Public
+exports.resetPassword = asyncHandler(async (req, res, next) => {
+  console.log('=== RESET PASSWORD REQUEST ===');
+  const { tempToken, newPassword } = req.body;
+
+  if (!tempToken || !newPassword) {
+    return res.status(400).json({
+      success: false,
+      error: '必要な情報が不足しています',
+    });
+  }
+
+  try {
+    // Verify temporary token
+    const decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+
+    if (decoded.type !== 'password_reset') {
+      return res.status(400).json({
+        success: false,
+        error: '無効な認証トークンです',
+      });
+    }
+
+    // Find user
+    const user = await User.findById(decoded.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'ユーザーが見つかりません',
+      });
+    }
+
+    // Update password
+    user.password = newPassword;
+    await user.save();
+
+    // Mark password reset as used
+    await PasswordReset.findOneAndUpdate(
+      { userId: decoded.userId, isUsed: false },
+      { isUsed: true, usedAt: new Date() }
+    );
+
+    console.log('Password reset successful for user:', user.email);
+
+    res.status(200).json({
+      success: true,
+      message: 'パスワードが正常にリセットされました',
+    });
+
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError') {
+      return res.status(400).json({
+        success: false,
+        error: '認証トークンが無効または期限切れです',
+      });
+    }
+
+    console.error('Reset password error:', error);
     res.status(500).json({
       success: false,
       error: 'サーバーエラーが発生しました',

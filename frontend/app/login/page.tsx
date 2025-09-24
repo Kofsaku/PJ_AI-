@@ -104,22 +104,22 @@ export default function LoginPage() {
                 required
               />
             </div>
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={() => router.push("/login/forgot-password")}
-                className="text-sm text-blue-600 hover:underline"
-              >
-                パスワードをお忘れですか？
-              </button>
-            </div>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 className="w-full bg-orange-500 hover:bg-orange-600"
                 disabled={loading}
               >
                 {loading ? "処理中..." : "ログイン"}
               </Button>
+              <div className="text-center mt-3">
+                <button
+                  type="button"
+                  onClick={() => router.push("/login/forgot-password")}
+                  className="text-sm text-blue-600 hover:underline"
+                >
+                  パスワードをお忘れですか？
+                </button>
+              </div>
           </form>
           <div className="text-center text-sm text-gray-600">
             <button
