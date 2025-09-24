@@ -114,7 +114,7 @@ const [isCallStatusModalOpen, setIsCallStatusModalOpen] = useState(false);
 const [activePhoneNumber, setActivePhoneNumber] = useState("");
 const activePhoneNumberRef = useRef("");
 const isCallStatusModalOpenRef = useRef(false);
-const activePhoneNumbersRef = useRef<Set<string>>(new Set());
+const activeSessionKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     activePhoneNumberRef.current = activePhoneNumber;
@@ -136,6 +136,18 @@ const normalizePhoneNumber = useCallback((phone?: string | null) => {
     normalized = "0" + normalized.substring(3);
   }
   return normalized;
+}, []);
+
+const getSessionKey = useCallback((session: any, phone: string) => {
+  const sessionId = session?._id
+    || session?.id
+    || session?.sessionId
+    || session?.twilioCallSid
+    || session?.callId
+    || session?.conferenceSid;
+  const start = session?.startTime || session?.createdAt || "";
+  const base = sessionId ? String(sessionId) : `no-id-${start}`;
+  return `${base}|${phone || "unknown"}`;
 }, []);
 
   // Fetch customers from API
@@ -501,7 +513,7 @@ const normalizePhoneNumber = useCallback((phone?: string | null) => {
         const newCallingSessions = new Set<string>();
         let activeCallCount = 0;
         let queuedCallCount = 0;
-        const currentActivePhones = new Set<string>();
+        const currentActiveSessionKeys = new Set<string>();
 
         data.sessions.forEach((session: any) => {
           const rawPhone = session.phoneNumber
@@ -532,9 +544,8 @@ const normalizePhoneNumber = useCallback((phone?: string | null) => {
             if (['calling', 'initiated', 'ai-responding', 'in-progress', 'human-connected', 'transferring'].includes(session.status)) {
               newCallingSessions.add(customerId);
               activeCallCount++;
-              if (phoneNumber) {
-                currentActivePhones.add(phoneNumber);
-              }
+              const sessionKey = getSessionKey(session, phoneNumber);
+              currentActiveSessionKeys.add(sessionKey);
             } else if (session.status === 'queued') {
               queuedCallCount++;
             }
@@ -563,16 +574,25 @@ const normalizePhoneNumber = useCallback((phone?: string | null) => {
           return prev;
         });
 
-        const previousActivePhones = activePhoneNumbersRef.current;
-        const newlyActivePhone = [...currentActivePhones].find(phone => !previousActivePhones.has(phone));
+        const previousActiveKeys = activeSessionKeysRef.current;
+        const newlyActiveKey = [...currentActiveSessionKeys].find(key => !previousActiveKeys.has(key));
 
-        activePhoneNumbersRef.current = currentActivePhones;
+        activeSessionKeysRef.current = currentActiveSessionKeys;
 
-        if (newlyActivePhone) {
-          setActivePhoneNumber(newlyActivePhone);
+        const extractPhoneFromKey = (key?: string) => {
+          if (!key) return '';
+          const [, phonePart] = key.split('|');
+          if (!phonePart || phonePart === 'unknown') return '';
+          return phonePart;
+        };
+
+        if (newlyActiveKey) {
+          const nextPhone = extractPhoneFromKey(newlyActiveKey);
+          setActivePhoneNumber(nextPhone);
           setIsCallStatusModalOpen(true);
-        } else if (currentActivePhones.size > 0 && !isCallStatusModalOpenRef.current) {
-          const fallbackPhone = currentActivePhones.values().next().value as string;
+        } else if (currentActiveSessionKeys.size > 0 && !isCallStatusModalOpenRef.current) {
+          const fallbackKey = currentActiveSessionKeys.values().next().value as string;
+          const fallbackPhone = extractPhoneFromKey(fallbackKey);
           setActivePhoneNumber(fallbackPhone);
           setIsCallStatusModalOpen(true);
         }
@@ -614,7 +634,7 @@ const normalizePhoneNumber = useCallback((phone?: string | null) => {
       clearInterval(lowFrequencyInterval);
       console.log('[Dashboard] Stopped polling for call status updates');
     };
-  }, [customers, isBulkCallActive, callingSessions.size, pausePolling, phoneToCustomerMap, normalizePhoneNumber]);
+  }, [customers, isBulkCallActive, callingSessions.size, pausePolling, phoneToCustomerMap, normalizePhoneNumber, getSessionKey]);
 
   // 通話状態監視 - 全通話終了時に一斉通話状態を自動リセット（遅延実行）
   useEffect(() => {
