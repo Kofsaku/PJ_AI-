@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -110,13 +110,33 @@ export default function DashboardPage() {
     phoneNumber: string;
     customerId: string;
   }>({ isOpen: false, customerName: "", phoneNumber: "", customerId: "" });
-  const [isCallStatusModalOpen, setIsCallStatusModalOpen] = useState(false);
-  const [activePhoneNumber, setActivePhoneNumber] = useState("");
+const [isCallStatusModalOpen, setIsCallStatusModalOpen] = useState(false);
+const [activePhoneNumber, setActivePhoneNumber] = useState("");
+const activePhoneNumberRef = useRef("");
+const isCallStatusModalOpenRef = useRef(false);
+const activePhoneNumbersRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    activePhoneNumberRef.current = activePhoneNumber;
+  }, [activePhoneNumber]);
+
+  useEffect(() => {
+    isCallStatusModalOpenRef.current = isCallStatusModalOpen;
+  }, [isCallStatusModalOpen]);
   const [callingSessions, setCallingSessions] = useState<Set<string>>(new Set()); // 通話中の顧客ID
   const [phoneToCustomerMap, setPhoneToCustomerMap] = useState<Map<string, string>>(new Map()); // phone -> customerId
   const [isBulkCallActive, setIsBulkCallActive] = useState(false); // 一斉通話実行中フラグ
   const [bulkCallQueue, setBulkCallQueue] = useState<number>(0); // キュー中の通話数
-  const { toast } = useToast();
+const { toast } = useToast();
+
+const normalizePhoneNumber = useCallback((phone?: string | null) => {
+  if (!phone) return "";
+  let normalized = phone.replace(/[\s-]/g, "");
+  if (normalized.startsWith("+81")) {
+    normalized = "0" + normalized.substring(3);
+  }
+  return normalized;
+}, []);
 
   // Fetch customers from API
   useEffect(() => {
@@ -406,7 +426,7 @@ export default function DashboardPage() {
       const phoneMap = new Map<string, string>();
       phoneNumbers.forEach((phone, index) => {
         if (customerIds[index]) {
-          phoneMap.set(phone, customerIds[index]);
+          phoneMap.set(normalizePhoneNumber(phone), customerIds[index]);
         }
       });
       setPhoneToCustomerMap(phoneMap);
@@ -416,8 +436,9 @@ export default function DashboardPage() {
       
       // Immediately open the call status modal
       if (phoneNumbers.length > 0) {
-        console.log("[Dashboard] 一斉コール開始, 電話番号:", phoneNumbers[0]);
-        setActivePhoneNumber(phoneNumbers[0]);
+        const firstNumber = normalizePhoneNumber(phoneNumbers[0]);
+        console.log("[Dashboard] 一斉コール開始, 電話番号:", firstNumber);
+        setActivePhoneNumber(firstNumber);
         setIsCallStatusModalOpen(true);
       }
 
@@ -480,15 +501,27 @@ export default function DashboardPage() {
         const newCallingSessions = new Set<string>();
         let activeCallCount = 0;
         let queuedCallCount = 0;
+        const currentActivePhones = new Set<string>();
 
         data.sessions.forEach((session: any) => {
-          const phoneNumber = session.phoneNumber?.startsWith('+81')
-            ? '0' + session.phoneNumber.substring(3)
-            : session.phoneNumber;
+          const rawPhone = session.phoneNumber
+            || session.customer?.phone
+            || (() => {
+              const targetId = session.customer?._id || session.customerId || session.customer;
+              if (!targetId) return undefined;
+              for (const [phone, id] of phoneToCustomerMap.entries()) {
+                if (id === targetId) {
+                  return phone;
+                }
+              }
+              return undefined;
+            })();
+
+          const phoneNumber = normalizePhoneNumber(rawPhone);
 
           let customerId = session.customer?._id || session.customer;
           if (!customerId) {
-            const customer = customers.find(c => c.phone === phoneNumber);
+            const customer = customers.find(c => normalizePhoneNumber(c.phone) === phoneNumber);
             if (customer) {
               customerId = getCustomerId(customer);
             }
@@ -499,6 +532,9 @@ export default function DashboardPage() {
             if (['calling', 'initiated', 'ai-responding', 'in-progress', 'human-connected', 'transferring'].includes(session.status)) {
               newCallingSessions.add(customerId);
               activeCallCount++;
+              if (phoneNumber) {
+                currentActivePhones.add(phoneNumber);
+              }
             } else if (session.status === 'queued') {
               queuedCallCount++;
             }
@@ -526,6 +562,20 @@ export default function DashboardPage() {
           }
           return prev;
         });
+
+        const previousActivePhones = activePhoneNumbersRef.current;
+        const newlyActivePhone = [...currentActivePhones].find(phone => !previousActivePhones.has(phone));
+
+        activePhoneNumbersRef.current = currentActivePhones;
+
+        if (newlyActivePhone) {
+          setActivePhoneNumber(newlyActivePhone);
+          setIsCallStatusModalOpen(true);
+        } else if (currentActivePhones.size > 0 && !isCallStatusModalOpenRef.current) {
+          const fallbackPhone = currentActivePhones.values().next().value as string;
+          setActivePhoneNumber(fallbackPhone);
+          setIsCallStatusModalOpen(true);
+        }
 
         // バルクコール状態を更新
         const totalActiveCalls = activeCallCount + queuedCallCount;
@@ -564,7 +614,7 @@ export default function DashboardPage() {
       clearInterval(lowFrequencyInterval);
       console.log('[Dashboard] Stopped polling for call status updates');
     };
-  }, [customers, isBulkCallActive, callingSessions.size, pausePolling]);
+  }, [customers, isBulkCallActive, callingSessions.size, pausePolling, phoneToCustomerMap, normalizePhoneNumber]);
 
   // 通話状態監視 - 全通話終了時に一斉通話状態を自動リセット（遅延実行）
   useEffect(() => {
@@ -979,7 +1029,7 @@ export default function DashboardPage() {
         isOpen={isCallStatusModalOpen}
         onClose={() => {
           setIsCallStatusModalOpen(false);
-          // モーダルを閉じても通話中状態は維持（実際の通話状態に依存）
+          setActivePhoneNumber("");
         }}
         phoneNumber={activePhoneNumber}
       />
