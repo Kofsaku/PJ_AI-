@@ -997,18 +997,24 @@ exports.getAllUsers = asyncHandler(async (req, res, next) => {
   }
 
   try {
-    // Get all users with company information
+    // Get all users
     const users = await User.find()
       .select('-password')
-      .populate('companyId', 'name companyId')
       .sort({ createdAt: -1 });
+
+    // Get all companies for manual matching
+    const companies = await Company.find().select('companyId name');
+    const companyMap = companies.reduce((map, company) => {
+      map[company.companyId] = company;
+      return map;
+    }, {});
 
     const formattedUsers = users.map(user => ({
       _id: user._id,
       firstName: user.firstName,
       lastName: user.lastName,
       email: user.email,
-      companyName: user.companyId?.name || 'No Company',
+      companyName: companyMap[user.companyId]?.name || 'No Company',
       phone: user.phone,
       twilioPhoneNumber: user.twilioPhoneNumber,
       twilioPhoneNumberStatus: user.twilioPhoneNumberStatus || 'inactive',

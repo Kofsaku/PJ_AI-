@@ -814,7 +814,6 @@ export default function DashboardPage() {
               </SelectContent>
             </Select>
 
-            <Button variant="outline">+ 条件を追加</Button>
           </div>
 
           <div className="overflow-x-auto">

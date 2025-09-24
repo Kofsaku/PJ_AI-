@@ -247,10 +247,6 @@ export default function CallHistoryPage() {
     }
   }
 
-  // 新規コール記録（ダミー機能）
-  const handleNewCallRecord = () => {
-    alert("新規コール記録機能は開発中です")
-  }
 
   // 通話詳細表示
   const handleCallDetails = (callId: string) => {
@@ -273,12 +269,6 @@ export default function CallHistoryPage() {
       <main className="ml-64 p-6">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">コール履歴</h1>
-          <Button 
-            className="bg-orange-500 hover:bg-orange-600"
-            onClick={handleNewCallRecord}
-          >
-            新規コール記録
-          </Button>
         </div>
 
         {/* 統計情報カード */}
