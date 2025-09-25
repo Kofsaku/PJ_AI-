@@ -187,6 +187,10 @@ export default function UserInfoPage() {
                   <p className="text-lg font-medium">{userData.companyName || "未設定"}</p>
                 </div>
                 <div>
+                  <Label className="text-sm text-gray-500">会社ID</Label>
+                  <p className="text-lg font-medium text-gray-400">{userData.companyId || "未設定"}</p>
+                </div>
+                <div>
                   <Label className="text-sm text-gray-500">ユーザーID</Label>
                   <p className="text-lg font-medium text-gray-400">{userData.id || userData._id || "未設定"}</p>
                 </div>
