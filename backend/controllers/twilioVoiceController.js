@@ -53,19 +53,19 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
     
     // CallSessionから会社IDを取得するため、先にCallSessionを確認
     let tempCallSession = await CallSession.findOne({ twilioCallSid: CallSid }).populate('assignedAgent');
-    let defaultCompanyId = 'default-company'; // デフォルト会社ID
-    
-    // CallSessionに紐づいているエージェントから会社IDを取得
-    if (tempCallSession && tempCallSession.assignedAgent && tempCallSession.assignedAgent.companyId) {
-      defaultCompanyId = tempCallSession.assignedAgent.companyId;
+    let defaultUserId = 'default-user'; // デフォルトユーザーID
+
+    // CallSessionに紐づいているエージェントからユーザーIDを取得
+    if (tempCallSession && tempCallSession.assignedAgent) {
+      defaultUserId = tempCallSession.assignedAgent._id;
     }
-    
+
     let customer = await Customer.findOne({ phone: phoneNumber });
     if (!customer) {
       // 新規顧客として作成
       const now = new Date();
       customer = await Customer.create({
-        companyId: defaultCompanyId,
+        userId: defaultUserId,
         customer: '新規顧客',
         company: '未設定',
         phone: phoneNumber,

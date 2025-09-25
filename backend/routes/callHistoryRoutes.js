@@ -33,7 +33,7 @@ router.get('/', async (req, res) => {
     if (search) {
       // 顧客名で検索するため、まず同じ会社の顧客を検索
       const customers = await Customer.find({
-        companyId: req.user.companyId,
+        userId: req.user._id,
         $or: [
           { customer: { $regex: search, $options: 'i' } },
           { phone: { $regex: search, $options: 'i' } }
@@ -332,7 +332,7 @@ router.get('/stats/summary', async (req, res) => {
 
     // 顧客テーブルから未対応件数を取得（ログインユーザーの会社のデータのみ）
     const pendingCount = await Customer.countDocuments({
-      companyId: req.user.companyId,
+      userId: req.user._id,
       result: '未対応'
     });
 
