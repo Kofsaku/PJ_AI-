@@ -70,8 +70,7 @@ export default function UserInfoPage() {
           name: `${editedData.lastName || ''} ${editedData.firstName || ''}`.trim() || editedData.name || editedData.fullName,
           email: editedData.email,
           phone: editedData.phone,
-          handoffPhoneNumber: editedData.handoffPhoneNumber,
-          aiCallName: editedData.aiCallName
+          handoffPhoneNumber: editedData.handoffPhoneNumber
         })
       })
       const updatedUser = responseData.data || responseData.user || responseData
@@ -167,19 +166,6 @@ export default function UserInfoPage() {
                         ? `${userData.lastName} ${userData.firstName}`
                         : userData.name || userData.fullName || "未設定"}
                     </p>
-                  )}
-                </div>
-                <div>
-                  <Label className="text-sm text-gray-500">AIコール時の名前</Label>
-                  {editMode ? (
-                    <Input
-                      value={editedData?.aiCallName || ""}
-                      onChange={(e) => handleInputChange("aiCallName", e.target.value)}
-                      className="mt-1"
-                      placeholder="例: 田中様、山田さん"
-                    />
-                  ) : (
-                    <p className="text-lg font-medium">{userData.aiCallName || "未設定"}</p>
                   )}
                 </div>
                 <div>
