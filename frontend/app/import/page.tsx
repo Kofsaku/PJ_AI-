@@ -80,7 +80,7 @@ export default function ImportPage() {
     return customers
   }
 
-  const const handleImport = async () => {
+  const handleImport = async () => {
     if (!file) return
     
     setLoading(true)
