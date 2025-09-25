@@ -11,7 +11,7 @@ const connectDB = require('./config/db');
 if (process.env.NODE_ENV !== 'production') {
   // 開発環境: .env.local → .env の順で読み込み
   const result1 = dotenv.config({ path: './.env.local' });
-  const result2 = dotenv.config({ path: './.env', override: true });
+  const result2 = dotenv.config({ path: './.env' });
   
   console.log('[Server] result2.parsed:', result2.parsed ? Object.keys(result2.parsed) : 'NO PARSED DATA');
   

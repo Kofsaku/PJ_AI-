@@ -1,6 +1,10 @@
 require('dotenv').config();
 const twilio = require('twilio');
 
+// Debug environment loading
+console.log('Loaded SID:', process.env.TWILIO_ACCOUNT_SID?.substring(0, 10) + '...');
+console.log('Loaded Token:', process.env.TWILIO_AUTH_TOKEN?.substring(0, 10) + '...');
+
 const client = twilio(
   process.env.TWILIO_ACCOUNT_SID,
   process.env.TWILIO_AUTH_TOKEN
