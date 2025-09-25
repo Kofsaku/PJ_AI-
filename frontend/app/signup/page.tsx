@@ -156,11 +156,8 @@ export default function SignupPage() {
       console.log('Sending verification code request...');
       console.log('Data to send:', requestData);
       
-      const apiUrl = process.env.NODE_ENV === 'production'
-        ? (process.env.NEXT_PUBLIC_BACKEND_URL_PROD || 'https://pj-ai.onrender.com')
-        : (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5002');
-      
-      const response = await fetch(`${apiUrl}/api/auth/send-verification-code`, {
+      // Vercel API Routeを使用
+      const response = await fetch(`/api/auth/send-verification-code`, {
         method: 'POST',
         mode: 'cors',
         credentials: 'omit',
@@ -208,11 +205,8 @@ export default function SignupPage() {
     setEmailVerification(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      const apiUrl = process.env.NODE_ENV === 'production'
-        ? (process.env.NEXT_PUBLIC_BACKEND_URL_PROD || 'https://pj-ai.onrender.com')
-        : (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5002');
-      
-      const response = await fetch(`${apiUrl}/api/auth/verify-email-code`, {
+      // Vercel API Routeを使用
+      const response = await fetch(`/api/auth/verify-email-code`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -426,7 +420,7 @@ export default function SignupPage() {
       }
 
       const response = await fetch(
-        `${process.env.NODE_ENV === 'production' ? (process.env.NEXT_PUBLIC_BACKEND_URL_PROD || 'https://pj-ai.onrender.com') : (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5002')}/api/auth/complete-registration`,
+        `${process.env.NODE_ENV === 'production' ? (process.env.NEXT_PUBLIC_BACKEND_URL_PROD || 'https://pj-ai.onrender.com') : (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001')}/api/auth/complete-registration`,
         {
           method: "POST",
           headers: {
@@ -501,7 +495,7 @@ export default function SignupPage() {
     
     try {
       const apiUrl = process.env.NODE_ENV === 'development'
-        ? 'http://localhost:5002'
+        ? 'http://localhost:5001'
         : (process.env.NEXT_PUBLIC_BACKEND_URL_PROD || 'https://pj-ai.onrender.com');
       const response = await fetch(`${apiUrl}/api/companies/validate/${formData.companyId}`);
       const data = await response.json();
