@@ -177,6 +177,11 @@ export function CallStatusModal({
                 timestamp: new Date().toLocaleTimeString("ja-JP"),
               },
             ]);
+
+            // 500ms後にモーダルを閉じる（電話通信切断タイミングベース）
+            setTimeout(() => {
+              onClose();
+            }, 500);
           }
         }
       };
@@ -324,16 +329,17 @@ export function CallStatusModal({
     }
   }, [isOpen, phoneNumber]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    if (callStatus !== "ended") return;
+  // 既存の自動閉じロジックを無効化（call-terminatedイベントで処理するため）
+  // useEffect(() => {
+  //   if (!isOpen) return;
+  //   if (callStatus !== "ended") return;
 
-    const timeout = setTimeout(() => {
-      onClose();
-    }, 1000);
+  //   const timeout = setTimeout(() => {
+  //     onClose();
+  //   }, 1000);
 
-    return () => clearTimeout(timeout);
-  }, [callStatus, isOpen, onClose]);
+  //   return () => clearTimeout(timeout);
+  // }, [callStatus, isOpen, onClose]);
 
   // Mock conversation for demonstration - 無効化
   // const simulateMockConversation = () => {
