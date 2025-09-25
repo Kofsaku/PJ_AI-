@@ -48,7 +48,13 @@ export default function CompanyList() {
 
   const fetchCompanies = async () => {
     try {
-      const response = await fetch('/api/companies');
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/companies', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
       const data = await response.json();
       if (data.success) {
         setCompanies(data.data || []);
@@ -65,8 +71,13 @@ export default function CompanyList() {
     if (!confirm('この企業を削除してもよろしいですか？')) return;
     
     try {
+      const token = localStorage.getItem('token');
       const response = await fetch(`/api/companies/${id}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
       const data = await response.json();
       if (data.success) {

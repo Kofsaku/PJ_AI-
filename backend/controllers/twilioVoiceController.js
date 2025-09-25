@@ -3,6 +3,7 @@ const twilio = require('twilio');
 const CallSession = require('../models/CallSession');
 const Customer = require('../models/Customer');
 const AgentSettings = require('../models/AgentSettings');
+const User = require('../models/User');
 const conversationEngine = require('../services/conversationEngine');
 const coefontService = require('../services/coefontService');
 const callTimeoutManager = require('../services/callTimeoutManager');
@@ -53,19 +54,23 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
     
     // CallSessionから会社IDを取得するため、先にCallSessionを確認
     let tempCallSession = await CallSession.findOne({ twilioCallSid: CallSid }).populate('assignedAgent');
-    let defaultCompanyId = 'default-company'; // デフォルト会社ID
-    
-    // CallSessionに紐づいているエージェントから会社IDを取得
-    if (tempCallSession && tempCallSession.assignedAgent && tempCallSession.assignedAgent.companyId) {
-      defaultCompanyId = tempCallSession.assignedAgent.companyId;
+    let defaultUserId = 'default-user'; // デフォルトユーザーID
+    let defaultCompanyId = null; // デフォルト会社ID
+
+    // CallSessionに紐づいているエージェントからユーザーIDを取得
+    if (tempCallSession && tempCallSession.assignedAgent) {
+      defaultUserId = tempCallSession.assignedAgent._id;
+      if (tempCallSession.assignedAgent.companyId) {
+        defaultCompanyId = tempCallSession.assignedAgent.companyId;
+      }
     }
-    
+
     let customer = await Customer.findOne({ phone: phoneNumber });
     if (!customer) {
       // 新規顧客として作成
       const now = new Date();
       customer = await Customer.create({
-        companyId: defaultCompanyId,
+        userId: defaultUserId,
         customer: '新規顧客',
         company: '未設定',
         phone: phoneNumber,
@@ -77,7 +82,7 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
       console.log('[Incoming Call] New customer created:', customer._id);
     } else {
       // 既存顧客の場合、companyIdが設定されていなければ更新
-      if (!customer.companyId) {
+      if (!customer.companyId && defaultCompanyId) {
         customer.companyId = defaultCompanyId;
         await customer.save();
       }
@@ -146,6 +151,20 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
         }
       });
       console.log('[Incoming Call] New call session created:', callSession._id);
+    }
+
+    if (!defaultCompanyId && agentSettings && agentSettings.userId) {
+      try {
+        const agentUser = await User.findById(agentSettings.userId).select('companyId');
+        if (agentUser && agentUser.companyId) {
+          defaultCompanyId = agentUser.companyId;
+        }
+        if (defaultUserId === 'default-user') {
+          defaultUserId = agentSettings.userId;
+        }
+      } catch (lookupError) {
+        console.error('[Incoming Call] Failed to resolve agent user information:', lookupError.message);
+      }
     }
     
     console.log('[Incoming Call] Call session created:', callSession._id);

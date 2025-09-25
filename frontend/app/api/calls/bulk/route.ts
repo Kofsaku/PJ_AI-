@@ -1,76 +1,96 @@
-import { NextResponse, NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5001'
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL_PROD || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://pj-ai.onrender.com';
 
-export async function POST(request: NextRequest) {
+async function handleRequest(request: NextRequest, method: string) {
   try {
-    const { phoneNumbers, customerIds } = await request.json()
+    const { searchParams } = new URL(request.url);
     
-    if (!phoneNumbers || phoneNumbers.length === 0) {
-      return NextResponse.json(
-        { error: 'No phone numbers provided' },
-        { status: 400 }
-      )
+    console.log(`[Bulk Calls API] ${method} request`);
+    console.log('[Bulk Calls API] Backend URL:', BACKEND_URL);
+    console.log('[Bulk Calls API] Search params:', searchParams.toString());
+    
+    const authHeader = request.headers.get('authorization');
+    const contentType = request.headers.get('content-type');
+    
+    let body;
+    if (method !== 'GET' && method !== 'DELETE') {
+      body = await request.text();
     }
-
-    // Get authorization header from the request
-    const authHeader = request.headers.get('authorization')
     
-    // Forward request to backend with authentication
-    const response = await fetch(`${BACKEND_URL}/api/calls/bulk`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(authHeader && { 'Authorization': authHeader })
-      },
-      body: JSON.stringify({ phoneNumbers, customerIds })
-    })
+    const headers: Record<string, string> = {
+      'Content-Type': contentType || 'application/json',
+    };
+    
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+    
+    let backendUrl = `${BACKEND_URL}/api/calls/bulk`;
+    if (searchParams.toString()) {
+      backendUrl += '?' + searchParams.toString();
+    }
+    
+    console.log(`[Bulk Calls API] Full backend URL:`, backendUrl);
+    
+    const response = await fetch(backendUrl, {
+      method,
+      headers,
+      body: body || undefined,
+    });
 
+    console.log(`[Bulk Calls API] Backend response status:`, response.status);
+    
     if (!response.ok) {
-      throw new Error(`Backend responded with status: ${response.status}`)
+      const errorText = await response.text();
+      console.log(`[Bulk Calls API] Error response:`, errorText);
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: `Backend error: ${response.status} ${errorText}` 
+        },
+        { status: response.status }
+      );
     }
 
-    const data = await response.json()
-    return NextResponse.json(data)
+    const responseText = await response.text();
+    let data;
+    
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = { text: responseText };
+    }
+
+    return NextResponse.json(data, { status: response.status });
   } catch (error) {
-    console.error('Bulk call error:', error)
+    console.error(`[Bulk Calls API] ${method} Error:`, error);
     return NextResponse.json(
-      { error: 'Failed to initiate bulk calls' },
+      { 
+        success: false, 
+        message: 'Internal server error' 
+      },
       { status: 500 }
-    )
+    );
   }
 }
 
 export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const sessionIds = searchParams.get('sessionIds')
-    
-    // Get authorization header from the request
-    const authHeader = request.headers.get('authorization')
-    
-    const url = sessionIds 
-      ? `${BACKEND_URL}/api/calls/bulk/status?sessionIds=${sessionIds}`
-      : `${BACKEND_URL}/api/calls/bulk/status`
-    
-    const response = await fetch(url, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(authHeader && { 'Authorization': authHeader })
-      },
-    })
+  return handleRequest(request, 'GET');
+}
 
-    if (!response.ok) {
-      throw new Error(`Backend responded with status: ${response.status}`)
-    }
+export async function POST(request: NextRequest) {
+  return handleRequest(request, 'POST');
+}
 
-    const data = await response.json()
-    return NextResponse.json(data)
-  } catch (error) {
-    console.error('Get bulk call status error:', error)
-    return NextResponse.json(
-      { error: 'Failed to get call status' },
-      { status: 500 }
-    )
-  }
+export async function PUT(request: NextRequest) {
+  return handleRequest(request, 'PUT');
+}
+
+export async function DELETE(request: NextRequest) {
+  return handleRequest(request, 'DELETE');
+}
+
+export async function PATCH(request: NextRequest) {
+  return handleRequest(request, 'PATCH');
 }

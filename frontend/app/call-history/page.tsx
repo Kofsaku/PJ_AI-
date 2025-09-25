@@ -9,14 +9,18 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Search, ChevronLeft, ChevronRight, Phone, Calendar, Clock, User, FileText, Loader2 } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { CallDetailModal } from "@/components/CallDetailModal"
+import { authenticatedApiRequest } from "@/lib/apiHelper"
 import { format } from "date-fns"
 import { ja } from "date-fns/locale"
 
 interface Customer {
-  id: string
+  id?: string
   name: string
+  customer?: string
   phone: string
   company?: string
+  email?: string
+  address?: string
 }
 
 interface CallRecord {
@@ -57,7 +61,7 @@ interface Statistics {
 }
 
 // 定義されているステータス値
-const VALID_CALL_RESULTS = ['成功', '不在', '拒否', '要フォロー', '失敗', '通話中'];
+const VALID_CALL_RESULTS = ['成功', '不在', '拒否', '要フォロー', '失敗', '通話中', '未対応'];
 
 const statusColors: Record<string, string> = {
   成功: "bg-green-500",
@@ -66,15 +70,28 @@ const statusColors: Record<string, string> = {
   拒否: "bg-red-500",
   失敗: "bg-gray-500",
   通話中: "bg-blue-500",
+  未対応: "bg-gray-600",
   未設定: "bg-gray-400"
 }
 
 // ステータス値を正規化する関数
 const normalizeStatus = (status: string | null | undefined): string => {
   if (!status) return "未設定";
+  
+  // "失敗: timeout" のような形式のステータスを処理
+  if (status.includes("失敗")) return "失敗";
+  if (status.includes("成功")) return "成功";
+  if (status.includes("不在")) return "不在";
+  if (status.includes("拒否")) return "拒否";
+  if (status.includes("要フォロー")) return "要フォロー";
+  if (status.includes("通話中")) return "通話中";
+  
+  // 完全一致のチェック
   if (VALID_CALL_RESULTS.includes(status)) return status;
-  console.warn(`[CallHistory] Invalid status detected: ${status}, using "未設定"`);
-  return "未設定";
+  
+  // 無効なステータスでもそのまま保持（警告のみ）
+  console.warn(`[CallHistory] Unknown status: ${status}, keeping as-is`);
+  return status;
 }
 
 const statusOptions = [
@@ -104,7 +121,7 @@ export default function CallHistoryPage() {
   const [statistics, setStatistics] = useState<Statistics>({
     totalCalls: 0,
     successRate: 0,
-    avgDuration: "0分0秒",
+    avgDuration: "0秒",
     pendingCount: 0
   })
   const [statsLoading, setStatsLoading] = useState(false)
@@ -115,18 +132,7 @@ export default function CallHistoryPage() {
   const fetchStatistics = async () => {
     setStatsLoading(true)
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/call-history/stats/summary`, {
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json"
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error("統計情報の取得に失敗しました")
-      }
-
-      const data = await response.json()
+      const data = await authenticatedApiRequest('/api/call-history/stats/summary')
       
       if (data.success) {
         setStatistics(data.data)
@@ -161,23 +167,22 @@ export default function CallHistoryPage() {
         params.append("result", selectedStatus)
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/call-history?${params}`, {
-        headers: {
-          "Authorization": `Bearer ${localStorage.getItem("token")}`,
-          "Content-Type": "application/json"
-        }
-      })
-
-      if (!response.ok) {
-        throw new Error("コール履歴の取得に失敗しました")
-      }
-
-      const data = await response.json()
+      const data = await authenticatedApiRequest(`/api/call-history?${params}`)
       
       if (data.success) {
-        setCalls(data.data)
-        setPagination(data.pagination)
+        const callsData = Array.isArray(data.data) ? data.data : []
+        console.log('[Call History] Received data:', callsData)
+        setCalls(callsData)
+        setPagination(data.pagination || {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          itemsPerPage: 10,
+          hasNext: false,
+          hasPrev: false
+        })
       } else {
+        console.error('[Call History] API returned error:', data.error)
         throw new Error(data.error || "データの取得に失敗しました")
       }
     } catch (err) {
@@ -242,10 +247,6 @@ export default function CallHistoryPage() {
     }
   }
 
-  // 新規コール記録（ダミー機能）
-  const handleNewCallRecord = () => {
-    alert("新規コール記録機能は開発中です")
-  }
 
   // 通話詳細表示
   const handleCallDetails = (callId: string) => {
@@ -268,12 +269,6 @@ export default function CallHistoryPage() {
       <main className="ml-64 p-6">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">コール履歴</h1>
-          <Button 
-            className="bg-orange-500 hover:bg-orange-600"
-            onClick={handleNewCallRecord}
-          >
-            新規コール記録
-          </Button>
         </div>
 
         {/* 統計情報カード */}
@@ -408,7 +403,7 @@ export default function CallHistoryPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {calls.map((call) => (
+                  {Array.isArray(calls) && calls.length > 0 ? calls.map((call) => call && (
                     <tr 
                       key={call.id} 
                       className="border-b hover:bg-gray-50 cursor-pointer"
@@ -422,9 +417,9 @@ export default function CallHistoryPage() {
                       </td>
                       <td className="p-3">
                         <div>
-                          <div className="font-medium">{call.customer.name}</div>
-                          <div className="text-xs text-gray-500">{call.customer.phone}</div>
-                          {call.customer.company && (
+                          <div className="font-medium">{call.customer?.name || call.customer?.customer || '不明'}</div>
+                          <div className="text-xs text-gray-500">{call.customer?.phone || '電話番号なし'}</div>
+                          {call.customer?.company && (
                             <div className="text-xs text-gray-400">{call.customer.company}</div>
                           )}
                         </div>
@@ -457,7 +452,13 @@ export default function CallHistoryPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  )) : (
+                    <tr>
+                      <td colSpan={6} className="p-4 text-center text-gray-500">
+                        データがありません
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             )}

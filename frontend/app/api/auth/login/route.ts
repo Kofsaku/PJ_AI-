@@ -1,48 +1,48 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server';
 
-import type { NextRequest } from 'next/server'
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL_PROD || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://pj-ai.onrender.com';
 
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await req.json()
-    const backendResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001'}/api/auth/login`, {
+    const body = await request.json();
+    
+    console.log('[Login API] Request body:', { email: body.email, password: '***' });
+    console.log('[Login API] Backend URL:', BACKEND_URL);
+    
+    const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
-    })
+    });
 
-    const data = await backendResponse.json()
-
-    if (!backendResponse.ok) {
+    console.log('[Login API] Backend response status:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log('[Login API] Error response:', errorText);
       return NextResponse.json(
-        { error: data.error || 'Login failed' },
-        { status: backendResponse.status }
-      )
+        { 
+          success: false, 
+          message: `Backend error: ${response.status} ${errorText}` 
+        },
+        { status: response.status }
+      );
     }
 
-    // You might want to set HTTP-only cookies here for better security
-    const response = NextResponse.json(data)
-    
-    // Set cookie (adjust as needed)
-    response.cookies.set('token', data.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 30 * 24 * 60 * 60, // 30 days
-      path: '/',
-    })
+    const data = await response.json();
+    console.log('[Login API] Success response received');
 
-    return response
+    return NextResponse.json(data, { status: 200 });
   } catch (error) {
-    const errorMessage =
-      error && typeof error === 'object' && 'message' in error
-        ? (error as { message: string }).message
-        : 'Internal server error'
+    console.error('[Login API] Error:', error);
     return NextResponse.json(
-      { error: errorMessage },
+      { 
+        success: false, 
+        message: 'Internal server error' 
+      },
       { status: 500 }
-    )
+    );
   }
 }

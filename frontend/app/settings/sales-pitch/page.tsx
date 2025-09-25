@@ -58,12 +58,12 @@ export default function SalesPitchSettingsPage() {
       const token = localStorage.getItem('token');
       const response = await fetch('/api/users/sales-pitch', {
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
-
-      if (response.ok) {
-        const data = await response.json();
+      const data = await response.json();
+      if (data && data.data) {
         const agentData = data.data;
         setSettings({
           // 基本設定
@@ -115,25 +115,42 @@ export default function SalesPitchSettingsPage() {
   const saveSettings = async () => {
     try {
       setSaving(true);
+      console.log('[Sales Pitch] Saving settings...', settings);
+      
       const token = localStorage.getItem('token');
-
       const response = await fetch('/api/users/sales-pitch', {
         method: 'PUT',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(settings)
+        body: JSON.stringify({
+          conversationSettings: {
+            companyName: settings.companyName,
+            serviceName: settings.serviceName,
+            representativeName: settings.representativeName,
+            targetDepartment: settings.targetDepartment,
+            serviceDescription: settings.serviceDescription,
+            targetPerson: settings.targetPerson,
+            salesPitch: {
+              companyDescription: settings.companyDescription,
+              callToAction: settings.callToAction,
+              keyBenefits: settings.keyBenefits
+            }
+          }
+        })
       });
-
-      if (response.ok) {
-        toast({
-          title: "保存完了",
-          description: "トークスクリプト設定が保存されました。"
-        });
-      } else {
-        throw new Error('保存に失敗しました');
-      }
+      
+      const saveResult = await response.json();
+      console.log('[Sales Pitch] Save result:', saveResult);
+      
+      toast({
+        title: "保存完了",
+        description: "トークスクリプト設定が保存されました。"
+      });
+      
+      // 保存後に設定を再読み込み（一時的に無効化）
+      // await loadSettings();
     } catch (error) {
       console.error('Error saving settings:', error);
       toast({
@@ -450,19 +467,6 @@ ${settings.callToAction || "ぜひ御社の営業部ご担当者さまに概要�
                   </p>
                 </div>
 
-                {/* 転送説明 */}
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-700 mb-2">🔄 転送前説明</h4>
-                  <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
-                    <p
-                      className="text-sm leading-relaxed whitespace-pre-wrap"
-                      dangerouslySetInnerHTML={{ __html: replaceVariables(talkTemplates.transferExplanation) }}
-                    />
-                  </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    担当者が電話に出た際の詳細説明
-                  </p>
-                </div>
 
               </div>
             </CardContent>

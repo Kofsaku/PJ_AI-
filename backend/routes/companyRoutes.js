@@ -19,7 +19,7 @@ router.post('/', companyController.createCompany);
 // @desc    Validate company ID (must come before /:id)
 // @route   GET /api/companies/validate/:companyId
 // @access  Public
-router.get('/validate/:companyId', companyController.getCompanyByCompanyId);
+router.get('/validate/:companyId', companyController.validateCompanyId);
 
 // @desc    Get company by ID
 // @route   GET /api/companies/:id

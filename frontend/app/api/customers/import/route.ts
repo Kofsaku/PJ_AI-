@@ -1,36 +1,67 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5001'
-const API_BASE_URL = `${BACKEND_URL}/api/customers/import`
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL_PROD || 'https://pj-ai.onrender.com';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const token = request.headers.get('authorization')?.replace('Bearer ', '')
+    console.log('[Customer Import API] POST request');
+    console.log('[Customer Import API] Backend URL:', BACKEND_URL);
     
-    // Forward the JSON data to your MERN backend
-    const response = await fetch(API_BASE_URL, {
+    const authHeader = request.headers.get('authorization');
+    const contentType = request.headers.get('content-type');
+    
+    const body = await request.text();
+    
+    const headers: Record<string, string> = {
+      'Content-Type': contentType || 'application/json',
+    };
+    
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+    
+    const backendUrl = `${BACKEND_URL}/api/customers/import`;
+    
+    console.log(`[Customer Import API] Full backend URL:`, backendUrl);
+    
+    const response = await fetch(backendUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(body),
-    })
+      headers,
+      body,
+    });
 
+    console.log(`[Customer Import API] Backend response status:`, response.status);
+    
     if (!response.ok) {
-      const errorText = await response.text()
-      console.error('Backend error:', errorText)
-      throw new Error(`HTTP error! status: ${response.status}`)
+      const errorText = await response.text();
+      console.log(`[Customer Import API] Error response:`, errorText);
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: `Backend error: ${response.status} ${errorText}` 
+        },
+        { status: response.status }
+      );
     }
 
-    const data = await response.json()
-    return NextResponse.json(data)
+    const responseText = await response.text();
+    let data;
+    
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = { text: responseText };
+    }
+
+    return NextResponse.json(data, { status: response.status });
   } catch (error) {
-    console.error('Import error:', error)
+    console.error('[Customer Import API] Error:', error);
     return NextResponse.json(
-      { error: 'Failed to import customers' },
+      { 
+        success: false, 
+        message: 'Internal server error' 
+      },
       { status: 500 }
-    )
+    );
   }
 }

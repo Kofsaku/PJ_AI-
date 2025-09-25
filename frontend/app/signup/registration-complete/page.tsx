@@ -46,15 +46,6 @@ export default function RegistrationCompletePage() {
               ホームへ戻る
             </Button>
 
-            {/* Optional link */}
-            <div className="pt-2">
-              <button
-                onClick={handleGoHome}
-                className="text-gray-500 hover:text-gray-700 underline text-sm"
-              >
-                ホームへ戻る
-              </button>
-            </div>
           </div>
         </CardContent>
       </Card>

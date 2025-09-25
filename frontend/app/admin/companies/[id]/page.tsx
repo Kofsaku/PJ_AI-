@@ -64,9 +64,12 @@ export default function CompanyDetail({ params }: PageProps) {
 
   const fetchCompanyDetail = async () => {
     try {
+      const token = localStorage.getItem('token');
       const response = await fetch(`/api/companies/${id}`, {
         method: 'GET',
         headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
         }

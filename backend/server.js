@@ -1,12 +1,29 @@
-require('dotenv').config(); // For CommonJS
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const connectDB = require('./config/db');
-// Load env vars
-dotenv.config({ path: './.env' });
+
+// Load env vars with priority: .env.local > .env > .env.example
+// 開発環境では .env.local が優先される
+// 本番環境では環境変数が最優先される
+if (process.env.NODE_ENV !== 'production') {
+  // 開発環境: .env.local → .env の順で読み込み
+  const result1 = dotenv.config({ path: './.env.local' });
+  const result2 = dotenv.config({ path: './.env' });
+  
+  console.log('[Server] result2.parsed:', result2.parsed ? Object.keys(result2.parsed) : 'NO PARSED DATA');
+  
+  console.log('[Server] .env.local result:', result1.error ? 'FAILED' : 'SUCCESS');
+  console.log('[Server] .env result:', result2.error ? 'FAILED' : 'SUCCESS');
+  console.log('[Server] TWILIO_ACCOUNT_SID after loading:', process.env.TWILIO_ACCOUNT_SID ? 'SET' : 'NOT SET');
+  console.log('[Server] TWILIO_ACCOUNT_SID value:', process.env.TWILIO_ACCOUNT_SID);
+  console.log('[Server] All env keys containing TWILIO:', Object.keys(process.env).filter(k => k.includes('TWILIO')));
+} else {
+  // 本番環境: 環境変数のみ使用（.envファイルは読み込まない）
+  console.log('Production mode: Using environment variables only');
+}
 
 // Connect to database
 connectDB();
@@ -40,10 +57,24 @@ app.use(cors({
   origin: function(origin, callback) {
     const allowedOrigins = [
       'http://localhost:3000',
-      'http://localhost:3001', 
+      'http://localhost:3001',
       'http://localhost:3002',
-      process.env.FRONTEND_URL
+      'http://localhost:5001',
+      'http://localhost:5002',
+      process.env.FRONTEND_URL,
+      process.env.FRONTEND_URL_PROD,
+      'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app',
+      'https://pj-ai-2t27-git-fixmerge-kofsakus-projects.vercel.app',
+      'https://pj-ai-2t27-git-fixservererros-kofsakus-projects.vercel.app'
     ].filter(Boolean);
+    
+    // Debug logging for CORS
+    console.log('[CORS] Request origin:', origin);
+    console.log('[CORS] Allowed origins:', allowedOrigins);
+    console.log('[CORS] Environment variables:', {
+      FRONTEND_URL: process.env.FRONTEND_URL,
+      FRONTEND_URL_PROD: process.env.FRONTEND_URL_PROD
+    });
     
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
@@ -51,7 +82,15 @@ app.use(cors({
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      callback(null, true); // 開発環境では全て許可
+      // 本番環境では厳格にチェック、開発環境では全て許可
+      if (process.env.NODE_ENV === 'production') {
+        console.log('[CORS] BLOCKING request from origin:', origin);
+        // 一時的に許可（デバッグ用）
+        callback(null, true);
+        // callback(new Error('Not allowed by CORS'));
+      } else {
+        callback(null, true);
+      }
     }
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

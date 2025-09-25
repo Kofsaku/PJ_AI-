@@ -102,20 +102,38 @@ export default function EditUserPage() {
 
   const fetchCompanies = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/company/all`, {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('認証情報の有効期限が切れています');
+        router.push('/admin/login');
+        return;
+      }
+
+      const response = await fetch('/api/companies', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
         },
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setCompanies(data.data || []);
-        }
+      if (!response.ok) {
+        throw new Error('企業一覧の取得に失敗しました');
       }
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.message || '企業一覧の取得に失敗しました');
+      }
+
+      const activeCompanies = (data.data || []).filter((company: Company & { status?: string }) => 
+        !company.status || company.status === 'active'
+      );
+      setCompanies(activeCompanies);
     } catch (err) {
       console.error('Failed to fetch companies:', err);
+      setError(err instanceof Error ? err.message : '企業一覧の取得に失敗しました');
     }
   };
 
@@ -126,28 +144,35 @@ export default function EditUserPage() {
     setError(null);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/company/user/${userId}/assign`, {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('認証情報の有効期限が切れています');
+        router.push('/admin/login');
+        return;
+      }
+
+      const response = await fetch(`/api/company/user/${userId}/assign`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           companyId: selectedCompanyId,
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to update company association');
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || '企業の紐付けの更新に失敗しました');
       }
 
-      const data = await response.json();
-      if (data.success) {
-        setUser(data.data.user);
-        alert('企業の紐付けを更新しました');
-      }
+      setUser(data.data.user);
+      alert('企業の紐付けを更新しました');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      console.error('Failed to update company association:', err);
+      setError(err instanceof Error ? err.message : '企業の紐付けの更新に失敗しました');
     } finally {
       setSaving(false);
     }

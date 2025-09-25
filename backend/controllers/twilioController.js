@@ -162,10 +162,10 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
     console.log(`[TwiML Conference] Using immediate initial message: ${initialMessage}`);
     console.log('[TwiML Conference] Testing CoeFont service...');
     
-    // 完全に即座にAIが話し始める - 遅延ゼロ
-    console.log(`[TwiML Conference] ZERO DELAY - AI speaks immediately on call connect`);
-    
-    // AIが即座に話し、同時に音声認識開始
+    // AI即座応答戦略（checkpointブランチから移植）
+    console.log(`[TwiML Conference] IMMEDIATE AI RESPONSE - AI speaks immediately on call connect`);
+
+    // AI音声を即座に再生するGatherを設定
     const gather = twiml.gather({
       input: 'speech',
       language: 'ja-JP',
@@ -177,23 +177,26 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
       partialResultCallback: `${process.env.BASE_URL}/api/twilio/voice/partial/${callId}`,
       partialResultCallbackMethod: 'POST'
     });
-    
+
     // AI音声を即座に再生（CoeFontを使用）
     await coefontService.getTwilioPlayElement(gather, initialMessage);
-    
+
     // フォールバック
     twiml.redirect({
       method: 'POST'
     }, `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`);
-    
-    console.log(`[TwiML Conference] Structure: immediate gather+say -> redirect`);
+
+    console.log(`[TwiML Conference] Structure: immediate AI response -> gather -> redirect`);
 
     // TwiMLを即座に返す（会話エンジン初期化は後で行う）
     const twimlResponse = twiml.toString();
-    
+
     // 会話エンジンを非同期で初期化（レスポンス送信後）
     setImmediate(() => {
       conversationEngine.initializeConversation(callId, callSession.aiConfiguration);
+      // AIが先に話したことを記録
+      conversationEngine.updateConversationState(callId, { systemSpokeFirst: true });
+      console.log(`[TwiML Conference] AI spoke first - systemSpokeFirst set to true`);
     });
 
     res.type('text/xml').send(twimlResponse);
@@ -267,6 +270,8 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
   console.log(`[会話ログ] 信頼度: ${Confidence || 'N/A'}`);
   console.log(`[会話ログ] タイムスタンプ: ${new Date().toISOString()}`);
   console.log(`[会話ログ] リクエストBody:`, JSON.stringify(req.body, null, 2));
+  console.log(`[会話ログ] クエリパラメータ:`, JSON.stringify(req.query, null, 2));
+  console.log(`[会話ログ] req.query.isFirst: "${req.query.isFirst}"`);
   console.log('============================================');
   const twiml = new VoiceResponse();
 
@@ -300,12 +305,57 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
     } else {
       console.log(`[Speech Input] Conversation already exists for ${callId}`);
     }
-    
+
+    // 初回発話判定: 初回の顧客応答かどうかを判定（挨拶無視機能のため）
+    const conversationState = conversationEngine.getConversationState(callId);
+    // 修正: AIが先に話している場合は、顧客の初回応答でも通常分類を行う
+    const isFirstCustomerSpeech = !conversationState ||
+      (!conversationState.customerSpokeFirst && !conversationState.systemSpokeFirst && conversationState.turnCount === 0);
+    console.log(`[Speech Input] Conversation state:`, {
+      exists: !!conversationState,
+      turnCount: conversationState?.turnCount || 0,
+      customerSpokeFirst: conversationState?.customerSpokeFirst || false,
+      systemSpokeFirst: conversationState?.systemSpokeFirst || false,
+      isTransferred: conversationState?.isTransferred || false,
+      isFirstCustomerSpeech
+    });
+
+    // 転送済みの場合はAI応答をスキップ（ログのみ記録）
+    if (conversationState?.isTransferred) {
+      console.log(`[Speech Input] Call transferred - AI listening only, logging: "${SpeechResult || '(無音)'}"`);
+
+      // トランスクリプトは更新（ログ収集のため）
+      if (SpeechResult && SpeechResult.trim() !== '') {
+        await CallSession.findByIdAndUpdate(callId, {
+          $push: {
+            transcript: {
+              speaker: 'customer',
+              message: SpeechResult,
+              confidence: parseFloat(Confidence) || 0
+            }
+          }
+        });
+
+        // WebSocketでトランスクリプト更新を送信
+        webSocketService.sendTranscriptUpdate(callId, {
+          speaker: 'customer',
+          message: SpeechResult,
+          confidence: parseFloat(Confidence) || 0,
+          timestamp: new Date()
+        });
+      }
+
+      // 空のレスポンスを返す（AI応答なし）
+      return res.type('text/xml').send('<Response></Response>');
+    }
+
     // 無音や無入力の場合の処理
     if (!SpeechResult || SpeechResult.trim() === '') {
       // 最初の無音の場合、AIが名乗る
-      if (isFirst) {
+      if (isFirstCustomerSpeech) {
         console.log(`[Speech Input] First silence detected - AI will introduce itself`);
+        // AIが初回メッセージを発声したことを記録
+        conversationEngine.updateConversationState(callId, { systemSpokeFirst: true });
         const initialMessage = await conversationEngine.generateResponse(callId, 'initial');
         
         const gather = twiml.gather({
@@ -446,18 +496,8 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
       status: 'ai-responding',
       timestamp: new Date()
     });
-    
-    // 最初の応答で相手が名乗った場合
-    if (isFirst) {
-      console.log(`[Speech Input] Customer spoke first: "${SpeechResult}"`);
-      // 会話状態を「顧客が先に名乗った」と記録
-      conversationEngine.updateConversationState(callId, { customerSpokeFirst: true });
-    }
-    // 音声認識結果を分類
-    const classification = conversationEngine.classifyResponse(SpeechResult, callId);
-    console.log(`[Speech Input] Classification result:`, classification);
 
-    // トランスクリプトを更新
+    // トランスクリプトを即座に更新（初回判定後、分類前）
     await CallSession.findByIdAndUpdate(callId, {
       $push: {
         transcript: {
@@ -467,6 +507,33 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         }
       }
     });
+
+    let classification;
+
+    if (isFirstCustomerSpeech) {
+      console.log(`[Speech Input] ========== FIRST CUSTOMER SPEECH DETECTED ==========`);
+      console.log(`[Speech Input] Customer spoke first time: "${SpeechResult}"`);
+      console.log(`[Speech Input] turnCount: ${conversationState?.turnCount || 0}`);
+      console.log(`[Speech Input] Will use initial contact response regardless of content`);
+      // 会話状態を「顧客が先に名乗った」と記録
+      conversationEngine.updateConversationState(callId, { customerSpokeFirst: true });
+
+      // 初回応答は分類せず、必ず初回コンタクトメッセージを返す
+      classification = {
+        intent: 'initial_contact',  // 固定のインテント
+        confidence: 1.0,
+        shouldHandoff: false,
+        nextAction: 'continue'
+      };
+      console.log(`[Speech Input] Classification set to: initial_contact (forced)`);
+    } else {
+      // 2回目以降の応答は通常通り分類
+      console.log(`[Speech Input] ========== SUBSEQUENT CUSTOMER SPEECH ==========`);
+      console.log(`[Speech Input] turnCount: ${conversationState?.turnCount || 0}`);
+      console.log(`[Speech Input] Will classify normally: "${SpeechResult}"`);
+      classification = conversationEngine.classifyResponse(SpeechResult, callId);
+      console.log(`[Speech Input] Classification result:`, classification);
+    }
     
     // WebSocketで顧客の発話を送信
     webSocketService.sendTranscriptUpdate(callId, {
@@ -483,40 +550,56 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
       // AI応答を生成
       let aiResponse;
       try {
-        console.log(`[Speech Input] Generating AI response for callId: ${callId}, intent: ${classification.intent}`);
-        // カスタム変数を準備（lastAiMessageがある場合）
-        const customVariables = {};
-        if (classification.lastAiMessage) {
-          customVariables.lastAiMessage = classification.lastAiMessage;
-        }
-        aiResponse = await conversationEngine.generateResponse(callId, classification.intent, customVariables);
-        
-        if (!aiResponse) {
-          console.error(`[Speech Input] WARNING: Empty AI response for callId: ${callId}, intent: ${classification.intent}`);
-          // デフォルトの応答を生成
-          if (isFirst) {
-            // 最初の応答の場合は必ず挨拶を返す
-            const callSession = await CallSession.findById(callId);
+        // 初回応答の場合は必ず初回コンタクトメッセージを生成
+        if (isFirstCustomerSpeech) {
+          console.log(`[Speech Input] Generating initial contact response for callId: ${callId}`);
+
+          // AgentSettingsから初回テンプレートを取得
+          const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
+          if (agentSettings && agentSettings.conversationSettings) {
+            // initialテンプレートを処理（会議開始時と同じ方法）
+            const processedMessage = conversationEngine.processTemplate('initial', callSession.aiConfiguration);
+            if (processedMessage) {
+              aiResponse = processedMessage;
+              console.log(`[Speech Input] Using initial template: ${aiResponse.substring(0, 100)}...`);
+            }
+          }
+
+          // テンプレートがない場合はデフォルトメッセージ
+          if (!aiResponse) {
             if (callSession && callSession.aiConfiguration) {
               const { companyName, serviceName, representativeName, targetDepartment } = callSession.aiConfiguration;
               aiResponse = `お世話になります。${companyName}の${representativeName}と申します。${serviceName}のご案内でお電話しました。本日、${targetDepartment}のご担当者さまはいらっしゃいますでしょうか？`;
             } else {
               aiResponse = 'お世話になります。本日はサービスのご案内でお電話させていただきました。ご担当者様はいらっしゃいますでしょうか？';
             }
-          } else {
-            // AgentSettingsからunknownメッセージを取得
-            aiResponse = '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？';
-            try {
-              const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
-              if (agentSettings) {
-                const processedMessage = conversationEngine.processTemplate('unknown', {});
-                if (processedMessage) {
-                  aiResponse = processedMessage;
-                }
+          }
+        } else {
+          // 2回目以降は通常の応答生成
+          console.log(`[Speech Input] Generating AI response for callId: ${callId}, intent: ${classification.intent}`);
+          // カスタム変数を準備（lastAiMessageがある場合）
+          const customVariables = {};
+          if (classification.lastAiMessage) {
+            customVariables.lastAiMessage = classification.lastAiMessage;
+          }
+          aiResponse = await conversationEngine.generateResponse(callId, classification.intent, customVariables);
+        }
+
+        if (!aiResponse && !isFirstCustomerSpeech) {
+          console.error(`[Speech Input] WARNING: Empty AI response for callId: ${callId}, intent: ${classification.intent}`);
+          // デフォルトの応答を生成
+          // AgentSettingsからunknownメッセージを取得
+          aiResponse = '申し訳ございません。もう一度お聞きしてもよろしいでしょうか？';
+          try {
+            const agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent });
+            if (agentSettings) {
+              const processedMessage = conversationEngine.processTemplate('unknown', {});
+              if (processedMessage) {
+                aiResponse = processedMessage;
               }
-            } catch (error) {
-              console.error('[Speech Input] Error getting unknown message:', error);
             }
+          } catch (error) {
+            console.error('[Speech Input] Error getting unknown message:', error);
           }
         }
       } catch (aiError) {
@@ -525,12 +608,12 @@ exports.handleSpeechInput = asyncHandler(async (req, res) => {
         console.error(`[Speech Input] Error details:`, {
           callId,
           intent: classification.intent,
-          isFirst,
+          isFirstCustomerSpeech,
           speechResult: SpeechResult
         });
-        
+
         // エラーでも最初の応答は必ず返す
-        if (isFirst) {
+        if (isFirstCustomerSpeech) {
           const callSession = await CallSession.findById(callId);
           if (callSession && callSession.aiConfiguration) {
             const { companyName, serviceName, representativeName, targetDepartment } = callSession.aiConfiguration;
@@ -897,6 +980,8 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
   console.log(`[handleCallStatus] CallStatus: ${CallStatus}, CallId: ${callId}, Phone: ${CallSid}`);
 
   try {
+    const existingSession = await CallSession.findById(callId);
+
     const updateData = {
       twilioCallSid: CallSid
     };
@@ -910,17 +995,32 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
       case 'answered':
       case 'in-progress':
         updateData.status = sanitizeStatus('in-progress');
+
+        if (
+          !existingSession?.startTime ||
+          ['queued', 'calling', 'initiating', 'initiated', 'scheduled'].includes(existingSession?.status)
+        ) {
+          updateData.startTime = new Date();
+          updateData.duration = 0;
+        }
         break;
       case 'completed':
         updateData.status = sanitizeStatus('completed');
-        updateData.endTime = new Date();
-        if (Duration) {
-          updateData.duration = parseInt(Duration);
+        const completedAt = new Date();
+        updateData.endTime = completedAt;
+
+        let completedDuration = 0;
+        if (existingSession?.startTime) {
+          const start = new Date(existingSession.startTime);
+          completedDuration = Math.max(0, Math.floor((completedAt.getTime() - start.getTime()) / 1000));
         }
+        if ((!completedDuration || Number.isNaN(completedDuration)) && Duration) {
+          completedDuration = parseInt(Duration);
+        }
+        updateData.duration = completedDuration;
 
         // 転送状況に基づいてcallResultを判定
-        const callSession = await CallSession.findById(callId);
-        updateData.callResult = determineCallResultFromTransfer(callSession);
+        updateData.callResult = determineCallResultFromTransfer(existingSession);
 
         // 会話エンジンをクリア
         conversationEngine.clearConversation(callId);
@@ -930,9 +1030,10 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
       case 'no-answer':
       case 'cancelled':
         updateData.status = sanitizeStatus('failed');
-        updateData.endTime = new Date();
+        const failedAt = new Date();
+        updateData.endTime = failedAt;
         updateData.error = `Call ${CallStatus}`;
-        
+
         // 詳細なエラー情報をログに記録
         console.error(`[CallStatusError] Call ${CallStatus} for session ${callId}:`);
         console.error(`[CallStatusError] Full request body:`, JSON.stringify(req.body, null, 2));
@@ -944,9 +1045,15 @@ exports.handleCallStatus = asyncHandler(async (req, res) => {
           console.error(`[CallStatusError] Twilio Error Message: ${req.body.ErrorMessage}`);
         }
         
-        if (Duration) {
-          updateData.duration = parseInt(Duration);
+        let failedDuration = 0;
+        if (existingSession?.startTime) {
+          const start = new Date(existingSession.startTime);
+          failedDuration = Math.max(0, Math.floor((failedAt.getTime() - start.getTime()) / 1000));
         }
+        if ((!failedDuration || Number.isNaN(failedDuration)) && Duration) {
+          failedDuration = parseInt(Duration);
+        }
+        updateData.duration = failedDuration;
         // 会話エンジンをクリア
         conversationEngine.clearConversation(callId);
         break;
@@ -1106,50 +1213,36 @@ exports.agentJoinCall = asyncHandler(async (req, res) => {
     }
     twiml.say(connectionMessage, { voice: 'Polly.Mizuki', language: 'ja-JP' });
     
-    // 顧客の電話にブリッジ接続（シンプルな方法）
-    if (callSession.twilioCallSid) {
-      console.log(`[AgentJoin] Bridging to customer call ${callSession.twilioCallSid}`);
-      
-      // ブリッジ通話を作成
-      const dial = twiml.dial({
-        callerId: process.env.TWILIO_PHONE_NUMBER,
-        timeout: 30
-      });
-      
-      // 顧客のCallSidに直接接続
-      dial.call(callSession.twilioCallSid);
-      
-      // CallSessionのステータスを更新
-      await CallSession.findByIdAndUpdate(callId, {
-        status: 'human-connected',
-        'handoffDetails.connectedAt': new Date()
-      });
+    // Conference転送に対応 - 同じconferenceに参加
+    console.log(`[AgentJoin] Joining conference for call ${callId}`);
 
-      // WebSocketで通知
-      webSocketService.broadcastCallEvent('handoff-connected', {
-        callId,
-        timestamp: new Date()
-      });
-    } else {
-      console.error(`[AgentJoin] No valid Twilio CallSid for customer`);
-      // AgentSettingsからシステムエラーメッセージを取得
-      let errorMessage = 'お客様との接続に失敗しました。';
-      try {
-        const agentSettings = await AgentSettings.findOne({});
-        if (agentSettings) {
-          const processedMessage = conversationEngine.processTemplate('systemError', {});
-          if (processedMessage) {
-            errorMessage = processedMessage;
-          }
-        }
-      } catch (error) {
-        console.error('[AgentJoin] Error getting systemError message:', error);
-      }
-      twiml.say(errorMessage, { voice: 'Polly.Mizuki', language: 'ja-JP' });
-      twiml.hangup();
-    }
+    const conferenceName = `call-${callId}`;
+    const dial = twiml.dial({
+      callerId: process.env.TWILIO_PHONE_NUMBER,
+      timeout: 30
+    });
 
-    console.log(`[AgentJoin] TwiML response sent for agent`);
+    // 同じconferenceに参加（顧客とAIが既に参加している）
+    dial.conference({
+      beep: false,
+      statusCallback: `${process.env.BASE_URL}/api/twilio/conference/agent-events/${callId}`,
+      statusCallbackEvent: 'start end join leave',
+      statusCallbackMethod: 'POST'
+    }, conferenceName);
+
+    // CallSessionのステータスを更新
+    await CallSession.findByIdAndUpdate(callId, {
+      status: 'human-connected',
+      'handoffDetails.connectedAt': new Date()
+    });
+
+    // WebSocketで通知
+    webSocketService.broadcastCallEvent('handoff-connected', {
+      callId,
+      timestamp: new Date()
+    });
+
+    console.log(`[AgentJoin] TwiML response sent for agent to join conference: ${conferenceName}`);
     res.type('text/xml').send(twiml.toString());
   } catch (error) {
     console.error('[AgentJoin] Error:', error);
@@ -1519,33 +1612,47 @@ async function initiateSimpleTransfer(callId, twiml) {
       'handoffDetails.handoffMethod': 'ai-triggered'
     });
     
-    // WebSocket notification for transfer start
-    webSocketService.broadcastCallEvent('transfer-initiated', {
-      callId,
-      agentPhoneNumber: agentPhoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2'),
-      timestamp: new Date()
-    });
     
-    // Use Twilio's <Dial> with <Number> for simple transfer
-    // This will connect the customer directly to the agent
+    // Use Conference for 3-way calling to enable AI logging
+    // This will connect customer, agent, and AI in the same conference
+    const conferenceName = `call-${callId}`;
     const dial = twiml.dial({
       callerId: fromNumber,
       timeout: 30,
       action: `${process.env.BASE_URL}/api/twilio/transfer/status/${callId}`,
       method: 'POST'
     });
-    
-    // Direct dial to agent's number - this creates a simple bridge
-    dial.number(agentPhoneNumber);
-    
-    console.log(`[SimpleTransfer] Simple transfer TwiML generated - customer will be connected directly to agent`);
-    
-    // Send transcript update
-    webSocketService.sendTranscriptUpdate(callId, {
-      speaker: 'system',
-      message: `転送中: ${agentPhoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}`,
-      timestamp: new Date()
+
+    // Connect customer to conference
+    dial.conference({
+      beep: false,
+      statusCallback: `${process.env.BASE_URL}/api/twilio/conference/transfer-events/${callId}`,
+      statusCallbackEvent: 'start end join leave',
+      statusCallbackMethod: 'POST'
+    }, conferenceName);
+
+    // Separately call the agent to join the conference
+    await client.calls.create({
+      url: `${process.env.BASE_URL}/api/twilio/voice/agent-join/${callId}`,
+      to: agentPhoneNumber,
+      from: fromNumber,
+      statusCallback: `${process.env.BASE_URL}/api/twilio/call/status/${callId}`,
+      statusCallbackMethod: 'POST'
     });
+    
+    console.log(`[SimpleTransfer] Conference transfer TwiML generated - customer and agent will join conference with AI`);
+    
+    // Send transcript update with phone number
+    const systemMessage = {
+      speaker: 'system',
+      message: '担当者に転送中です。少々お待ちください。',
+      phoneNumber: callSession.phoneNumber, // Add phoneNumber from callSession
+      timestamp: new Date()
+    };
+    console.log(`[SimpleTransfer] Sending system message via sendTranscriptUpdate:`, systemMessage);
+    console.log(`[SimpleTransfer] Phone number from callSession: ${callSession.phoneNumber}`);
+    webSocketService.sendTranscriptUpdate(callId, systemMessage);
+    console.log(`[SimpleTransfer] System message sent for callId: ${callId}`);
     
     // Note: No return statement here as twiml is modified by reference
     
@@ -1578,13 +1685,16 @@ exports.handleTransferStatus = asyncHandler(async (req, res) => {
           'handoffDetails.disconnectedAt': new Date()
         };
         callResult = '成功';
-        
+
         if (DialCallDuration) {
           updateData.duration = parseInt(DialCallDuration);
         }
-        
-        // Clear conversation engine
-        conversationEngine.clearConversation(callId);
+
+        // Mark as transferred but keep conversation engine for logging
+        conversationEngine.updateConversationState(callId, {
+          isTransferred: true,
+          transferCompletedAt: new Date()
+        });
         
         console.log(`[TransferStatus] Transfer completed successfully`);
         break;
@@ -1594,6 +1704,15 @@ exports.handleTransferStatus = asyncHandler(async (req, res) => {
           status: 'human-connected',
           'handoffDetails.connectedAt': new Date()
         };
+
+        // Mark as transferred but keep conversation engine for logging
+        console.log(`[TransferStatus] Setting isTransferred flag for call: ${callId}`);
+        conversationEngine.updateConversationState(callId, {
+          isTransferred: true,
+          transferCompletedAt: new Date()
+        });
+        console.log(`[TransferStatus] isTransferred flag set successfully for call: ${callId}`);
+
         console.log(`[TransferStatus] Agent answered - transfer successful`);
         break;
         
@@ -1620,8 +1739,12 @@ exports.handleTransferStatus = asyncHandler(async (req, res) => {
             break;
         }
 
-        // Clear conversation engine
-        conversationEngine.clearConversation(callId);
+        // Mark as transfer failed but keep conversation engine for logging
+        conversationEngine.updateConversationState(callId, {
+          isTransferred: false,
+          transferFailedAt: new Date(),
+          transferFailReason: DialCallStatus
+        });
 
         console.log(`[TransferStatus] Transfer failed: ${DialCallStatus} -> callResult: ${callResult}`);
         break;
@@ -1637,25 +1760,19 @@ exports.handleTransferStatus = asyncHandler(async (req, res) => {
     // Update call session
     const updatedCallSession = await CallSession.findByIdAndUpdate(callId, updateData, { new: true });
     
-    // WebSocket notifications
-    webSocketService.broadcastCallEvent('transfer-status', {
-      callId,
-      status: DialCallStatus,
-      callSid: CallSid,
-      duration: DialCallDuration,
-      timestamp: new Date()
-    });
     
     if (DialCallStatus === 'answered') {
       webSocketService.sendTranscriptUpdate(callId, {
         speaker: 'system',
         message: '担当者に接続されました。',
+        phoneNumber: updatedCallSession?.phoneNumber, // Add phoneNumber
         timestamp: new Date()
       });
     } else if (['busy', 'no-answer', 'failed', 'cancelled'].includes(DialCallStatus)) {
       webSocketService.sendTranscriptUpdate(callId, {
         speaker: 'system',
         message: `転送に失敗しました: ${DialCallStatus}`,
+        phoneNumber: updatedCallSession?.phoneNumber, // Add phoneNumber
         timestamp: new Date()
       });
     }

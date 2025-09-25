@@ -1,172 +1,96 @@
-import { NextResponse, NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5001'
-const API_BASE_URL = `${BACKEND_URL}/api/customers`
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.NEXT_PUBLIC_BACKEND_URL_PROD || 'https://pj-ai.onrender.com';
 
-// GET all customers or specific customer by ID
+async function handleRequest(request: NextRequest, method: string) {
+  try {
+    const { searchParams } = new URL(request.url);
+    
+    console.log(`[Customer API] ${method} request`);
+    console.log('[Customer API] Backend URL:', BACKEND_URL);
+    console.log('[Customer API] Search params:', searchParams.toString());
+    
+    const authHeader = request.headers.get('authorization');
+    const contentType = request.headers.get('content-type');
+    
+    let body;
+    if (method !== 'GET' && method !== 'DELETE') {
+      body = await request.text();
+    }
+    
+    const headers: Record<string, string> = {
+      'Content-Type': contentType || 'application/json',
+    };
+    
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+    
+    let backendUrl = `${BACKEND_URL}/api/customers`;
+    if (searchParams.toString()) {
+      backendUrl += '?' + searchParams.toString();
+    }
+    
+    console.log(`[Customer API] Full backend URL:`, backendUrl);
+    
+    const response = await fetch(backendUrl, {
+      method,
+      headers,
+      body: body || undefined,
+    });
+
+    console.log(`[Customer API] Backend response status:`, response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log(`[Customer API] Error response:`, errorText);
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: `Backend error: ${response.status} ${errorText}` 
+        },
+        { status: response.status }
+      );
+    }
+
+    const responseText = await response.text();
+    let data;
+    
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = { text: responseText };
+    }
+
+    return NextResponse.json(data, { status: response.status });
+  } catch (error) {
+    console.error(`[Customer API] ${method} Error:`, error);
+    return NextResponse.json(
+      { 
+        success: false, 
+        message: 'Internal server error' 
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function GET(request: NextRequest) {
-  try {
-    const token = request.headers.get('authorization')?.replace('Bearer ', '')
-    const url = new URL(request.url)
-    const customerId = url.searchParams.get('id')
-    const callHistory = url.searchParams.get('call-history')
-    
-    console.log(`[Customer API] GET request - customerId: ${customerId || 'all'}, callHistory: ${callHistory}`)
-    
-    let apiUrl = API_BASE_URL
-    if (customerId && callHistory === 'true') {
-      apiUrl = `${API_BASE_URL}/${customerId}/call-history`
-      console.log(`[Customer API] Fetching call history: ${apiUrl}`)
-    } else if (customerId) {
-      apiUrl = `${API_BASE_URL}/${customerId}`
-      console.log(`[Customer API] Fetching individual customer: ${apiUrl}`)
-    }
-    
-    const response = await fetch(apiUrl, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    })
-    
-    console.log(`[Customer API] Backend response status: ${response.status}`)
-    
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error(`[Customer API] Backend error: ${response.status} - ${errorText}`)
-      return NextResponse.json(
-        { error: `Backend error: ${response.status}` },
-        { status: response.status }
-      )
-    }
-    const data = await response.json()
-    return NextResponse.json(data)
-  } catch (error) {
-    console.error('[Customer API] Error:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch customers', details: error.message },
-      { status: 500 }
-    )
-  }
+  return handleRequest(request, 'GET');
 }
 
-// POST new customer
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const token = request.headers.get('authorization')?.replace('Bearer ', '')
-    
-    const response = await fetch(API_BASE_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(body),
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    const data = await response.json()
-    return NextResponse.json(data)
-  } catch (error) {
-    return NextResponse.json(
-      { error: 'Failed to create customer' },
-      { status: 500 }
-    )
-  }
+  return handleRequest(request, 'POST');
 }
 
-// PATCH (update) customer
-export async function PATCH(request: NextRequest) {
-  try {
-    const token = request.headers.get('authorization')?.replace('Bearer ', '')
-    const url = new URL(request.url)
-    const customerId = url.searchParams.get('id')
-    const body = await request.json()
-    
-    if (!customerId) {
-      return NextResponse.json(
-        { error: 'Customer ID is required for update' },
-        { status: 400 }
-      )
-    }
-    
-    console.log(`[Customer API] Updating customer: ${customerId}`)
-    
-    const response = await fetch(`${API_BASE_URL}/${customerId}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(body),
-    })
-    
-    console.log(`[Customer API] PATCH Backend response status: ${response.status}`)
-    
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error(`[Customer API] PATCH Backend error: ${response.status} - ${errorText}`)
-      return NextResponse.json(
-        { error: `Backend error: ${response.status}` },
-        { status: response.status }
-      )
-    }
-    
-    const data = await response.json()
-    return NextResponse.json(data)
-  } catch (error) {
-    console.error('[Customer API] PATCH Error:', error)
-    return NextResponse.json(
-      { error: 'Failed to update customer', details: error.message },
-      { status: 500 }
-    )
-  }
+export async function PUT(request: NextRequest) {
+  return handleRequest(request, 'PUT');
 }
 
-// DELETE customers (bulk or individual)
 export async function DELETE(request: NextRequest) {
-  try {
-    const token = request.headers.get('authorization')?.replace('Bearer ', '')
-    const url = new URL(request.url)
-    const customerId = url.searchParams.get('id')
-    
-    let apiUrl = API_BASE_URL
-    let requestBody = null
-    
-    if (customerId) {
-      // Individual customer deletion
-      apiUrl = `${API_BASE_URL}/${customerId}`
-      console.log(`[Customer API] Deleting individual customer: ${apiUrl}`)
-    } else {
-      // Bulk deletion
-      const { ids } = await request.json()
-      requestBody = JSON.stringify({ ids })
-      console.log(`[Customer API] Bulk deleting customers: ${ids}`)
-    }
-    
-    const response = await fetch(apiUrl, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: requestBody,
-    })
+  return handleRequest(request, 'DELETE');
+}
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    const data = await response.json()
-    return NextResponse.json(data)
-  } catch (error) {
-    return NextResponse.json(
-      { error: 'Failed to delete customers' },
-      { status: 500 }
-    )
-  }
+export async function PATCH(request: NextRequest) {
+  return handleRequest(request, 'PATCH');
 }

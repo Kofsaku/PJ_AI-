@@ -71,7 +71,7 @@ export function CallDetailModal({ isOpen, onClose, callId }: CallDetailModalProp
     setError(null)
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/call-history/${id}`, {
+      const response = await fetch(`/api/call-history/${id}`, {
         headers: {
           "Authorization": `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json"
@@ -109,8 +109,8 @@ export function CallDetailModal({ isOpen, onClose, callId }: CallDetailModalProp
       const updateData: any = {}
       if (newNotes.trim()) updateData.notes = newNotes.trim()
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/call-history/${callDetail.id}`, {
-        method: 'PUT',
+      const response = await fetch(`/api/call-history/${callDetail.id}`, {
+        method: 'PATCH',
         headers: {
           "Authorization": `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json"
@@ -165,9 +165,22 @@ export function CallDetailModal({ isOpen, onClose, callId }: CallDetailModalProp
 
   const normalizeStatus = (status: string | null | undefined): string => {
     if (!status) return "未設定";
-    const validResults = ['成功', '不在', '拒否', '要フォロー', '失敗', '未対応'];
+    
+    // "失敗: timeout" のような形式のステータスを処理
+    if (status.includes("失敗")) return "失敗";
+    if (status.includes("成功")) return "成功";
+    if (status.includes("不在")) return "不在";
+    if (status.includes("拒否")) return "拒否";
+    if (status.includes("要フォロー")) return "要フォロー";
+    if (status.includes("通話中")) return "通話中";
+    if (status.includes("未対応")) return "未対応";
+    
+    const validResults = ['成功', '不在', '拒否', '要フォロー', '失敗', '未対応', '通話中'];
     if (validResults.includes(status)) return status;
-    return "未設定";
+    
+    // 無効なステータスでもそのまま保持（警告のみ）
+    console.warn(`[CallDetailModal] Unknown status: ${status}, keeping as-is`);
+    return status;
   }
 
   return (

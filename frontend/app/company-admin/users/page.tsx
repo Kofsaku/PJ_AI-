@@ -80,7 +80,7 @@ export default function CompanyUsersPage() {
   const fetchUsers = async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5001';
+      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
       
       const response = await fetch(`${apiUrl}/api/company-admin/users`, {
         headers: {

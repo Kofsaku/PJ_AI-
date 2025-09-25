@@ -9,7 +9,7 @@ const {
 } = require('../utils/statusValidator');
 
 const CallSessionSchema = new mongoose.Schema({
-  companyId: {
+  userId: {
     type: String,
     required: true,
     index: true
@@ -152,7 +152,7 @@ const CallSessionSchema = new mongoose.Schema({
   }
 }, { 
   timestamps: true 
-});
+});;
 
 // インデックスの追加
 CallSessionSchema.index({ customerId: 1, createdAt: -1 });
