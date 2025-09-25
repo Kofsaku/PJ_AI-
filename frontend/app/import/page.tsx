@@ -80,7 +80,7 @@ export default function ImportPage() {
     return customers
   }
 
-  const handleImport = async () => {
+  const const handleImport = async () => {
     if (!file) return
     
     setLoading(true)
@@ -118,6 +118,13 @@ export default function ImportPage() {
 
       const result = await response.json()
       console.log('Import successful:', result)
+      
+      // Store the import result in localStorage for the complete page
+      localStorage.setItem('importResult', JSON.stringify({
+        totalImported: customers.length,
+        message: result.message,
+        timestamp: new Date().toISOString()
+      }))
       
       router.push("/import/complete")
     } catch (err) {
