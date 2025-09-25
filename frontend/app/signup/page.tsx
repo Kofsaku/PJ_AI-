@@ -214,7 +214,15 @@ export default function SignupPage() {
         body: JSON.stringify({
           email: formData.verificationEmail,
           verificationCode: formData.verificationCode,
-          token: emailVerification.token
+          token: emailVerification.token,
+          companyId: formData.companyId,
+          companyName: formData.companyName,
+          businessName: formData.businessName,
+          businessPhone: formData.businessPhone,
+          address: formData.address,
+          businessType: formData.businessType,
+          employees: formData.employees,
+          description: formData.annualRevenue || ''
         })
       });
 

@@ -30,20 +30,23 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    // Get company data from request
+    const { companyId, companyName, businessName, businessPhone, address, businessType, employees, description } = body;
+    
     // Create temporary JWT token for account creation
     const JWT_SECRET = process.env.JWT_SECRET || '7f4a8b9c3d2e1f0g5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v0w1x2y3z4a5b6c7d8e9f';
     const tempToken = jwt.sign(
       {
         email,
-        companyId: 'ZWjzOM1NlE8A9ay12qaQlQ', // 一時的
+        companyId,
         companyData: {
-          companyName: '株式会社miitaso',
-          businessName: '株式会社miitaso',
-          businessPhone: '09072770207',
-          address: '銀座',
-          businessType: 'manufacturing',
-          employees: '11-50',
-          description: ''
+          companyName,
+          businessName,
+          businessPhone,
+          address,
+          businessType,
+          employees,
+          description
         },
         type: 'email_verified',
       },
