@@ -287,18 +287,6 @@ export default function UserInfoPage() {
                     {userData.createdAt ? new Date(userData.createdAt).toLocaleDateString('ja-JP') : "未設定"}
                   </p>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">最終更新日</p>
-                  <p className="text-lg font-medium">
-                    {userData.updatedAt ? new Date(userData.updatedAt).toLocaleDateString('ja-JP') : "未設定"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">最終ログイン</p>
-                  <p className="text-lg font-medium">
-                    {userData.lastLogin ? new Date(userData.lastLogin).toLocaleDateString('ja-JP') : "未設定"}
-                  </p>
-                </div>
               </CardContent>
             </Card>
           </div>
