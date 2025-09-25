@@ -467,19 +467,6 @@ ${settings.callToAction || "ぜひ御社の営業部ご担当者さまに概要�
                   </p>
                 </div>
 
-                {/* 転送説明 */}
-                <div>
-                  <h4 className="font-semibold text-sm text-gray-700 mb-2">🔄 転送前説明</h4>
-                  <div className="bg-sky-50 border border-sky-200 rounded-lg p-4">
-                    <p
-                      className="text-sm leading-relaxed whitespace-pre-wrap"
-                      dangerouslySetInnerHTML={{ __html: replaceVariables(talkTemplates.transferExplanation) }}
-                    />
-                  </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    担当者が電話に出た際の詳細説明
-                  </p>
-                </div>
 
               </div>
             </CardContent>
