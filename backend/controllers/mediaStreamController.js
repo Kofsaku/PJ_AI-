@@ -23,6 +23,57 @@ const LOG_EVENT_TYPES = [
 ];
 
 /**
+ * Extract text from OpenAI Realtime API content array
+ * Content can include: output_audio (with transcript), output_text, text, input_text, input_audio, etc.
+ */
+function extractTextFromContent(content) {
+  if (!content || !Array.isArray(content)) {
+    return '';
+  }
+
+  const textParts = content
+    .filter(item => {
+      return item.type === 'text' ||
+             item.type === 'input_text' ||
+             item.type === 'output_text' ||
+             item.type === 'output_audio' ||
+             item.type === 'audio';
+    })
+    .map(item => {
+      return item.transcript || item.text || '';
+    })
+    .filter(text => text.length > 0);
+
+  return textParts.join(' ').trim();
+}
+
+/**
+ * Send conversation update via WebSocket
+ */
+function sendConversationUpdate(callSession, role, text) {
+  if (!text || !global.io) return;
+
+  const speaker = role === 'assistant' ? 'ai' : role === 'user' ? 'customer' : 'system';
+  const phoneNumber = callSession.phoneNumber;
+
+  global.io.emit('transcript-update', {
+    callId: callSession._id.toString(),
+    callSid: callSession.twilioCallSid,
+    phoneNumber: phoneNumber,
+    speaker: speaker,
+    text: text,
+    message: text,
+    timestamp: new Date()
+  });
+
+  console.log('[Conversation] Sent WebSocket update:', {
+    callId: callSession._id.toString(),
+    speaker: speaker,
+    textLength: text.length
+  });
+}
+
+/**
  * Initialize OpenAI Realtime API session
  * Reference: official sample line 209-231
  */
@@ -36,7 +87,10 @@ async function initializeSession(openaiWs, agentSettings) {
       audio: {
         input: {
           format: { type: "audio/pcmu" },  // ← μ-law format (Twilio default)
-          turn_detection: { type: "server_vad" }  // ← Server-side voice activity detection
+          turn_detection: { type: "server_vad" },  // ← Server-side voice activity detection
+          transcription: {  // ← Enable user speech transcription
+            model: "whisper-1"
+          }
         },
         output: {
           format: { type: "audio/pcmu" },  // ← μ-law format
@@ -210,6 +264,36 @@ exports.handleMediaStream = async (twilioWs, req) => {
           console.log('[Conversation] User speech committed:', response.item_id);
         }
 
+        // Handle user speech transcription
+        if (response.type === 'conversation.item.input_audio_transcription.completed') {
+          const transcript = response.transcript;
+          const itemId = response.item_id;
+
+          console.log('[User Transcription] Completed:', {
+            itemId: itemId,
+            transcript: transcript
+          });
+
+          if (transcript && transcript.length > 0) {
+            // Save user speech to realtimeConversation
+            callSession.realtimeConversation.push({
+              type: 'message',
+              role: 'user',
+              content: [{
+                type: 'input_audio',
+                transcript: transcript
+              }],
+              timestamp: new Date()
+            });
+
+            await callSession.save();
+            console.log('[User Transcription] Saved to database');
+
+            // Send via WebSocket
+            sendConversationUpdate(callSession, 'user', transcript);
+          }
+        }
+
         // Save conversation from conversation.item.created event (includes both user and assistant)
         if (response.type === 'conversation.item.created' && response.item) {
           const item = response.item;
@@ -254,6 +338,13 @@ exports.handleMediaStream = async (twilioWs, req) => {
                   content: item.content,  // Store as array
                   timestamp: new Date()
                 });
+
+                // Extract text and send via WebSocket
+                const text = extractTextFromContent(item.content);
+                console.log('[Conversation] Extracted text:', text || '(empty)', 'from content types:', item.content.map(c => c.type).join(', '));
+                if (text) {
+                  sendConversationUpdate(callSession, item.role, text);
+                }
               }
             }
 

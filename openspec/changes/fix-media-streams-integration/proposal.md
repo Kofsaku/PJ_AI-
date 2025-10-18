@@ -187,3 +187,113 @@ Phone → Twilio → Media Streams (WS) → Backend (WS bridge) → OpenAI Realt
 The current Media Streams implementation already exists. If fixes cause issues, we can revert to commit before this change using git.
 
 Legacy Coefont TTS mode remains available via `USE_OPENAI_REALTIME=false`.
+
+---
+
+## Implementation Progress
+
+### ✅ Phase 8.14: 会話履歴リアルタイム表示機能実装 (2025-10-18)
+
+**Status**: COMPLETED
+
+**作業内容**:
+- OpenAI Realtime APIからAI発話テキストを抽出
+- Whisper-1モデルでユーザー音声の転写を有効化
+- WebSocket経由でフロントエンドへリアルタイム配信
+- CallStatusModalにAI（青色）とお客様（緑色）の発話を表示
+- MongoDBへの会話履歴保存を確認
+
+**技術実装**:
+1. **`extractTextFromContent()`**: 複数のcontent typeからテキスト抽出
+   - `output_audio`の`transcript`フィールド対応
+   - `text`, `input_text`, `output_text`対応
+2. **`sendConversationUpdate()`**: Socket.io経由で`transcript-update`イベント送信
+3. **Session configuration**: `audio.input.transcription: { model: 'whisper-1' }`
+4. **Event handler**: `conversation.item.input_audio_transcription.completed`
+
+**エラーと修正**:
+- **Error 1**: 初回実装で完全音声停止 → `git restore`でロールバック、段階的実装に変更
+- **Error 2**: 転写設定の誤配置（トップレベル） → `audio.input.transcription`内に移動
+
+**段階的実装アプローチ**:
+- Step 1: ヘルパー関数のみ追加
+- Step 2: AI発話抽出とWebSocket送信 → **成功** ✅
+- Step 3: ユーザー転写設定 → **成功** ✅
+
+**テスト結果**:
+- ✅ AI発話が青色で「AIオペレーター」として表示
+- ✅ ユーザー発話が緑色で「お客様」として表示
+- ✅ リアルタイムWebSocket更新が動作
+- ✅ MongoDBに会話履歴保存を確認
+- ⚠️ **発見された新しい問題**: プロンプト変数未置換
+
+**Modified Files**:
+- `backend/controllers/mediaStreamController.js`:
+  - Lines 25-48: `extractTextFromContent()` 関数
+  - Lines 50-74: `sendConversationUpdate()` 関数
+  - Lines 87-99: Session configuration with user transcription
+  - Lines 268-296: User transcription event handler
+  - Lines 309-314: AI response WebSocket emission
+- `backend/check-conversation.js`: データベース確認スクリプト（デバッグ用）
+
+**Key Learnings**:
+- AI音声: `output_audio`型、テキストは`transcript`フィールド（`text`ではない）
+- ユーザー音声: `input_audio`型、テキストは`transcript`フィールド
+- 転写設定: `audio.input.transcription`内に配置（トップレベルではない）
+- 段階的実装の重要性: 一度にすべて変更 → エラー箇所特定困難
+
+**Detailed Documentation**: [SESSION_SUMMARY_2025-10-18_Phase8.14.md](./SESSION_SUMMARY_2025-10-18_Phase8.14.md)
+
+---
+
+### ⚠️ Phase 8.15: プロンプト変数置換の実装 (NEXT TASK)
+
+**Problem**:
+`backend/config/templates.js`のテンプレート変数（`{{selfIntroduction}}`, `{{serviceDescription}}`等）が置換されずにOpenAIに送信され、AIの応答が意味不明になる。
+
+**Root Cause**:
+```javascript
+initial: 'お世話になります。{{selfIntroduction}}。弊社は{{serviceDescription}}会社でございます...'
+```
+このテンプレートがそのままOpenAIの`instructions`に設定されている。
+
+**Required Actions**:
+1. AgentSettingsをMongoDBから取得
+2. テンプレート変数を実際の値で置換
+3. 置換済みinstructionsをOpenAIに送信
+
+**Data Source**: AgentSettingsモデル
+- `companyName`, `serviceName`, `representativeName`等
+
+---
+
+### Task Status Update
+
+**Completed Tasks**:
+- [x] 8.1 Test server startup (✅ Phase 2)
+- [x] 8.2 Make test call to Twilio number (✅ Phase 2)
+- [x] 8.3 Verify WebSocket connections (✅ Phase 2)
+- [x] 8.4 Verify session initialization (✅ Phase 2)
+- [x] 8.5 Test audio bidirectionality (✅ Phase 2)
+- [x] 8.6 Test Japanese speech recognition (✅ Phase 2)
+- [x] 8.7 Test AI response generation (✅ Phase 2)
+- [x] 8.12 GUI一斉コールでOpenAI Realtime API使用確認 (✅ Phase 3)
+- [x] 8.13 Socket.io WebSocket接続エラー修正 (✅ Phase 3)
+- [x] **8.14 会話履歴リアルタイム表示機能実装** (✅ Phase 8.14)
+
+**New Tasks**:
+- [ ] **8.15 プロンプト変数置換の実装** (NEXT TASK)
+
+**Remaining Tasks (Phase 8)**:
+- [ ] 8.8 Test interrupt handling (user interrupts AI mid-response)
+- [ ] 8.9 Verify conversation logs saved to database ✅ (実質完了、Phase 8.14で確認済み)
+- [ ] 8.10 Test concurrent calls (2-3 simultaneous)
+- [ ] 8.11 Test legacy mode fallback (USE_OPENAI_REALTIME=false)
+
+**Phase 9: Documentation & Cleanup** (Pending)
+- [ ] 9.1 Update CLAUDE.md with correct architecture diagram
+- [ ] 9.2 Document Media Streams approach (not SIP)
+- [ ] 9.3 Add reference link to Twilio official sample
+- [ ] 9.4 Document audio format requirements (audio/pcmu)
+- [ ] 9.5 Add troubleshooting section for common issues
+- [ ] 9.6 Remove any SIP-related documentation
