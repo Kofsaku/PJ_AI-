@@ -8,6 +8,7 @@
 const WebSocket = require('ws');
 const CallSession = require('../models/CallSession');
 const AgentSettings = require('../models/AgentSettings');
+const { buildOpenAIInstructions } = require('../utils/promptBuilder');
 
 // Event types to log (from official sample line 25-30)
 const LOG_EVENT_TYPES = [
@@ -78,6 +79,17 @@ function sendConversationUpdate(callSession, role, text) {
  * Reference: official sample line 209-231
  */
 async function initializeSession(openaiWs, agentSettings) {
+  // Build instructions using the new prompt builder (受付突破特化型)
+  let instructions;
+  try {
+    instructions = buildOpenAIInstructions(agentSettings);
+    console.log('[OpenAI] Generated instructions length:', instructions.length);
+  } catch (error) {
+    console.error('[OpenAI] Failed to build instructions:', error);
+    // Fallback to simple instructions
+    instructions = "You are a helpful AI assistant for making business calls.";
+  }
+
   const sessionUpdate = {
     type: "session.update",
     session: {
@@ -97,13 +109,13 @@ async function initializeSession(openaiWs, agentSettings) {
           voice: agentSettings?.voice || "alloy"  // ← Voice selection
         }
       },
-      instructions: agentSettings?.conversationSettings?.customTemplates?.initial ||
-                     "You are a helpful AI assistant.",
+      instructions: instructions,  // ← 受付突破特化型プロンプト
       tools: agentSettings?.tools || []
     }
   };
 
-  console.log('[OpenAI] Sending session update:', JSON.stringify(sessionUpdate, null, 2));
+  console.log('[OpenAI] Sending session update with instructions preview:',
+    instructions.substring(0, 200) + '...');
   openaiWs.send(JSON.stringify(sessionUpdate));
 }
 
