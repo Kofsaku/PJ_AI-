@@ -45,8 +45,13 @@ const companyAdminRoutes = require('./routes/companyAdminRoutes');
 const healthRoutes = require('./routes/healthRoutes');
 const callHistoryRoutes = require('./routes/callHistoryRoutes');
 const testRoutes = require('./routes/testRoutes');
+const mediaStreamRoutes = require('./routes/mediaStreamRoutes');
 
 const app = express();
+
+// NOTE: WebSocket initialization moved to AFTER http server creation
+// This is required for native ws library (not express-ws)
+console.log('[Server] Express app created, WebSocket will be initialized after http server');
 
 // Body parser
 app.use(express.json());
@@ -99,7 +104,9 @@ app.use(cors({
 }));
 
 // Set security headers
-app.use(helmet());
+// TEMPORARILY DISABLED for WebSocket debugging
+// app.use(helmet());
+console.log('[Server] helmet() disabled for WebSocket testing');
 
 // Dev logging middleware
 if (process.env.NODE_ENV === 'development') {
@@ -118,6 +125,7 @@ app.use('/api/calls', bulkCallRoutes);
 app.use('/api/calls', conferenceRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/twilio', twilioRoutes);
+// WebSocket routes already registered before middleware (line 59)
 app.use('/api/audio', audioRoutes);
 app.use('/api/direct', handoffDirectRoutes); // Direct routes without auth
 app.use('/api/test', testRoutes); // Test routes for debugging
@@ -149,7 +157,61 @@ const PORT = process.env.PORT || 5000;
 // Create server first
 const server = require('http').createServer(app);
 
-// Initialize WebSocket service
+// Initialize WebSocket server for Media Streams (using native ws library)
+const WebSocket = require('ws');
+const wss = new WebSocket.Server({
+  noServer: true  // Manual upgrade handling for path parameters
+});
+
+const simpleMediaStreamController = require('./controllers/mediaStreamController.simple');
+const mediaStreamController = require('./controllers/mediaStreamController');
+
+// Manual WebSocket upgrade handling to support path parameters
+server.on('upgrade', (request, socket, head) => {
+  const pathname = new URL(request.url, 'http://localhost').pathname;
+
+  console.log('[WebSocket] Upgrade request for:', pathname);
+
+  // Simple version (no database, for debugging)
+  if (pathname === '/api/twilio/media-stream-simple') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      console.log('[WebSocket] Simple handler connected');
+      const req = { url: request.url, headers: request.headers };
+      simpleMediaStreamController.handleSimpleMediaStream(ws, req);
+    });
+  }
+  // Production version (with database, callId parameter)
+  else if (pathname.startsWith('/api/twilio/media-stream/')) {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      const callId = pathname.split('/').pop();
+      console.log('[WebSocket] Production handler connected for callId:', callId);
+
+      // Create req object compatible with controller
+      const req = {
+        params: { callId },
+        url: request.url,
+        headers: request.headers
+      };
+
+      mediaStreamController.handleMediaStream(ws, req);
+    });
+  }
+  // Reject other paths
+  else {
+    console.log('[WebSocket] Rejected upgrade for:', pathname);
+    socket.destroy();
+  }
+});
+
+wss.on('error', (error) => {
+  console.error('[WebSocket] Server error:', error);
+});
+
+console.log('[Server] WebSocket server initialized with manual upgrade handling');
+console.log('[Server] - Simple endpoint: /api/twilio/media-stream-simple');
+console.log('[Server] - Production endpoint: /api/twilio/media-stream/:callId');
+
+// Initialize WebSocket service (for frontend)
 const webSocketService = require('./services/websocket');
 webSocketService.initialize(server);
 

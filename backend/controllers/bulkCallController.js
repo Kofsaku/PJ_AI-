@@ -361,9 +361,15 @@ const callQueueManager = new CallQueueManager();
 
 // 一斉通話の開始（順次発信版）
 exports.initiateBulkCalls = async (req, res) => {
-  console.log('=== Bulk Call Request (Sequential) ===');
-  console.log('Request Body:', req.body);
+  console.log('\n========================================');
+  console.log('=== BULK CALL POST REQUEST RECEIVED ===');
+  console.log('========================================');
+  console.log('Timestamp:', new Date().toISOString());
+  console.log('Method:', req.method);
+  console.log('URL:', req.url);
+  console.log('Request Body:', JSON.stringify(req.body, null, 2));
   console.log('User:', req.user);
+  console.log('========================================\n');
   
   try {
     const { phoneNumbers, customerIds } = req.body;

@@ -149,9 +149,30 @@ const CallSessionSchema = new mongoose.Schema({
       callToAction: String,
       keyBenefits: [String]
     }
-  }
-}, { 
-  timestamps: true 
+  },
+  // OpenAI Realtime API integration fields
+  realtimeSessionId: {
+    type: String,
+    required: false,
+    sparse: true
+  },
+  realtimeConversation: [{
+    type: {
+      type: String,  // e.g., 'message', 'function_call', etc.
+      default: 'message'
+    },
+    role: {
+      type: String,
+      enum: ['user', 'assistant', 'system']
+    },
+    content: mongoose.Schema.Types.Mixed,  // Can be String or Array
+    timestamp: {
+      type: Date,
+      default: Date.now
+    }
+  }]
+}, {
+  timestamps: true
 });;
 
 // インデックスの追加

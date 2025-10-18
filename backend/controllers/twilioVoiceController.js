@@ -136,6 +136,7 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
       
       callSession = await CallSession.create({
         customerId: customer._id,
+        userId: agentSettings.userId,  // エージェント設定からuserIdを取得
         twilioCallSid: CallSid,
         status: 'in-progress',
         transcript: [],
@@ -184,37 +185,85 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
       fromPhone: customer.phone,    // From番号（発信元）も送信
       status: 'in-progress'
     });
-    
-    // 即座にTwiMLをリダイレクト（遅延を最小化）
-    console.log('[Incoming Call] IMMEDIATE REDIRECT TO MINIMIZE DELAYS');
-    
-    twiml.redirect({
-      method: 'POST'
-    }, `${process.env.BASE_URL}/api/twilio/voice/conference/${callSession._id}`);
-    
-    // 重い処理を非同期で実行（レスポンス送信後）
-    setImmediate(() => {
-      // WebSocket通知
-      webSocketService.broadcastCallEvent('call-status', {
-        callId: callSession._id.toString(),
-        callSid: CallSid,
-        phoneNumber: toPhoneNumber,
-        fromPhone: customer.phone,
-        status: 'in-progress',
-        timestamp: new Date()
+
+    // Feature flag: OpenAI Realtime API vs Legacy Conference mode
+    console.log('[Incoming Call] ========== FEATURE FLAG CHECK ==========');
+    console.log('[Incoming Call] USE_OPENAI_REALTIME:', process.env.USE_OPENAI_REALTIME);
+    console.log('[Incoming Call] Type:', typeof process.env.USE_OPENAI_REALTIME);
+    console.log('[Incoming Call] Comparison result:', process.env.USE_OPENAI_REALTIME === 'true');
+    console.log('[Incoming Call] ==========================================');
+
+    if (process.env.USE_OPENAI_REALTIME === 'true') {
+      // ===== OpenAI Realtime API Mode (Media Streams) =====
+      console.log('[Incoming Call] Using OpenAI Realtime API with Media Streams');
+
+      // Optional: Add greeting (uncomment if desired)
+      // twiml.say({ voice: 'Polly.Mizuki', language: 'ja-JP' },
+      //   'AIアシスタントに接続しています。少々お待ちください。');
+      // twiml.pause({ length: 1 });
+
+      // Connect to Media Streams WebSocket
+      const connect = twiml.connect();
+
+      // TEMPORARY: Use simplified endpoint for debugging
+      // TODO: Revert to /api/twilio/media-stream/${callSession._id} after testing
+      const useSimpleEndpoint = process.env.USE_SIMPLE_MEDIA_STREAM === 'true';
+      const streamUrl = useSimpleEndpoint
+        ? `wss://${req.headers.host}/api/twilio/media-stream-simple`
+        : `wss://${req.headers.host}/api/twilio/media-stream/${callSession._id}`;
+
+      console.log('[Incoming Call] Stream URL:', streamUrl);
+      connect.stream({ url: streamUrl });
+
+      console.log('[Incoming Call] Media Streams TwiML generated');
+
+      // 重い処理を非同期で実行（レスポンス送信後）
+      setImmediate(() => {
+        // WebSocket通知
+        webSocketService.broadcastCallEvent('call-status', {
+          callId: callSession._id.toString(),
+          callSid: CallSid,
+          phoneNumber: toPhoneNumber,
+          fromPhone: customer.phone,
+          status: 'in-progress',
+          timestamp: new Date()
+        });
+
+        // タイムアウト監視を開始
+        callTimeoutManager.startCallTimeout(callSession._id.toString(), 15); // 15分でタイムアウト
       });
-      
-      // 会話エンジンを初期化
-      const callIdString = callSession._id.toString();
-      console.log('[Background] Initializing conversation engine');
-      conversationEngine.resetConversationForNewCall(callIdString, callSession.aiConfiguration);
-      
-      // タイムアウト監視を開始
-      callTimeoutManager.startCallTimeout(callIdString, 15); // 15分でタイムアウト
-    });
-    
-    // リダイレクト後に初期メッセージ処理は行われるため、ここでは削除
-    console.log('[Incoming Call] Initial message will be handled by conference endpoint');
+
+    } else {
+      // ===== Legacy Conference Mode =====
+      console.log('[Incoming Call] Using legacy Conference mode');
+
+      twiml.redirect({
+        method: 'POST'
+      }, `${process.env.BASE_URL}/api/twilio/voice/conference/${callSession._id}`);
+
+      // 重い処理を非同期で実行（レスポンス送信後）
+      setImmediate(() => {
+        // WebSocket通知
+        webSocketService.broadcastCallEvent('call-status', {
+          callId: callSession._id.toString(),
+          callSid: CallSid,
+          phoneNumber: toPhoneNumber,
+          fromPhone: customer.phone,
+          status: 'in-progress',
+          timestamp: new Date()
+        });
+
+        // 会話エンジンを初期化
+        const callIdString = callSession._id.toString();
+        console.log('[Background] Initializing conversation engine');
+        conversationEngine.resetConversationForNewCall(callIdString, callSession.aiConfiguration);
+
+        // タイムアウト監視を開始
+        callTimeoutManager.startCallTimeout(callIdString, 15); // 15分でタイムアウト
+      });
+
+      console.log('[Incoming Call] Conference redirect TwiML generated');
+    }
     
     // TwiMLレスポンスを送信（リダイレクトは上で既に追加済み）
     const twimlString = twiml.toString();

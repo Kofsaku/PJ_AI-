@@ -167,9 +167,35 @@ const AgentSettingsSchema = new mongoose.Schema({
     default: 0,
     min: 0,
     max: 100
-  }
-}, { 
-  timestamps: true 
+  },
+  // OpenAI Realtime API settings
+  voice: {
+    type: String,
+    enum: ['alloy', 'echo', 'shimmer'],
+    default: 'alloy',
+    required: false
+  },
+  tools: [{
+    type: {
+      type: String,
+      enum: ['function'],
+      default: 'function'
+    },
+    name: {
+      type: String,
+      required: true
+    },
+    description: {
+      type: String,
+      required: true
+    },
+    parameters: {
+      type: mongoose.Schema.Types.Mixed,
+      required: true
+    }
+  }]
+}, {
+  timestamps: true
 });
 
 // インデックスの追加
