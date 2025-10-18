@@ -196,6 +196,12 @@ server.on('upgrade', (request, socket, head) => {
       mediaStreamController.handleMediaStream(ws, req);
     });
   }
+  // Socket.io paths - let Socket.io handle its own upgrades
+  else if (pathname.startsWith('/socket.io/')) {
+    console.log('[WebSocket] Socket.io upgrade request, letting Socket.io handle it');
+    // Don't handle this - Socket.io will handle it
+    return;
+  }
   // Reject other paths
   else {
     console.log('[WebSocket] Rejected upgrade for:', pathname);
