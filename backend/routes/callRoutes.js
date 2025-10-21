@@ -4,13 +4,14 @@ const { protect } = require('../middlewares/authMiddleware');
 const {
   startCall,
   getActiveCalls,
-  handoffCall,
   endCall,
   getCallHistory,
   getCallDetails,
   updateTranscript,
   getCallStatistics
 } = require('../controllers/callController');
+// Use new handoff controller that supports OpenAI Realtime API
+const { initiateHandoff } = require('../controllers/handoffController');
 
 // All routes require authentication
 router.use(protect);
@@ -25,7 +26,8 @@ router.get('/statistics', getCallStatistics);
 router.route('/:callId')
   .get(getCallDetails);
 
-router.post('/:callId/handoff', handoffCall);
+// Use new handoff controller that supports OpenAI Realtime API
+router.post('/:callId/handoff', initiateHandoff);
 router.post('/:callId/end', endCall);
 router.put('/:callId/transcript', updateTranscript);
 

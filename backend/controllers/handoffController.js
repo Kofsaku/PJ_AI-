@@ -90,6 +90,13 @@ exports.initiateHandoff = asyncHandler(async (req, res, next) => {
   }
 
   try {
+    // Check if this is an OpenAI Realtime API call (Media Streams mode)
+    const isRealtimeMode = process.env.USE_OPENAI_REALTIME === 'true';
+    console.log('[Handoff] Realtime mode:', isRealtimeMode);
+
+    // Note: In Realtime mode, we will disconnect Media Streams AFTER redirect succeeds
+    // Disconnecting before redirect causes call to drop
+
     // ユーザーの取次用電話番号を使用（さらに安全な処理）
     let agentPhoneNumber;
     try {
@@ -97,8 +104,8 @@ exports.initiateHandoff = asyncHandler(async (req, res, next) => {
         agentPhoneNumber = user.getTwilioPhoneNumber();
       } else if (user.handoffPhoneNumber) {
         // 日本の番号を国際形式に変換
-        agentPhoneNumber = user.handoffPhoneNumber.startsWith('0') 
-          ? `+81${user.handoffPhoneNumber.substring(1)}` 
+        agentPhoneNumber = user.handoffPhoneNumber.startsWith('0')
+          ? `+81${user.handoffPhoneNumber.substring(1)}`
           : `+81${user.handoffPhoneNumber}`;
       } else {
         throw new Error('取次用電話番号が設定されていません');
@@ -188,45 +195,32 @@ exports.initiateHandoff = asyncHandler(async (req, res, next) => {
     
     console.log(`[Handoff] Agent call created: ${agentCall.sid}`);
     
-    // 2. 顧客をConferenceに移動（CoeFont音声を使用）
+    // 2. 顧客をConferenceに移動
+    // Media Streams mode (<Connect><Stream>) では直接TwiML更新できないため、
+    // Redirectを使って新しいエンドポイントに誘導する
     if (callSession.twilioCallSid && callSession.twilioCallSid.startsWith('CA')) {
-      // CoeFontで音声URLを生成
-      const message = '担当者におつなぎします。少々お待ちください。';
-      const audioUrl = await coefontService.generateSpeechUrl(message);
-      
-      let customerTwiml;
-      if (audioUrl) {
-        // CoeFontの音声URLを使用
-        customerTwiml = `<Response>
-          <Play>${audioUrl}</Play>
-          <Dial>
-            <Conference 
-              startConferenceOnEnter="false" 
-              endConferenceOnExit="false"
-              statusCallback="${process.env.BASE_URL}/api/twilio/conference/events/${callId}"
-              statusCallbackMethod="POST"
-              statusCallbackEvent="start end join leave mute hold">${conferenceName}</Conference>
-          </Dial>
-        </Response>`;
-      } else {
-        // フォールバック: Polly.Mizukiを使用
-        customerTwiml = `<Response>
-          <Say voice="Polly.Mizuki" language="ja-JP">${message}</Say>
-          <Dial>
-            <Conference 
-              startConferenceOnEnter="false" 
-              endConferenceOnExit="false"
-              statusCallback="${process.env.BASE_URL}/api/twilio/conference/events/${callId}"
-              statusCallbackMethod="POST"
-              statusCallbackEvent="start end join leave mute hold">${conferenceName}</Conference>
-          </Dial>
-        </Response>`;
+      console.log(`[Handoff] Moving customer to conference using Redirect`);
+
+      // Redirectエンドポイントを使用（Media Streams互換）
+      const redirectUrl = `${process.env.BASE_URL}/api/twilio/handoff-redirect/${callId}`;
+
+      try {
+        await client.calls(callSession.twilioCallSid).update({
+          url: redirectUrl,
+          method: 'POST'
+        });
+        console.log(`[Handoff] Customer redirected to: ${redirectUrl}`);
+      } catch (updateError) {
+        console.error(`[Handoff] Error updating call:`, updateError.message);
+
+        // Redirectが失敗した場合でもConference URLを保存（webhook経由で処理）
+        await CallSession.findByIdAndUpdate(callId, {
+          'handoffDetails.pendingConferenceName': conferenceName,
+          'handoffDetails.redirectUrl': redirectUrl
+        });
+
+        console.log(`[Handoff] Saved conference details for webhook processing`);
       }
-      
-      await client.calls(callSession.twilioCallSid).update({
-        twiml: customerTwiml
-      });
-      console.log(`[Handoff] Customer moved to conference successfully with CoeFont announcement`);
     } else {
       // 担当者への通話をキャンセル
       await client.calls(agentCall.sid).update({ status: 'completed' });
@@ -579,14 +573,17 @@ exports.initiateHandoffByPhone = asyncHandler(async (req, res, next) => {
   }
 
   try {
+    // Note: In Realtime mode, we will disconnect Media Streams AFTER redirect succeeds
+    // (in handoffRedirectController). Disconnecting before redirect causes call to drop
+
     // ユーザーの取次用電話番号を使用（安全な処理）
     let agentPhoneNumber;
     if (user.getTwilioPhoneNumber && typeof user.getTwilioPhoneNumber === 'function') {
       agentPhoneNumber = user.getTwilioPhoneNumber();
     } else if (user.handoffPhoneNumber) {
       // 日本の番号を国際形式に変換
-      agentPhoneNumber = user.handoffPhoneNumber.startsWith('0') 
-        ? `+81${user.handoffPhoneNumber.substring(1)}` 
+      agentPhoneNumber = user.handoffPhoneNumber.startsWith('0')
+        ? `+81${user.handoffPhoneNumber.substring(1)}`
         : `+81${user.handoffPhoneNumber}`;
     } else {
       throw new Error('取次用電話番号が設定されていません');
@@ -672,45 +669,31 @@ exports.initiateHandoffByPhone = asyncHandler(async (req, res, next) => {
     
     console.log(`[Handoff] Agent call created: ${agentCall.sid}`);
     
-    // 2. 顧客をConferenceに移動（CoeFont音声を使用）
+    // 2. 顧客をConferenceに移動
+    // Media Streams mode (<Connect><Stream>) では直接TwiML更新できないため、
+    // Redirectを使って新しいエンドポイントに誘導する
     if (callSession.twilioCallSid && callSession.twilioCallSid.startsWith('CA')) {
-      // CoeFontで音声URLを生成
-      const customerMessage = '担当者におつなぎします。';
-      const customerAudioUrl = await coefontService.generateSpeechUrl(customerMessage);
-      
-      let customerTwiml;
-      if (customerAudioUrl) {
-        // CoeFontの音声URLを使用
-        customerTwiml = `<Response>
-          <Play>${customerAudioUrl}</Play>
-          <Dial>
-            <Conference startConferenceOnEnter="false" endConferenceOnExit="false">${conferenceName}</Conference>
-          </Dial>
-        </Response>`;
-      } else {
-        // フォールバック: Polly.Mizukiを使用
-        customerTwiml = `<Response>
-          <Say voice="Polly.Mizuki" language="ja-JP">${customerMessage}</Say>
-          <Dial>
-            <Conference startConferenceOnEnter="false" endConferenceOnExit="false">${conferenceName}</Conference>
-          </Dial>
-        </Response>`;
-      }
-      
+      console.log(`[Handoff] Moving customer to conference using Redirect`);
+
+      // Redirectエンドポイントを使用（Media Streams互換）
+      const redirectUrl = `${process.env.BASE_URL}/api/twilio/handoff-redirect/${callSession._id}`;
+
       try {
         await client.calls(callSession.twilioCallSid).update({
-          twiml: customerTwiml
+          url: redirectUrl,
+          method: 'POST'
         });
-        console.log(`[Handoff] Customer moved to conference successfully with CoeFont announcement`);
-      } catch (error) {
-        console.error(`[Handoff] Error moving customer to conference:`, error.message);
-        // 担当者への通話もキャンセル
-        try {
-          await client.calls(agentCall.sid).update({ status: 'completed' });
-        } catch (cancelError) {
-          console.error(`[Handoff] Error cancelling agent call:`, cancelError.message);
-        }
-        throw error;
+        console.log(`[Handoff] Customer redirected to: ${redirectUrl}`);
+      } catch (updateError) {
+        console.error(`[Handoff] Error updating call:`, updateError.message);
+
+        // Redirectが失敗した場合でもConference URLを保存（webhook経由で処理）
+        await CallSession.findByIdAndUpdate(callSession._id, {
+          'handoffDetails.pendingConferenceName': conferenceName,
+          'handoffDetails.redirectUrl': redirectUrl
+        });
+
+        console.log(`[Handoff] Saved conference details for webhook processing`);
       }
     } else {
       console.log(`[Handoff] Invalid or missing Twilio CallSid: ${callSession.twilioCallSid}`);

@@ -389,26 +389,37 @@ export function CallStatusModal({
   }, [transcript]);
 
   const handleTransfer = async () => {
-    console.log("[取次ボタン] 開始", { 
-      phoneNumber, 
-      callStatus, 
+    console.log("[取次ボタン] 開始", {
+      phoneNumber,
+      callStatus,
       callSid,
       hasToken: !!localStorage.getItem('token')
     });
-    
+
     setIsTransferring(true);
     try {
+      // callSidが必要なので、存在しない場合はエラー
+      if (!callSid) {
+        throw new Error('通話IDが取得できていません。通話を開始してから取次ボタンを押してください。');
+      }
+
       // 電話番号からCall Sessionを取得して取次処理を実行
       const token = localStorage.getItem('token');
       console.log("[取次ボタン] トークン取得:", token ? "有効" : "無効");
-      
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/direct/handoff-direct`, {
+
+      // CallSession IDからcallIdを抽出（callSidはCA...形式なので、CallSession IDが必要）
+      // まずCallSession IDを取得するためのAPI呼び出し、またはcallSidをそのまま使用
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
+
+      // CallSidからCallSession IDを検索する必要がある場合は、別のAPIを使用
+      // ここでは簡易的にcallSidをそのまま使用（バックエンドで対応が必要）
+      const response = await fetch(`${backendUrl}/api/direct/handoff-direct`, {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           phoneNumber: phoneNumber,
           callSid: callSid
         }),

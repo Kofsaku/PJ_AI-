@@ -19,6 +19,7 @@ const {
   handleTransferStatus
 } = require('../controllers/twilioController');
 const { handleIncomingCall } = require('../controllers/twilioVoiceController');
+const { handleHandoffRedirect } = require('../controllers/handoffRedirectController');
 // const { handleIncomingCallUltraSimple } = require('../controllers/twilioVoiceController.ultraSimple');
 
 // ULTRA SIMPLE endpoint (Python sample equivalent)
@@ -42,6 +43,9 @@ router.post('/conference/events/:callId', handleConferenceEvents);
 router.post('/call/status/:callId', handleCallStatus);
 router.post('/recording/status/:callId', handleRecordingStatus);
 router.post('/transfer/status/:callId', handleTransferStatus);
+
+// Handoff redirect endpoint (for Media Streams mode)
+router.post('/handoff-redirect/:callId', handleHandoffRedirect);
 
 // General status endpoint for Twilio callbacks
 router.post('/status', async (req, res) => {

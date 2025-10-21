@@ -219,6 +219,14 @@ exports.handleMediaStream = async (twilioWs, req) => {
       // Update CallSession
       callSession.realtimeSessionId = 'session-' + Date.now();
       await callSession.save();
+
+      // Register connection in global map for handoff support
+      global.activeMediaStreams.set(callId, {
+        twilioWs,
+        openaiWs,
+        streamSid: null // Will be set when 'start' event is received
+      });
+      console.log('[MediaStream] Registered connection in global map:', callId);
     });
 
     // Handle OpenAI WebSocket errors
@@ -426,6 +434,13 @@ exports.handleMediaStream = async (twilioWs, req) => {
           responseStartTimestamp = null;
           latestMediaTimestamp = 0;
           lastAssistantItem = null;
+
+          // Update streamSid in global map
+          const connection = global.activeMediaStreams.get(callId);
+          if (connection) {
+            connection.streamSid = streamSid;
+            console.log('[MediaStream] Updated streamSid in global map:', callId);
+          }
         }
 
         // Handle mark confirmation (official sample line 102-104)
@@ -443,6 +458,12 @@ exports.handleMediaStream = async (twilioWs, req) => {
     // Handle Twilio WebSocket close
     twilioWs.on('close', async () => {
       console.log('[MediaStream] Client disconnected');
+
+      // Remove from global map
+      if (global.activeMediaStreams.has(callId)) {
+        global.activeMediaStreams.delete(callId);
+        console.log('[MediaStream] Removed connection from global map:', callId);
+      }
 
       // Close OpenAI connection
       if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {

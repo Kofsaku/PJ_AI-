@@ -163,6 +163,10 @@ const wss = new WebSocket.Server({
   noServer: true  // Manual upgrade handling for path parameters
 });
 
+// Global WebSocket connection map for handoff support
+// Key: callId, Value: { twilioWs, openaiWs }
+global.activeMediaStreams = new Map();
+
 const simpleMediaStreamController = require('./controllers/mediaStreamController.simple');
 const mediaStreamController = require('./controllers/mediaStreamController');
 

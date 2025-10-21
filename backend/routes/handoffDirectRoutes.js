@@ -1,24 +1,29 @@
-// Direct handoff routes without authentication for development
+// Direct handoff routes with authentication
 const express = require('express');
 const router = express.Router();
 const { initiateHandoffByPhone, initiateHandoff } = require('../controllers/handoffController');
+const { protect } = require('../middlewares/authMiddleware');
 
-// Direct route without any middleware - GUARANTEED TO WORK
-router.post('/handoff-direct', (req, res, next) => {
+// Direct route WITH authentication - uses actual logged-in user
+router.post('/handoff-direct', protect, (req, res, next) => {
   console.log('[Handoff Direct] ========== NEW HANDOFF REQUEST ==========');
   console.log('[Handoff Direct] Request body:', JSON.stringify(req.body, null, 2));
-  console.log('[Handoff Direct] Request headers:', req.headers);
-  
-  // Always set a user for this route - GUARANTEED INITIALIZATION
-  req.user = {
-    id: 'direct-user-id',
-    _id: 'direct-user-id',
-    email: 'direct@example.com',
-    role: 'user'
-  };
-  
-  console.log('[Handoff Direct] Mock user set:', JSON.stringify(req.user, null, 2));
-  
+  console.log('[Handoff Direct] Authenticated user:', req.user ? req.user.email : 'NOT AUTHENTICATED');
+
+  // req.user is set by protect middleware (actual authenticated user)
+  if (!req.user) {
+    console.error('[Handoff Direct] No authenticated user!');
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication required'
+    });
+  }
+
+  console.log('[Handoff Direct] User:', {
+    id: req.user.id || req.user._id,
+    email: req.user.email
+  });
+
   try {
     // Check if this is a handoff by callId or by phone
     if (req.body.callId) {
@@ -39,7 +44,7 @@ router.post('/handoff-direct', (req, res, next) => {
       error: 'Route handler error: ' + error.message
     });
   }
-  
+
   console.log('[Handoff Direct] =======================================');
 });
 
