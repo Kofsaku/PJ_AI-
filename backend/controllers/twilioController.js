@@ -165,7 +165,16 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
     // OpenAI Realtime API用のMedia Stream接続を確立
     // ngrok URLからホスト部分を取得（https:// を除く）
     const ngrokHost = process.env.NGROK_URL?.replace('https://', '') || process.env.BASE_URL?.replace('https://', '') || req.get('host');
-    const streamUrl = `wss://${ngrokHost}/api/twilio/media-stream/${callId}`;
+
+    // Check if using simple mode (for debugging)
+    const useSimpleEndpoint = process.env.USE_SIMPLE_MEDIA_STREAM === 'true';
+    const streamPath = useSimpleEndpoint
+      ? '/api/twilio/media-stream-simple'
+      : `/api/twilio/media-stream/${callId}`;
+
+    const streamUrl = `wss://${ngrokHost}${streamPath}`;
+    console.log(`[TwiML Conference] USE_SIMPLE_MEDIA_STREAM: ${process.env.USE_SIMPLE_MEDIA_STREAM}`);
+    console.log(`[TwiML Conference] Using ${useSimpleEndpoint ? 'SIMPLE' : 'PRODUCTION'} endpoint`);
     console.log(`[TwiML Conference] Stream URL: ${streamUrl}`);
 
     const connect = twiml.connect();
