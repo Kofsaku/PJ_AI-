@@ -155,6 +155,9 @@ router.put('/sales-pitch', protect, async (req, res) => {
     console.log('- companyName:', agentSettings.conversationSettings.companyName);
     console.log('- representativeName:', agentSettings.conversationSettings.representativeName);
     console.log('- serviceName:', agentSettings.conversationSettings.serviceName);
+    console.log('- voice:', agentSettings.voice);
+    console.log('- conversationStyle:', agentSettings.conversationSettings.conversationStyle);
+    console.log('- speechRate:', agentSettings.conversationSettings.speechRate);
 
     console.log('[Sales Pitch Update] 保存前のagentSettings:', {
       id: agentSettings._id,
@@ -170,7 +173,10 @@ router.put('/sales-pitch', protect, async (req, res) => {
     console.log('[Sales Pitch Update] 保存後確認:', {
       companyName: savedSettings.conversationSettings.companyName,
       representativeName: savedSettings.conversationSettings.representativeName,
-      serviceName: savedSettings.conversationSettings.serviceName
+      serviceName: savedSettings.conversationSettings.serviceName,
+      voice: savedSettings.voice,
+      conversationStyle: savedSettings.conversationSettings.conversationStyle,
+      speechRate: savedSettings.conversationSettings.speechRate
     });
 
     res.json({
