@@ -124,6 +124,11 @@ router.put('/sales-pitch', protect, async (req, res) => {
       agentSettings.conversationSettings.speechRate = speechRate;
     }
 
+    // Mark conversationSettings as modified for Mongoose
+    if (conversationStyle !== undefined || speechRate !== undefined) {
+      agentSettings.markModified('conversationSettings');
+    }
+
     // Update voice (top-level field in AgentSettings)
     if (voice !== undefined) {
       agentSettings.voice = voice;
