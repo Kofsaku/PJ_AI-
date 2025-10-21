@@ -139,7 +139,7 @@ const navigation: NavigationItem[] = [
                       isActive("/settings/sales-pitch") ? "bg-blue-800" : ""
                     }`}
                   >
-                    セールスピッチ設定
+                    トークスクリプト設定
                   </div>
                 </Link>
               </div>
