@@ -83,9 +83,13 @@ async function initializeSession(openaiWs, agentSettings) {
   let instructions;
   try {
     instructions = buildOpenAIInstructions(agentSettings);
-    console.log('[OpenAI] Generated instructions length:', instructions.length);
+    console.log('[OpenAI] ✅ instructions生成成功');
+    console.log('[OpenAI] instructions長さ:', instructions.length);
+    console.log('[OpenAI] instructions冒頭200文字:', instructions.substring(0, 200));
+    console.log('[OpenAI] 会社名チェック:', instructions.includes(agentSettings.conversationSettings.companyName) ? '✅含まれる' : '❌含まれない');
+    console.log('[OpenAI] サービス名チェック:', instructions.includes(agentSettings.conversationSettings.serviceName) ? '✅含まれる' : '❌含まれない');
   } catch (error) {
-    console.error('[OpenAI] Failed to build instructions:', error);
+    console.error('[OpenAI] ❌ instructions生成失敗:', error);
     // Fallback to simple instructions
     instructions = "You are a helpful AI assistant for making business calls.";
   }
@@ -102,7 +106,8 @@ async function initializeSession(openaiWs, agentSettings) {
       audio: {  // ← ネスト構造（シンプル版と同じ）
         input: {
           format: { type: "audio/pcmu" },
-          turn_detection: { type: "server_vad" }
+          turn_detection: { type: "server_vad" },
+          transcription: { model: "whisper-1" }  // ← ユーザー発話をテキスト化
         },
         output: {
           format: { type: "audio/pcmu" },
@@ -178,6 +183,15 @@ exports.handleMediaStream = async (twilioWs, req) => {
     if (callSession.assignedAgent) {
       agentSettings = await AgentSettings.findOne({ userId: callSession.assignedAgent._id });
       console.log('[MediaStream] AgentSettings loaded for user:', callSession.assignedAgent._id);
+      if (agentSettings && agentSettings.conversationSettings) {
+        console.log('[MediaStream] AgentSettings preview:', {
+          companyName: agentSettings.conversationSettings.companyName,
+          serviceName: agentSettings.conversationSettings.serviceName,
+          representativeName: agentSettings.conversationSettings.representativeName
+        });
+      } else {
+        console.warn('[MediaStream] AgentSettings missing conversationSettings!');
+      }
     }
 
     // Connect to OpenAI Realtime API (SIMPLE VERSION format)
