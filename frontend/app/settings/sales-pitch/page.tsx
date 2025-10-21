@@ -22,7 +22,7 @@ interface SalesPitchSettings {
   targetPerson: string;
 
   // AI設定
-  voice: 'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'sage' | 'shimmer' | 'verse';
+  voice: 'alloy' | 'cedar' | 'coral';
   speechRate: 'slow' | 'normal' | 'fast';
 }
 
@@ -61,9 +61,8 @@ export default function SalesPitchSettingsPage() {
       if (data && data.data) {
         const agentData = data.data;
 
-        // voiceの値を検証（8つの公式voiceのいずれか）
-        const validVoices: Array<'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'sage' | 'shimmer' | 'verse'> =
-          ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'];
+        // voiceの値を検証（3つのvoiceのいずれか）
+        const validVoices: Array<'alloy' | 'cedar' | 'coral'> = ['alloy', 'cedar', 'coral'];
         const voiceValue = agentData.voice || 'alloy';
         const validatedVoice = validVoices.includes(voiceValue) ? voiceValue : 'alloy';
 
@@ -356,44 +355,24 @@ export default function SalesPitchSettingsPage() {
               <div className="space-y-6">
                 {/* AIボイス */}
                 <div className="space-y-3">
-                  <Label>AIボイス（OpenAI公式音声）</Label>
+                  <Label>AIボイス</Label>
                   <RadioGroup
                     value={settings.voice}
-                    onValueChange={(value: 'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'sage' | 'shimmer' | 'verse') =>
+                    onValueChange={(value: 'alloy' | 'cedar' | 'coral') =>
                       setSettings(prev => ({ ...prev, voice: value }))
                     }
                   >
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem value="alloy" id="voice-alloy" />
-                      <Label htmlFor="voice-alloy" className="font-normal cursor-pointer">Alloy（女性・標準）</Label>
+                      <Label htmlFor="voice-alloy" className="font-normal cursor-pointer">中性的で柔らかい</Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="shimmer" id="voice-shimmer" />
-                      <Label htmlFor="voice-shimmer" className="font-normal cursor-pointer">Shimmer（女性・明るい）</Label>
+                      <RadioGroupItem value="cedar" id="voice-cedar" />
+                      <Label htmlFor="voice-cedar" className="font-normal cursor-pointer">ハキハキと明瞭</Label>
                     </div>
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem value="coral" id="voice-coral" />
-                      <Label htmlFor="voice-coral" className="font-normal cursor-pointer">Coral（女性・温かい）</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="sage" id="voice-sage" />
-                      <Label htmlFor="voice-sage" className="font-normal cursor-pointer">Sage（女性・落ち着き）</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="echo" id="voice-echo" />
-                      <Label htmlFor="voice-echo" className="font-normal cursor-pointer">Echo（男性・標準）</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="ballad" id="voice-ballad" />
-                      <Label htmlFor="voice-ballad" className="font-normal cursor-pointer">Ballad（男性・深み）</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="ash" id="voice-ash" />
-                      <Label htmlFor="voice-ash" className="font-normal cursor-pointer">Ash（男性・クリア）</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="verse" id="voice-verse" />
-                      <Label htmlFor="voice-verse" className="font-normal cursor-pointer">Verse（男性・若々しい）</Label>
+                      <Label htmlFor="voice-coral" className="font-normal cursor-pointer">温かく友好的</Label>
                     </div>
                   </RadioGroup>
                 </div>

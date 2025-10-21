@@ -182,7 +182,7 @@ const AgentSettingsSchema = new mongoose.Schema({
   // OpenAI Realtime API settings
   voice: {
     type: String,
-    enum: ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'],
+    enum: ['alloy', 'cedar', 'coral'],
     default: 'alloy',
     required: false
   },
