@@ -172,6 +172,7 @@ router.put('/sales-pitch', protect, async (req, res) => {
       success: true,
       message: 'トークスクリプト設定が更新されました',
       data: {
+        voice: agentSettings.voice,
         conversationSettings: agentSettings.conversationSettings
       }
     });
