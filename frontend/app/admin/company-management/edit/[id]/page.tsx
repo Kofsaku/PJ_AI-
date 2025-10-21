@@ -44,9 +44,18 @@ export default function CompanyEdit({ params }: PageProps) {
 
   const fetchCompany = async () => {
     try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast.error('認証情報の有効期限が切れています');
+        router.push('/admin/login');
+        return;
+      }
+
       const response = await fetch(`/api/companies/${id}`, {
         method: 'GET',
         headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
         }
@@ -91,9 +100,17 @@ export default function CompanyEdit({ params }: PageProps) {
     setLoading(true);
     
     try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast.error('認証情報の有効期限が切れています');
+        router.push('/admin/login');
+        return;
+      }
+
       const response = await fetch(`/api/companies/${id}`, {
         method: 'PUT',
         headers: {
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(formData),

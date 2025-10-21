@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const customerSchema = new mongoose.Schema({
-  companyId: {
+  userId: {
     type: String,
     required: true,
     index: true
@@ -48,6 +48,6 @@ const customerSchema = new mongoose.Schema({
   }
 }, {
   timestamps: true
-});
+});;
 
 module.exports = mongoose.model('Customer', customerSchema);

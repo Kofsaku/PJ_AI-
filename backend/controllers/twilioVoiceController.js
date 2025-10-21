@@ -3,6 +3,7 @@ const twilio = require('twilio');
 const CallSession = require('../models/CallSession');
 const Customer = require('../models/Customer');
 const AgentSettings = require('../models/AgentSettings');
+const User = require('../models/User');
 const conversationEngine = require('../services/conversationEngine');
 const coefontService = require('../services/coefontService');
 const callTimeoutManager = require('../services/callTimeoutManager');
@@ -53,19 +54,23 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
     
     // CallSessionから会社IDを取得するため、先にCallSessionを確認
     let tempCallSession = await CallSession.findOne({ twilioCallSid: CallSid }).populate('assignedAgent');
-    let defaultCompanyId = 'default-company'; // デフォルト会社ID
-    
-    // CallSessionに紐づいているエージェントから会社IDを取得
-    if (tempCallSession && tempCallSession.assignedAgent && tempCallSession.assignedAgent.companyId) {
-      defaultCompanyId = tempCallSession.assignedAgent.companyId;
+    let defaultUserId = 'default-user'; // デフォルトユーザーID
+    let defaultCompanyId = null; // デフォルト会社ID
+
+    // CallSessionに紐づいているエージェントからユーザーIDを取得
+    if (tempCallSession && tempCallSession.assignedAgent) {
+      defaultUserId = tempCallSession.assignedAgent._id;
+      if (tempCallSession.assignedAgent.companyId) {
+        defaultCompanyId = tempCallSession.assignedAgent.companyId;
+      }
     }
-    
+
     let customer = await Customer.findOne({ phone: phoneNumber });
     if (!customer) {
       // 新規顧客として作成
       const now = new Date();
       customer = await Customer.create({
-        companyId: defaultCompanyId,
+        userId: defaultUserId,
         customer: '新規顧客',
         company: '未設定',
         phone: phoneNumber,
@@ -77,7 +82,7 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
       console.log('[Incoming Call] New customer created:', customer._id);
     } else {
       // 既存顧客の場合、companyIdが設定されていなければ更新
-      if (!customer.companyId) {
+      if (!customer.companyId && defaultCompanyId) {
         customer.companyId = defaultCompanyId;
         await customer.save();
       }
@@ -131,6 +136,7 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
       
       callSession = await CallSession.create({
         customerId: customer._id,
+        userId: agentSettings.userId,  // エージェント設定からuserIdを取得
         twilioCallSid: CallSid,
         status: 'in-progress',
         transcript: [],
@@ -146,6 +152,20 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
         }
       });
       console.log('[Incoming Call] New call session created:', callSession._id);
+    }
+
+    if (!defaultCompanyId && agentSettings && agentSettings.userId) {
+      try {
+        const agentUser = await User.findById(agentSettings.userId).select('companyId');
+        if (agentUser && agentUser.companyId) {
+          defaultCompanyId = agentUser.companyId;
+        }
+        if (defaultUserId === 'default-user') {
+          defaultUserId = agentSettings.userId;
+        }
+      } catch (lookupError) {
+        console.error('[Incoming Call] Failed to resolve agent user information:', lookupError.message);
+      }
     }
     
     console.log('[Incoming Call] Call session created:', callSession._id);
@@ -165,42 +185,125 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
       fromPhone: customer.phone,    // From番号（発信元）も送信
       status: 'in-progress'
     });
-    
-    // 即座にTwiMLをリダイレクト（遅延を最小化）
-    console.log('[Incoming Call] IMMEDIATE REDIRECT TO MINIMIZE DELAYS');
-    
-    twiml.redirect({
-      method: 'POST'
-    }, `${process.env.BASE_URL}/api/twilio/voice/conference/${callSession._id}`);
-    
-    // 重い処理を非同期で実行（レスポンス送信後）
-    setImmediate(() => {
-      // WebSocket通知
-      webSocketService.broadcastCallEvent('call-status', {
-        callId: callSession._id.toString(),
-        callSid: CallSid,
-        phoneNumber: toPhoneNumber,
-        fromPhone: customer.phone,
-        status: 'in-progress',
-        timestamp: new Date()
+
+    // Feature flag: OpenAI Realtime API vs Legacy Conference mode
+    console.log('[Incoming Call] ========== FEATURE FLAG CHECK ==========');
+    console.log('[Incoming Call] USE_OPENAI_REALTIME:', process.env.USE_OPENAI_REALTIME);
+    console.log('[Incoming Call] Type:', typeof process.env.USE_OPENAI_REALTIME);
+    console.log('[Incoming Call] Comparison result:', process.env.USE_OPENAI_REALTIME === 'true');
+    console.log('[Incoming Call] ==========================================');
+
+    if (process.env.USE_OPENAI_REALTIME === 'true') {
+      // ===== OpenAI Realtime API Mode (Media Streams) =====
+      console.log('[Incoming Call] Using OpenAI Realtime API with Media Streams');
+
+      // Add greeting message (matching Python sample behavior)
+      twiml.say(
+        'AIアシスタントに接続しています。少々お待ちください。',
+        { voice: 'Polly.Mizuki', language: 'ja-JP' }
+      );
+      twiml.pause({ length: 1 });
+      twiml.say(
+        'それでは、お話しください。',
+        { voice: 'Polly.Mizuki', language: 'ja-JP' }
+      );
+
+      // Connect to Media Streams WebSocket (matching Python sample structure)
+      // IMPORTANT: Extract hostname properly from request
+      const host = req.headers.host || req.hostname;
+
+      // TEMPORARY: Use simplified endpoint for debugging
+      // TODO: Revert to /api/twilio/media-stream/${callSession._id} after testing
+      const useSimpleEndpoint = process.env.USE_SIMPLE_MEDIA_STREAM === 'true';
+      const streamPath = useSimpleEndpoint
+        ? '/api/twilio/media-stream-simple'
+        : `/api/twilio/media-stream/${callSession._id}`;
+
+      const streamUrl = `wss://${host}${streamPath}`;
+
+      console.log('[Incoming Call] Host:', host);
+      console.log('[Incoming Call] Stream Path:', streamPath);
+      console.log('[Incoming Call] Full Stream URL:', streamUrl);
+
+      // Add voice guidance before connecting (matching Python sample line 46-54)
+      twiml.say({
+        voice: 'Polly.Mizuki',
+        language: 'ja-JP'
+      }, 'AIアシスタントに接続しています。少々お待ちください。');
+
+      twiml.pause({ length: 1 });
+
+      twiml.say({
+        voice: 'Polly.Mizuki',
+        language: 'ja-JP'
+      }, 'お話しください。');
+
+      // Create Connect and append Stream (matching Python sample line 56-58)
+      const connect = twiml.connect();
+      connect.stream({ url: streamUrl });
+
+      console.log('[Incoming Call] Media Streams TwiML generated');
+
+      // 重い処理を非同期で実行（レスポンス送信後）
+      setImmediate(() => {
+        // WebSocket通知
+        webSocketService.broadcastCallEvent('call-status', {
+          callId: callSession._id.toString(),
+          callSid: CallSid,
+          phoneNumber: toPhoneNumber,
+          fromPhone: customer.phone,
+          status: 'in-progress',
+          timestamp: new Date()
+        });
+
+        // タイムアウト監視を開始
+        callTimeoutManager.startCallTimeout(callSession._id.toString(), 15); // 15分でタイムアウト
       });
-      
-      // 会話エンジンを初期化
-      const callIdString = callSession._id.toString();
-      console.log('[Background] Initializing conversation engine');
-      conversationEngine.resetConversationForNewCall(callIdString, callSession.aiConfiguration);
-      
-      // タイムアウト監視を開始
-      callTimeoutManager.startCallTimeout(callIdString, 15); // 15分でタイムアウト
-    });
-    
-    // リダイレクト後に初期メッセージ処理は行われるため、ここでは削除
-    console.log('[Incoming Call] Initial message will be handled by conference endpoint');
+
+    } else {
+      // ===== Legacy Conference Mode =====
+      console.log('[Incoming Call] Using legacy Conference mode');
+
+      twiml.redirect({
+        method: 'POST'
+      }, `${process.env.BASE_URL}/api/twilio/voice/conference/${callSession._id}`);
+
+      // 重い処理を非同期で実行（レスポンス送信後）
+      setImmediate(() => {
+        // WebSocket通知
+        webSocketService.broadcastCallEvent('call-status', {
+          callId: callSession._id.toString(),
+          callSid: CallSid,
+          phoneNumber: toPhoneNumber,
+          fromPhone: customer.phone,
+          status: 'in-progress',
+          timestamp: new Date()
+        });
+
+        // 会話エンジンを初期化
+        const callIdString = callSession._id.toString();
+        console.log('[Background] Initializing conversation engine');
+        conversationEngine.resetConversationForNewCall(callIdString, callSession.aiConfiguration);
+
+        // タイムアウト監視を開始
+        callTimeoutManager.startCallTimeout(callIdString, 15); // 15分でタイムアウト
+      });
+
+      console.log('[Incoming Call] Conference redirect TwiML generated');
+    }
     
     // TwiMLレスポンスを送信（リダイレクトは上で既に追加済み）
     const twimlString = twiml.toString();
-    console.log('[Incoming Call] Sending TwiML response:');
+    console.log('[Incoming Call] ========== TwiML Response ==========');
     console.log(twimlString);
+    console.log('[Incoming Call] ====================================');
+
+    // Validate TwiML before sending
+    if (!twimlString || twimlString.length === 0) {
+      console.error('[Incoming Call] ERROR: Empty TwiML generated!');
+      return sendErrorResponse('TwiML生成エラー');
+    }
+
     res.type('text/xml').send(twimlString);
     
   } catch (error) {

@@ -4,6 +4,13 @@ import { useState, useEffect, Suspense } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 
@@ -16,7 +23,10 @@ function CompanyRegisterContent() {
     email: "",
     url: "",
     postalCode: "",
-    address: ""
+    address: "",
+    businessType: "",
+    employees: "",
+    annualRevenue: ""
   })
 
   useEffect(() => {
@@ -38,7 +48,10 @@ function CompanyRegisterContent() {
       email: searchParams.get('email') || '',
       url: searchParams.get('url') || '',
       postalCode: searchParams.get('postalCode') || '',
-      address: searchParams.get('address') || ''
+      address: searchParams.get('address') || '',
+      businessType: searchParams.get('businessType') || '',
+      employees: searchParams.get('employees') || '',
+      annualRevenue: searchParams.get('annualRevenue') || ''
     };
 
     // パラメータが存在する場合のみformDataを更新
@@ -131,6 +144,69 @@ function CompanyRegisterContent() {
               onChange={(e) => setFormData({...formData, address: e.target.value})}
               required
             />
+          </div>
+
+          <div>
+            <Label htmlFor="businessType">業種</Label>
+            <Select
+              value={formData.businessType}
+              onValueChange={(value) => setFormData({...formData, businessType: value})}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="業種を選択" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">選択しない</SelectItem>
+                <SelectItem value="it">IT・通信</SelectItem>
+                <SelectItem value="manufacturing">製造業</SelectItem>
+                <SelectItem value="retail">小売業</SelectItem>
+                <SelectItem value="service">サービス業</SelectItem>
+                <SelectItem value="construction">建設業</SelectItem>
+                <SelectItem value="finance">金融業</SelectItem>
+                <SelectItem value="healthcare">医療・福祉</SelectItem>
+                <SelectItem value="education">教育</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="employees">社員数</Label>
+            <Select
+              value={formData.employees}
+              onValueChange={(value) => setFormData({...formData, employees: value})}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="社員数を選択" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">選択しない</SelectItem>
+                <SelectItem value="1-10">1-10名</SelectItem>
+                <SelectItem value="11-50">11-50名</SelectItem>
+                <SelectItem value="51-100">51-100名</SelectItem>
+                <SelectItem value="100+">100名以上</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="annualRevenue">年間売上</Label>
+            <Select
+              value={formData.annualRevenue}
+              onValueChange={(value) => setFormData({...formData, annualRevenue: value})}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="年間売上を選択" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">選択しない</SelectItem>
+                <SelectItem value="under-10M">1000万円未満</SelectItem>
+                <SelectItem value="10M-50M">1000万円〜5000万円</SelectItem>
+                <SelectItem value="50M-100M">5000万円〜1億円</SelectItem>
+                <SelectItem value="100M-500M">1億円〜5億円</SelectItem>
+                <SelectItem value="500M-1B">5億円〜10億円</SelectItem>
+                <SelectItem value="1B+">10億円以上</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="pt-4 flex gap-4">

@@ -11,10 +11,16 @@ const nextConfig = {
   },
   reactStrictMode: false,
   async rewrites() {
+    // 本番環境（Vercel）では外部APIへのrewriteを無効化
+    if (process.env.NODE_ENV === 'production') {
+      return [];
+    }
+
+    // 開発環境でのみローカルAPIサーバーへのrewrite
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:5001/api/:path*',
+        destination: 'http://localhost:5000/api/:path*',
       },
     ];
   },

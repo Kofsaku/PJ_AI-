@@ -1,51 +1,29 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server';
 
-// Store active calls in memory (in production, use a database or Redis)
-let activeCalls: any[] = []
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL_PROD || process.env.NEXT_PUBLIC_BACKEND_URL || 'https://pj-ai.onrender.com';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Clean up old calls (remove calls older than 10 minutes)
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000)
-    activeCalls = activeCalls.filter(call => {
-      const startTime = new Date(call.startTime)
-      return startTime > tenMinutesAgo
-    })
+    const authHeader = request.headers.get('authorization');
     
-    // Return current active calls
-    return NextResponse.json({ data: activeCalls })
-  } catch (error) {
-    console.error('Get active calls error:', error)
-    return NextResponse.json({ data: [] })
-  }
-}
-
-export async function POST(request: Request) {
-  try {
-    const callData = await request.json()
-    
-    // Add new call to active calls
-    const newCall = {
-      _id: callData.callSid || `call_${Date.now()}`,
-      customerId: callData.customerId,
-      customerName: callData.customerName || '不明',
-      customerPhone: callData.phoneNumber,
-      agentId: 'ai-system',
-      agentName: 'AIコールシステム',
-      status: callData.status || 'initiated',
-      startTime: new Date().toISOString(),
-      duration: 0,
-      transcripts: []
+    if (!authHeader) {
+      return NextResponse.json({ success: false, message: 'No authorization token provided' }, { status: 401 });
     }
-    
-    activeCalls.push(newCall)
-    
-    return NextResponse.json({ data: newCall })
+
+    const response = await fetch(`${BACKEND_URL}/api/calls/active`, {
+      method: 'GET',
+      headers: { 'Authorization': authHeader, 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return NextResponse.json({ success: false, message: `Backend error: ${response.status} ${errorText}` }, { status: response.status });
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data, { status: 200 });
   } catch (error) {
-    console.error('Error adding active call:', error)
-    return NextResponse.json(
-      { error: 'Failed to add active call' },
-      { status: 500 }
-    )
+    console.error('[Calls Active API] Error:', error);
+    return NextResponse.json({ success: false, message: 'Internal server error' }, { status: 500 });
   }
 }

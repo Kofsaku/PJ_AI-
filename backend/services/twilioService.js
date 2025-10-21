@@ -2,23 +2,37 @@
 // This file provides basic structure for Twilio integration
 // Actual implementation will need valid Twilio credentials
 
-const config = require('../config/environment');
+// Get configuration lazily to ensure environment variables are loaded
+function getTwilioConfig() {
+  const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+  const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
+  const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+  
+  const isTwilioConfigured = twilioAccountSid && twilioAuthToken && twilioPhoneNumber;
+  
+  return {
+    accountSid: twilioAccountSid,
+    authToken: twilioAuthToken,
+    phoneNumber: twilioPhoneNumber,
+    isConfigured: isTwilioConfigured
+  };
+}
 
-const twilioAccountSid = config.twilio.accountSid;
-const twilioAuthToken = config.twilio.authToken;
-const twilioPhoneNumber = config.twilio.phoneNumber;
-
-// Check if Twilio credentials are configured
-const isTwilioConfigured = twilioAccountSid && twilioAuthToken && twilioPhoneNumber;
+console.log('[Twilio Init] Loading configuration on first call...');
 
 let twilioClient = null;
-if (isTwilioConfigured) {
-  try {
-    const twilio = require('twilio');
-    twilioClient = twilio(twilioAccountSid, twilioAuthToken);
-  } catch (error) {
-    console.log('Twilio client not initialized:', error.message);
+
+function initializeTwilioClient(config) {
+  if (!twilioClient && config.isConfigured) {
+    try {
+      const twilio = require('twilio');
+      twilioClient = twilio(config.accountSid, config.authToken);
+      console.log('[Twilio] Client initialized successfully');
+    } catch (error) {
+      console.log('[Twilio] Client initialization failed:', error.message);
+    }
   }
+  return twilioClient;
 }
 
 exports.makeCall = async (phoneNumber, sessionId, userId = null) => {
@@ -26,12 +40,15 @@ exports.makeCall = async (phoneNumber, sessionId, userId = null) => {
   console.log('Phone Number:', phoneNumber);
   console.log('Session ID:', sessionId);
   console.log('User ID:', userId);
-  console.log('Twilio Configured:', isTwilioConfigured);
-  console.log('Account SID:', twilioAccountSid ? 'SET' : 'NOT SET');
-  console.log('Auth Token:', twilioAuthToken ? 'SET' : 'NOT SET');
-  console.log('Phone Number:', twilioPhoneNumber ? twilioPhoneNumber : 'NOT SET');
   
-  if (!isTwilioConfigured) {
+  const config = getTwilioConfig();
+  
+  console.log('Twilio Configured:', config.isConfigured);
+  console.log('Account SID:', config.accountSid ? 'SET' : 'NOT SET');
+  console.log('Auth Token:', config.authToken ? 'SET' : 'NOT SET');
+  console.log('Phone Number:', config.phoneNumber ? config.phoneNumber : 'NOT SET');
+  
+  if (!config.isConfigured) {
     console.log('❌ Twilio not configured - simulating call to:', phoneNumber);
     return {
       sid: 'SIMULATED_CALL_' + sessionId,
@@ -40,6 +57,8 @@ exports.makeCall = async (phoneNumber, sessionId, userId = null) => {
       from: 'SIMULATED'
     };
   }
+  
+  const client = initializeTwilioClient(config);
 
   try {
     // Format phone number for international dialing
@@ -92,17 +111,19 @@ exports.makeCall = async (phoneNumber, sessionId, userId = null) => {
       );
     }
     
-    // Use webhook base URL from config
-    const baseUrl = config.twilio.webhookBaseUrl;
+    // Use webhook base URL from environment
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? (process.env.BASE_URL_PROD || process.env.BASE_URL || 'https://pj-ai.onrender.com')
+      : (process.env.BASE_URL || process.env.NGROK_URL || 'http://localhost:5000');
     console.log('[TwilioService] Making call to:', formattedNumber);
     console.log('[TwilioService] From number:', fromNumber);
-    console.log('[TwilioService] Using webhook URL:', `${baseUrl}/api/twilio/voice`);
+    console.log('[TwilioService] Using webhook URL:', `${baseUrl}/api/twilio/voice/conference/${sessionId}`);
     console.log('[TwilioService] Session ID:', sessionId);
-    
-    const call = await twilioClient.calls.create({
+
+    const call = await client.calls.create({
       to: formattedNumber,
       from: fromNumber,
-      url: `${baseUrl}/api/twilio/voice`,
+      url: `${baseUrl}/api/twilio/voice/conference/${sessionId}`,
       statusCallback: `${baseUrl}/api/twilio/call/status/${sessionId}`,
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed', 'failed', 'busy', 'no-answer', 'cancelled'],
       statusCallbackMethod: 'POST',

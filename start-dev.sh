@@ -7,11 +7,11 @@ echo ""
 
 # Kill any existing processes on ports
 echo "🧹 Cleaning up existing processes..."
-lsof -ti:5001 | xargs kill -9 2>/dev/null || true
+lsof -ti:5000 | xargs kill -9 2>/dev/null || true
 lsof -ti:3000 | xargs kill -9 2>/dev/null || true
 
 # Start backend in background
-echo "📦 Starting Backend Server (port 5001)..."
+echo "📦 Starting Backend Server (port 5000)..."
 cd backend && npm run dev &
 BACKEND_PID=$!
 
@@ -25,7 +25,7 @@ FRONTEND_PID=$!
 
 echo ""
 echo "✅ Development environment started!"
-echo "   Backend:  http://localhost:5001"
+echo "   Backend:  http://localhost:5000"
 echo "   Frontend: http://localhost:3000"
 echo ""
 echo "Press Ctrl+C to stop both servers"
@@ -36,7 +36,7 @@ cleanup() {
     echo "🛑 Stopping servers..."
     kill $BACKEND_PID 2>/dev/null
     kill $FRONTEND_PID 2>/dev/null
-    lsof -ti:5001 | xargs kill -9 2>/dev/null || true
+    lsof -ti:5000 | xargs kill -9 2>/dev/null || true
     lsof -ti:3000 | xargs kill -9 2>/dev/null || true
     echo "👋 Goodbye!"
     exit 0

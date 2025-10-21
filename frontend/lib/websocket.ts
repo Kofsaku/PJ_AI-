@@ -22,7 +22,7 @@ class WebSocketConnectionManager implements WebSocketManager {
   private maxReconnectAttempts: number = 5;
 
   private constructor() {
-    this.backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
+    this.backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
   }
 
   public static getInstance(): WebSocketConnectionManager {

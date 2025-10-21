@@ -26,7 +26,7 @@ async function getNgrokUrl() {
     // ngrokが起動していない場合は起動を促す
     if (error.code === 'ECONNREFUSED') {
       console.error('❌ ngrokが起動していません。以下のコマンドを実行してください:');
-      console.error('   ngrok http 5001');
+      console.error('   ngrok http 5000');
       return null;
     }
     throw error;
@@ -34,23 +34,40 @@ async function getNgrokUrl() {
 }
 
 async function updateEnvFile(ngrokUrl) {
-  const envPath = path.join(__dirname, '.env');
-  let envContent = fs.readFileSync(envPath, 'utf-8');
-  
-  // BASE_URLを更新
-  envContent = envContent.replace(
-    /BASE_URL=.*/,
-    `BASE_URL=${ngrokUrl}`
-  );
-  
-  // NGROK_URLも更新（存在する場合）
-  envContent = envContent.replace(
-    /NGROK_URL=.*/,
-    `NGROK_URL=${ngrokUrl}`
-  );
-  
-  fs.writeFileSync(envPath, envContent);
-  console.log('✅ .envファイルを更新しました');
+  // .envと.env.localの両方を更新
+  const envFiles = ['.env', '.env.local'];
+
+  for (const envFile of envFiles) {
+    const envPath = path.join(__dirname, envFile);
+
+    if (!fs.existsSync(envPath)) {
+      console.log(`   ⚠️ ${envFile}が見つかりません（スキップ）`);
+      continue;
+    }
+
+    let envContent = fs.readFileSync(envPath, 'utf-8');
+
+    // BASE_URLを更新
+    envContent = envContent.replace(
+      /BASE_URL=.*/,
+      `BASE_URL=${ngrokUrl}`
+    );
+
+    // NGROK_URLも更新（存在する場合）
+    envContent = envContent.replace(
+      /NGROK_URL=.*/,
+      `NGROK_URL=${ngrokUrl}`
+    );
+
+    // WEBHOOK_BASE_URL_DEVも更新（.env.localの場合）
+    envContent = envContent.replace(
+      /WEBHOOK_BASE_URL_DEV=.*/,
+      `WEBHOOK_BASE_URL_DEV=${ngrokUrl}`
+    );
+
+    fs.writeFileSync(envPath, envContent);
+    console.log(`   ✅ ${envFile}を更新しました`);
+  }
 }
 
 async function updateTwilioWebhook(ngrokUrl) {

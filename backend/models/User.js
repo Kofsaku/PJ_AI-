@@ -123,6 +123,25 @@ const UserSchema = new mongoose.Schema({
   emailVerifiedAt: {
     type: Date,
   },
+  // パスワードリセット機能
+  resetPasswordToken: {
+    type: String,
+  },
+  resetPasswordExpires: {
+    type: Date,
+  },
+  // メールアドレス変更機能
+  newEmail: {
+    type: String,
+    lowercase: true,
+    trim: true,
+  },
+  emailChangeToken: {
+    type: String,
+  },
+  emailChangeExpires: {
+    type: Date,
+  },
 });
 
 // Hash password before saving

@@ -124,15 +124,6 @@ const navigation: NavigationItem[] = [
                     ユーザー情報
                   </div>
                 </Link>
-                <Link href="/company-info">
-                  <div
-                    className={`px-8 py-2 hover:bg-blue-800 cursor-pointer text-sm ${
-                      isActive("/company-info") ? "bg-blue-800" : ""
-                    }`}
-                  >
-                    会社情報
-                  </div>
-                </Link>
                 <Link href="/import">
                   <div
                     className={`px-8 py-2 hover:bg-blue-800 cursor-pointer text-sm ${

@@ -1,11 +1,12 @@
 const AgentSettings = require('../models/AgentSettings');
-const { 
-  intentToTemplate, 
-  defaultTemplates, 
+const { buildOpenAIInstructions } = require('../utils/promptBuilder');
+const {
+  intentToTemplate,
+  defaultTemplates,
   requiredTemplates,
   globalPatterns,
   contextualPatterns,
-  conversationStates 
+  conversationStates
 } = require('../config/templates');
 
 class ConversationEngine {
@@ -347,21 +348,22 @@ class ConversationEngine {
       
       // 取次手続き（「担当者を呼んできます」「代わります」等）
       case 'transfer_handover':
-        console.log('[ConversationEngine] 取次手続き検出 - 待機状態へ移行');
+        console.log('[ConversationEngine] 取次手続き検出 - 即座転送処理を実行');
+        bestMatch.nextAction = 'trigger_transfer';  // 転送処理を実行
+        bestMatch.shouldHandoff = true;  // 転送フラグを設定
         state.waitingForTransfer = true;
         state.transferConfirmed = true;
         state.conversationState = conversationStates.WAITING_FOR_TRANSFER;
-        bestMatch.nextAction = 'positive_response';
         break;
       
       // 担当者変更（新しい担当者が電話に出た場合）
       case 'person_changed':
-        console.log('[ConversationEngine] 担当者変更検出 - 再度説明を開始');
-        bestMatch.nextAction = 'transfer_explanation';
-        state.hasIntroduced = false; // 再度説明が必要なのでリセット
-        state.waitingForTransfer = false; // 取次待ち終了
-        state.transferConfirmed = false;
-        state.conversationState = conversationStates.AFTER_PURPOSE_EXPLANATION; // 再説明後の状態
+        console.log('[ConversationEngine] 担当者変更検出 - 即座転送処理を実行');
+        bestMatch.nextAction = 'trigger_transfer';  // 転送処理を実行
+        bestMatch.shouldHandoff = true;  // 転送フラグを設定
+        state.waitingForTransfer = true;
+        state.transferConfirmed = true;
+        state.conversationState = conversationStates.WAITING_FOR_TRANSFER;
         break;
       
       // 終話の合図を検出
@@ -537,16 +539,8 @@ class ConversationEngine {
       return await this.getDefaultInitialResponse();
     }
     
-    // 最初の顧客の発話（もしもし等）には、通常の挨拶で応答
-    if (state.turnCount === 0 || (state.customerSpokeFirst && state.turnCount === 1)) {
-      console.log(`[ConversationEngine] First customer interaction - providing initial greeting`);
-      const { companyName, serviceName, representativeName, targetDepartment } = state.agentSettings;
-      if (companyName && representativeName && serviceName && targetDepartment) {
-        const initialMessage = `お世話になります。${companyName}の${representativeName}と申します。${serviceName}のご案内でお電話しました。本日、${targetDepartment}のご担当者さまはいらっしゃいますでしょうか？`;
-        return initialMessage;
-      }
-      return await this.getDefaultInitialResponse();
-    }
+    // 最初の顧客の発話判定は twilioController.js で行うため、ここでは削除
+    // (システムが先に話した場合と顧客が先に話した場合の両方に対応)
     
     // 直前のメッセージ繰り返し処理
     if (intent === 'repeat_last_message') {

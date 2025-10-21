@@ -42,6 +42,21 @@ const companySchema = new mongoose.Schema({
     trim: true,
     default: ''
   },
+  businessType: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  employees: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+  annualRevenue: {
+    type: String,
+    trim: true,
+    default: ''
+  },
   lastCall: {
     type: Date,
     default: null

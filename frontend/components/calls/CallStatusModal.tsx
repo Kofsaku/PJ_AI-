@@ -35,9 +35,19 @@ export function CallStatusModal({
   const [socket, setSocket] = useState<Socket | null>(null);
   const [callStatus, setCallStatus] = useState<"connecting" | "connected" | "ended">("connecting");
   const [callSid, setCallSid] = useState<string | null>(null);
+  const callSidRef = useRef<string | null>(null);
+  const callStatusRef = useRef<"connecting" | "connected" | "ended">("connecting");
   const [modalOpenTime, setModalOpenTime] = useState<Date | null>(null);
   const [processedMessages, setProcessedMessages] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    callSidRef.current = callSid;
+  }, [callSid]);
+
+  useEffect(() => {
+    callStatusRef.current = callStatus;
+  }, [callStatus]);
 
   useEffect(() => {
     if (isOpen && phoneNumber) {
@@ -69,9 +79,11 @@ export function CallStatusModal({
       
       // Initialize socket connection
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
-      
+      const token = localStorage.getItem('token');
+
       const newSocket = io(backendUrl, {
         transports: ["websocket"],
+        auth: { token }
       });
 
       newSocket.on("connect", () => {
@@ -125,13 +137,12 @@ export function CallStatusModal({
         }
       });
 
-      // Listen for call status updates
-      newSocket.on("call-status", (data) => {
+      const handleCallStatus = (data: any) => {
         const normalizedDataPhone = normalizePhoneNumber(data.phoneNumber);
         const normalizedTargetPhone = normalizedPhone;
-        
-        
-        if (normalizedDataPhone === normalizedTargetPhone || data.callSid === callSid || data.callId === callSid) {
+
+
+        if (normalizedDataPhone === normalizedTargetPhone || data.callSid === callSidRef.current || data.callId === callSidRef.current) {
           if (data.status === "in-progress" || data.status === "calling" || data.status === "ai-responding" || data.status === "initiated" || data.status === "human-connected") {
             setCallStatus("connected");
             const newCallSid = data.callSid || data.callId || data.twilioCallSid;
@@ -143,7 +154,39 @@ export function CallStatusModal({
             setCallStatus("ended");
           }
         }
-      });
+      };
+
+      newSocket.on("call-status", handleCallStatus);
+
+      const handleCallTerminated = (data: any) => {
+        const normalizedDataPhone = normalizePhoneNumber(data.phoneNumber || "");
+        const normalizedTargetPhone = normalizePhoneNumber(phoneNumber);
+
+        if (
+          normalizedDataPhone === normalizedTargetPhone ||
+          data.callSid === callSidRef.current ||
+          data.callId === callSidRef.current
+        ) {
+          if (callStatusRef.current !== "ended") {
+            setCallStatus("ended");
+            setTranscript((prev) => [
+              ...prev,
+              {
+                speaker: "System",
+                text: "通話が終了しました。",
+                timestamp: new Date().toLocaleTimeString("ja-JP"),
+              },
+            ]);
+
+            // 500ms後にモーダルを閉じる（電話通信切断タイミングベース）
+            setTimeout(() => {
+              onClose();
+            }, 500);
+          }
+        }
+      };
+
+      newSocket.on("call-terminated", handleCallTerminated);
 
       // Listen for existing call data response
       newSocket.on("existing-call-data", (data) => {
@@ -163,13 +206,22 @@ export function CallStatusModal({
 
       // Listen for transcript updates
       newSocket.on("transcript-update", (data) => {
+        console.log("[CallStatusModal] transcript-update received:", data);
         const normalizedDataPhone = normalizePhoneNumber(data.phoneNumber || '');
         const normalizedTargetPhone = normalizedPhone;
-        
+
         // より柔軟な判定: CallSidが一致するか、電話番号が一致する場合
-        const isCurrentCall = (callSid && data.callSid === callSid) || 
+        const isCurrentCall = (callSid && data.callSid === callSid) ||
                              (normalizedDataPhone === normalizedTargetPhone);
-        
+
+        console.log("[CallStatusModal] isCurrentCall check:", {
+          callSid,
+          data_callSid: data.callSid,
+          normalizedDataPhone,
+          normalizedTargetPhone,
+          isCurrentCall
+        });
+
         if (isCurrentCall) {
           // 重複チェック：秒単位で同じメッセージをチェック（ミリ秒の違いは無視）
           const timestamp = data.timestamp ? new Date(data.timestamp).toLocaleTimeString("ja-JP") : new Date().toLocaleTimeString("ja-JP");
@@ -193,6 +245,7 @@ export function CallStatusModal({
               speakerType = "Customer";
             } else if (data.speaker === "system" || data.speaker === "System") {
               speakerType = "System";
+              console.log("[CallStatusModal] System message detected:", data.message || data.text);
             }
             
             const newEntry: TranscriptEntry = {
@@ -246,6 +299,7 @@ export function CallStatusModal({
         }
       });
 
+
       setSocket(newSocket);
 
       // トランスクリプトは空の状態から開始（実際のデータのみ表示）
@@ -260,6 +314,8 @@ export function CallStatusModal({
       // }, 2000);
 
       return () => {
+        newSocket.off("call-status", handleCallStatus);
+        newSocket.off("call-terminated", handleCallTerminated);
         newSocket.emit("leave-call", { phoneNumber });
         newSocket.disconnect();
       };
@@ -272,6 +328,18 @@ export function CallStatusModal({
       setTranscript([]);
     }
   }, [isOpen, phoneNumber]);
+
+  // 既存の自動閉じロジックを無効化（call-terminatedイベントで処理するため）
+  // useEffect(() => {
+  //   if (!isOpen) return;
+  //   if (callStatus !== "ended") return;
+
+  //   const timeout = setTimeout(() => {
+  //     onClose();
+  //   }, 1000);
+
+  //   return () => clearTimeout(timeout);
+  // }, [callStatus, isOpen, onClose]);
 
   // Mock conversation for demonstration - 無効化
   // const simulateMockConversation = () => {
@@ -414,10 +482,6 @@ export function CallStatusModal({
         timestamp: new Date().toLocaleTimeString("ja-JP"),
       },
     ]);
-    
-    setTimeout(() => {
-      onClose();
-    }, 1500);
   };
 
   const getStatusColor = () => {
@@ -579,4 +643,3 @@ export function CallStatusModal({
     </Dialog>
   );
 }
-

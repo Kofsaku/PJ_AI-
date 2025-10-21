@@ -28,8 +28,7 @@ type FormData = {
   email: string;
   postalCode: string;
   address: string;
-  businessType1: string;
-  businessType2: string;
+  businessType: string;
   employees: string;
   annualRevenue: string;
   firstName: string;
@@ -63,8 +62,7 @@ export default function SignupPage() {
     email: "",
     postalCode: "",
     address: "",
-    businessType1: "",
-    businessType2: "",
+    businessType: "",
     employees: "",
     annualRevenue: "",
     firstName: "",
@@ -150,7 +148,7 @@ export default function SignupPage() {
         businessName: formData.businessName,
         businessPhone: formData.businessPhone,
         address: formData.address,
-        businessType: formData.businessType1,
+        businessType: formData.businessType,
         employees: formData.employees,
         description: formData.annualRevenue || ''
       };
@@ -158,7 +156,8 @@ export default function SignupPage() {
       console.log('Sending verification code request...');
       console.log('Data to send:', requestData);
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/auth/send-verification-code`, {
+      // Vercel API Routeを使用
+      const response = await fetch(`/api/auth/send-verification-code`, {
         method: 'POST',
         mode: 'cors',
         credentials: 'omit',
@@ -206,7 +205,8 @@ export default function SignupPage() {
     setEmailVerification(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/auth/verify-email-code`, {
+      // Vercel API Routeを使用
+      const response = await fetch(`/api/auth/verify-email-code`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -214,7 +214,15 @@ export default function SignupPage() {
         body: JSON.stringify({
           email: formData.verificationEmail,
           verificationCode: formData.verificationCode,
-          token: emailVerification.token
+          token: emailVerification.token,
+          companyId: formData.companyId,
+          companyName: formData.companyName,
+          businessName: formData.businessName,
+          businessPhone: formData.businessPhone,
+          address: formData.address,
+          businessType: formData.businessType,
+          employees: formData.employees,
+          description: formData.annualRevenue || ''
         })
       });
 
@@ -263,7 +271,7 @@ export default function SignupPage() {
         businessName: formData.businessName,
         businessPhone: formData.businessPhone,
         address: formData.address,
-        businessType: formData.businessType1,
+        businessType: formData.businessType,
         employees: formData.employees,
         description: formData.annualRevenue || ''
       };
@@ -271,7 +279,11 @@ export default function SignupPage() {
       console.log('Resending verification code request...');
       console.log('Data to send:', requestData);
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/auth/send-verification-code`, {
+      const apiUrl2 = process.env.NODE_ENV === 'production'
+        ? (process.env.NEXT_PUBLIC_BACKEND_URL_PROD || 'https://pj-ai.onrender.com')
+        : (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5002');
+      
+      const response = await fetch(`${apiUrl2}/api/auth/send-verification-code`, {
         method: 'POST',
         mode: 'cors',
         credentials: 'omit',
@@ -341,8 +353,8 @@ export default function SignupPage() {
         newErrors.address = "住所は必須です";
       }
 
-      if (!formData.businessType1.trim()) {
-        newErrors.businessType1 = "業種1は必須です";
+      if (!formData.businessType.trim()) {
+        newErrors.businessType = "業種は必須です";
       }
 
       if (!formData.employees.trim()) {
@@ -416,7 +428,7 @@ export default function SignupPage() {
       }
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/auth/complete-registration`,
+        `${process.env.NODE_ENV === 'production' ? (process.env.NEXT_PUBLIC_BACKEND_URL_PROD || 'https://pj-ai.onrender.com') : (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001')}/api/auth/complete-registration`,
         {
           method: "POST",
           headers: {
@@ -490,22 +502,26 @@ export default function SignupPage() {
     }
     
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/companies/validate/${formData.companyId}`);
+      const apiUrl = process.env.NODE_ENV === 'development'
+        ? 'http://localhost:5001'
+        : (process.env.NEXT_PUBLIC_BACKEND_URL_PROD || 'https://pj-ai.onrender.com');
+      const response = await fetch(`${apiUrl}/api/companies/validate/${formData.companyId}`);
       const data = await response.json();
       
       if (data.success) {
         setCompanyValidated(true);
-        setFormData(prev => ({ 
-          ...prev, 
+        setFormData(prev => ({
+          ...prev,
           companyName: data.data.name,
           businessName: data.data.name, // 事業者名にも同じ名前を設定
           businessPhone: data.data.phone || '', // 空文字でなく確実に設定
           email: data.data.email || '', // 空文字でなく確実に設定
           postalCode: data.data.postalCode || '', // 空文字でなく確実に設定
           address: data.data.address || '', // 空文字でなく確実に設定
-          // businessType1とemployeesは空文字列で初期化（ユーザーが選択する必要がある）
-          businessType1: '', // ユーザーに選択させる
-          employees: '' // ユーザーに選択させる
+          // DBから取得した値を自動入力
+          businessType: data.data.businessType || '',
+          employees: data.data.employees || '',
+          annualRevenue: data.data.annualRevenue || ''
         }));
         setErrors(prev => ({ ...prev, companyId: undefined }));
         
@@ -628,7 +644,7 @@ export default function SignupPage() {
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">メールアドレス *</Label>
+                  <Label htmlFor="email">企業メールアドレス</Label>
                   <Input
                     id="email"
                     type="email"
@@ -668,15 +684,15 @@ export default function SignupPage() {
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="businessType1">業種1 *</Label>
+                  <Label htmlFor="businessType">業種 *</Label>
                   <Select
-                    value={formData.businessType1}
+                    value={formData.businessType}
                     onValueChange={(value) =>
-                      updateFormData("businessType1", value)
+                      updateFormData("businessType", value)
                     }
                   >
                     <SelectTrigger
-                      className={errors.businessType1 ? "border-red-500" : ""}
+                      className={errors.businessType ? "border-red-500" : ""}
                     >
                       <SelectValue placeholder="業種を選択" />
                     </SelectTrigger>
@@ -687,39 +703,10 @@ export default function SignupPage() {
                       <SelectItem value="service">サービス業</SelectItem>
                     </SelectContent>
                   </Select>
-                  {errors.businessType1 && (
+                  {errors.businessType && (
                     <p className="text-sm text-red-500">
-                      {errors.businessType1}
+                      {errors.businessType}
                     </p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="businessType2">業種2</Label>
-                  <Select
-                    value={formData.businessType2}
-                    onValueChange={(value) =>
-                      updateFormData("businessType2", value)
-                    }
-                  >
-                    <SelectTrigger
-                      className={errors.businessType2 ? "border-red-500" : ""}
-                    >
-                      <SelectValue placeholder="業種を選択（任意）" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">選択しない</SelectItem>
-                      <SelectItem value="it">IT・通信</SelectItem>
-                      <SelectItem value="manufacturing">製造業</SelectItem>
-                      <SelectItem value="retail">小売業</SelectItem>
-                      <SelectItem value="service">サービス業</SelectItem>
-                      <SelectItem value="construction">建設業</SelectItem>
-                      <SelectItem value="finance">金融業</SelectItem>
-                      <SelectItem value="healthcare">医療・福祉</SelectItem>
-                      <SelectItem value="education">教育</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {errors.businessType2 && (
-                    <p className="text-sm text-red-500">{errors.businessType2}</p>
                   )}
                 </div>
                 <div className="space-y-2">

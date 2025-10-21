@@ -1,12 +1,29 @@
-require('dotenv').config(); // For CommonJS
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const connectDB = require('./config/db');
-// Load env vars
-dotenv.config({ path: './.env' });
+
+// Load env vars with priority: .env.local > .env > .env.example
+// 開発環境では .env.local が優先される
+// 本番環境では環境変数が最優先される
+if (process.env.NODE_ENV !== 'production') {
+  // 開発環境: .env.local → .env の順で読み込み
+  const result1 = dotenv.config({ path: './.env.local' });
+  const result2 = dotenv.config({ path: './.env' });
+  
+  console.log('[Server] result2.parsed:', result2.parsed ? Object.keys(result2.parsed) : 'NO PARSED DATA');
+  
+  console.log('[Server] .env.local result:', result1.error ? 'FAILED' : 'SUCCESS');
+  console.log('[Server] .env result:', result2.error ? 'FAILED' : 'SUCCESS');
+  console.log('[Server] TWILIO_ACCOUNT_SID after loading:', process.env.TWILIO_ACCOUNT_SID ? 'SET' : 'NOT SET');
+  console.log('[Server] TWILIO_ACCOUNT_SID value:', process.env.TWILIO_ACCOUNT_SID);
+  console.log('[Server] All env keys containing TWILIO:', Object.keys(process.env).filter(k => k.includes('TWILIO')));
+} else {
+  // 本番環境: 環境変数のみ使用（.envファイルは読み込まない）
+  console.log('Production mode: Using environment variables only');
+}
 
 // Connect to database
 connectDB();
@@ -28,8 +45,13 @@ const companyAdminRoutes = require('./routes/companyAdminRoutes');
 const healthRoutes = require('./routes/healthRoutes');
 const callHistoryRoutes = require('./routes/callHistoryRoutes');
 const testRoutes = require('./routes/testRoutes');
+const mediaStreamRoutes = require('./routes/mediaStreamRoutes');
 
 const app = express();
+
+// NOTE: WebSocket initialization moved to AFTER http server creation
+// This is required for native ws library (not express-ws)
+console.log('[Server] Express app created, WebSocket will be initialized after http server');
 
 // Body parser
 app.use(express.json());
@@ -40,10 +62,24 @@ app.use(cors({
   origin: function(origin, callback) {
     const allowedOrigins = [
       'http://localhost:3000',
-      'http://localhost:3001', 
+      'http://localhost:3001',
       'http://localhost:3002',
-      process.env.FRONTEND_URL
+      'http://localhost:5000',
+      'http://localhost:5002',
+      process.env.FRONTEND_URL,
+      process.env.FRONTEND_URL_PROD,
+      'https://pj-ai-2t27-olw2j2em4-kofsakus-projects.vercel.app',
+      'https://pj-ai-2t27-git-fixmerge-kofsakus-projects.vercel.app',
+      'https://pj-ai-2t27-git-fixservererros-kofsakus-projects.vercel.app'
     ].filter(Boolean);
+    
+    // Debug logging for CORS
+    console.log('[CORS] Request origin:', origin);
+    console.log('[CORS] Allowed origins:', allowedOrigins);
+    console.log('[CORS] Environment variables:', {
+      FRONTEND_URL: process.env.FRONTEND_URL,
+      FRONTEND_URL_PROD: process.env.FRONTEND_URL_PROD
+    });
     
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
@@ -51,7 +87,15 @@ app.use(cors({
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      callback(null, true); // 開発環境では全て許可
+      // 本番環境では厳格にチェック、開発環境では全て許可
+      if (process.env.NODE_ENV === 'production') {
+        console.log('[CORS] BLOCKING request from origin:', origin);
+        // 一時的に許可（デバッグ用）
+        callback(null, true);
+        // callback(new Error('Not allowed by CORS'));
+      } else {
+        callback(null, true);
+      }
     }
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -60,7 +104,9 @@ app.use(cors({
 }));
 
 // Set security headers
-app.use(helmet());
+// TEMPORARILY DISABLED for WebSocket debugging
+// app.use(helmet());
+console.log('[Server] helmet() disabled for WebSocket testing');
 
 // Dev logging middleware
 if (process.env.NODE_ENV === 'development') {
@@ -79,6 +125,7 @@ app.use('/api/calls', bulkCallRoutes);
 app.use('/api/calls', conferenceRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/twilio', twilioRoutes);
+// WebSocket routes already registered before middleware (line 59)
 app.use('/api/audio', audioRoutes);
 app.use('/api/direct', handoffDirectRoutes); // Direct routes without auth
 app.use('/api/test', testRoutes); // Test routes for debugging
@@ -110,7 +157,67 @@ const PORT = process.env.PORT || 5000;
 // Create server first
 const server = require('http').createServer(app);
 
-// Initialize WebSocket service
+// Initialize WebSocket server for Media Streams (using native ws library)
+const WebSocket = require('ws');
+const wss = new WebSocket.Server({
+  noServer: true  // Manual upgrade handling for path parameters
+});
+
+const simpleMediaStreamController = require('./controllers/mediaStreamController.simple');
+const mediaStreamController = require('./controllers/mediaStreamController');
+
+// Manual WebSocket upgrade handling to support path parameters
+server.on('upgrade', (request, socket, head) => {
+  const pathname = new URL(request.url, 'http://localhost').pathname;
+
+  console.log('[WebSocket] Upgrade request for:', pathname);
+
+  // Simple version (no database, for debugging)
+  if (pathname === '/api/twilio/media-stream-simple') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      console.log('[WebSocket] Simple handler connected');
+      const req = { url: request.url, headers: request.headers };
+      simpleMediaStreamController.handleSimpleMediaStream(ws, req);
+    });
+  }
+  // Production version (with database, callId parameter)
+  else if (pathname.startsWith('/api/twilio/media-stream/')) {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      const callId = pathname.split('/').pop();
+      console.log('[WebSocket] Production handler connected for callId:', callId);
+
+      // Create req object compatible with controller
+      const req = {
+        params: { callId },
+        url: request.url,
+        headers: request.headers
+      };
+
+      mediaStreamController.handleMediaStream(ws, req);
+    });
+  }
+  // Socket.io paths - let Socket.io handle its own upgrades
+  else if (pathname.startsWith('/socket.io/')) {
+    console.log('[WebSocket] Socket.io upgrade request, letting Socket.io handle it');
+    // Don't handle this - Socket.io will handle it
+    return;
+  }
+  // Reject other paths
+  else {
+    console.log('[WebSocket] Rejected upgrade for:', pathname);
+    socket.destroy();
+  }
+});
+
+wss.on('error', (error) => {
+  console.error('[WebSocket] Server error:', error);
+});
+
+console.log('[Server] WebSocket server initialized with manual upgrade handling');
+console.log('[Server] - Simple endpoint: /api/twilio/media-stream-simple');
+console.log('[Server] - Production endpoint: /api/twilio/media-stream/:callId');
+
+// Initialize WebSocket service (for frontend)
 const webSocketService = require('./services/websocket');
 webSocketService.initialize(server);
 
