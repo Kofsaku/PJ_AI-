@@ -68,7 +68,7 @@ const AgentSettingsSchema = new mongoose.Schema({
       type: String,
       default: '営業の担当者さま'
     },
-    // AI設定
+    // AI設定（conversationStyleは'formal'固定、互換性のため残す）
     conversationStyle: {
       type: String,
       enum: ['formal', 'casual', 'friendly'],
@@ -182,7 +182,7 @@ const AgentSettingsSchema = new mongoose.Schema({
   // OpenAI Realtime API settings
   voice: {
     type: String,
-    enum: ['alloy', 'echo', 'shimmer'],
+    enum: ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'],
     default: 'alloy',
     required: false
   },

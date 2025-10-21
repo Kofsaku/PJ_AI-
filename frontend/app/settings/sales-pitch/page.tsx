@@ -22,8 +22,7 @@ interface SalesPitchSettings {
   targetPerson: string;
 
   // AI設定
-  voice: 'female' | 'male';
-  conversationStyle: 'formal' | 'casual' | 'friendly';
+  voice: 'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'sage' | 'shimmer' | 'verse';
   speechRate: 'slow' | 'normal' | 'fast';
 }
 
@@ -38,8 +37,7 @@ export default function SalesPitchSettingsPage() {
     targetPerson: "",
 
     // AI設定
-    voice: 'female',
-    conversationStyle: 'formal',
+    voice: 'alloy',
     speechRate: 'normal'
   });
   const [loading, setLoading] = useState(true);
@@ -62,14 +60,12 @@ export default function SalesPitchSettingsPage() {
       const data = await response.json();
       if (data && data.data) {
         const agentData = data.data;
-        // voiceのマッピング: alloy/shimmer -> female, echo -> male
-        const voiceMapping: Record<string, 'female' | 'male'> = {
-          'alloy': 'female',
-          'shimmer': 'female',
-          'echo': 'male'
-        };
+
+        // voiceの値を検証（8つの公式voiceのいずれか）
+        const validVoices: Array<'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'sage' | 'shimmer' | 'verse'> =
+          ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'];
         const voiceValue = agentData.voice || 'alloy';
-        const mappedVoice = voiceMapping[voiceValue] || 'female';
+        const validatedVoice = validVoices.includes(voiceValue) ? voiceValue : 'alloy';
 
         setSettings({
           // 基本設定
@@ -81,8 +77,7 @@ export default function SalesPitchSettingsPage() {
           targetPerson: agentData.conversationSettings?.targetPerson || "",
 
           // AI設定
-          voice: mappedVoice,
-          conversationStyle: agentData.conversationSettings?.conversationStyle || 'formal',
+          voice: validatedVoice,
           speechRate: agentData.conversationSettings?.speechRate || 'normal'
         });
       } else {
@@ -97,8 +92,7 @@ export default function SalesPitchSettingsPage() {
           targetPerson: "営業の担当者さま",
 
           // AI設定
-          voice: 'female',
-          conversationStyle: 'formal',
+          voice: 'alloy',
           speechRate: 'normal'
         });
       }
@@ -118,10 +112,8 @@ export default function SalesPitchSettingsPage() {
     try {
       setSaving(true);
       console.log('[Sales Pitch] Saving settings...', settings);
-      
+
       const token = localStorage.getItem('token');
-      // voiceの逆マッピング: female -> alloy, male -> echo
-      const voiceApiValue = settings.voice === 'male' ? 'echo' : 'alloy';
 
       const response = await fetch('/api/users/sales-pitch', {
         method: 'PUT',
@@ -130,7 +122,7 @@ export default function SalesPitchSettingsPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          voice: voiceApiValue,
+          voice: settings.voice,
           conversationSettings: {
             companyName: settings.companyName,
             serviceName: settings.serviceName,
@@ -138,7 +130,7 @@ export default function SalesPitchSettingsPage() {
             targetDepartment: settings.targetDepartment,
             serviceDescription: settings.serviceDescription,
             targetPerson: settings.targetPerson,
-            conversationStyle: settings.conversationStyle,
+            conversationStyle: 'formal', // 固定
             speechRate: settings.speechRate
           }
         })
@@ -177,8 +169,7 @@ export default function SalesPitchSettingsPage() {
       targetPerson: "営業の担当者さま",
 
       // AI設定
-      voice: 'female',
-      conversationStyle: 'formal',
+      voice: 'alloy',
       speechRate: 'normal'
     });
   };
@@ -358,51 +349,51 @@ export default function SalesPitchSettingsPage() {
             <CardHeader>
               <CardTitle>AI設定</CardTitle>
               <CardDescription>
-                AIの声や話し方を設定できます
+                AIの声や話し方を設定できます（会話トーンは「フォーマル」に固定）
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
                 {/* AIボイス */}
                 <div className="space-y-3">
-                  <Label>AIボイスの性別</Label>
+                  <Label>AIボイス（OpenAI公式音声）</Label>
                   <RadioGroup
                     value={settings.voice}
-                    onValueChange={(value: 'female' | 'male') =>
+                    onValueChange={(value: 'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'sage' | 'shimmer' | 'verse') =>
                       setSettings(prev => ({ ...prev, voice: value }))
                     }
                   >
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="female" id="voice-female" />
-                      <Label htmlFor="voice-female" className="font-normal cursor-pointer">女性</Label>
+                      <RadioGroupItem value="alloy" id="voice-alloy" />
+                      <Label htmlFor="voice-alloy" className="font-normal cursor-pointer">Alloy（女性・標準）</Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="male" id="voice-male" />
-                      <Label htmlFor="voice-male" className="font-normal cursor-pointer">男性</Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-
-                {/* 会話トーン・スタイル */}
-                <div className="space-y-3">
-                  <Label>会話トーン・スタイル</Label>
-                  <RadioGroup
-                    value={settings.conversationStyle}
-                    onValueChange={(value: 'formal' | 'casual' | 'friendly') =>
-                      setSettings(prev => ({ ...prev, conversationStyle: value }))
-                    }
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="formal" id="style-formal" />
-                      <Label htmlFor="style-formal" className="font-normal cursor-pointer">フォーマル</Label>
+                      <RadioGroupItem value="shimmer" id="voice-shimmer" />
+                      <Label htmlFor="voice-shimmer" className="font-normal cursor-pointer">Shimmer（女性・明るい）</Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="casual" id="style-casual" />
-                      <Label htmlFor="style-casual" className="font-normal cursor-pointer">カジュアル</Label>
+                      <RadioGroupItem value="coral" id="voice-coral" />
+                      <Label htmlFor="voice-coral" className="font-normal cursor-pointer">Coral（女性・温かい）</Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="friendly" id="style-friendly" />
-                      <Label htmlFor="style-friendly" className="font-normal cursor-pointer">フレンドリー</Label>
+                      <RadioGroupItem value="sage" id="voice-sage" />
+                      <Label htmlFor="voice-sage" className="font-normal cursor-pointer">Sage（女性・落ち着き）</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="echo" id="voice-echo" />
+                      <Label htmlFor="voice-echo" className="font-normal cursor-pointer">Echo（男性・標準）</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="ballad" id="voice-ballad" />
+                      <Label htmlFor="voice-ballad" className="font-normal cursor-pointer">Ballad（男性・深み）</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="ash" id="voice-ash" />
+                      <Label htmlFor="voice-ash" className="font-normal cursor-pointer">Ash（男性・クリア）</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="verse" id="voice-verse" />
+                      <Label htmlFor="voice-verse" className="font-normal cursor-pointer">Verse（男性・若々しい）</Label>
                     </div>
                   </RadioGroup>
                 </div>
