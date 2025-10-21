@@ -1,11 +1,12 @@
 const AgentSettings = require('../models/AgentSettings');
-const { 
-  intentToTemplate, 
-  defaultTemplates, 
+const { buildOpenAIInstructions } = require('../utils/promptBuilder');
+const {
+  intentToTemplate,
+  defaultTemplates,
   requiredTemplates,
   globalPatterns,
   contextualPatterns,
-  conversationStates 
+  conversationStates
 } = require('../config/templates');
 
 class ConversationEngine {

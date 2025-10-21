@@ -159,45 +159,25 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
         }
       }
     }
-    console.log(`[TwiML Conference] Using immediate initial message: ${initialMessage}`);
-    console.log('[TwiML Conference] Testing CoeFont service...');
-    
-    // AI即座応答戦略（checkpointブランチから移植）
-    console.log(`[TwiML Conference] IMMEDIATE AI RESPONSE - AI speaks immediately on call connect`);
+    console.log(`[TwiML Conference] Connecting to OpenAI Realtime API via Media Stream`);
+    console.log(`[TwiML Conference] CallId: ${callId}`);
 
-    // AI音声を即座に再生するGatherを設定
-    const gather = twiml.gather({
-      input: 'speech',
-      language: 'ja-JP',
-      speechModel: 'enhanced',
-      speechTimeout: 'auto',
-      timeout: 10,
-      action: `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`,
-      method: 'POST',
-      partialResultCallback: `${process.env.BASE_URL}/api/twilio/voice/partial/${callId}`,
-      partialResultCallbackMethod: 'POST'
+    // OpenAI Realtime API用のMedia Stream接続を確立
+    // ngrok URLからホスト部分を取得（https:// を除く）
+    const ngrokHost = process.env.NGROK_URL?.replace('https://', '') || process.env.BASE_URL?.replace('https://', '') || req.get('host');
+    const streamUrl = `wss://${ngrokHost}/api/twilio/media-stream/${callId}`;
+    console.log(`[TwiML Conference] Stream URL: ${streamUrl}`);
+
+    const connect = twiml.connect();
+    connect.stream({
+      url: streamUrl
     });
 
-    // AI音声を即座に再生（CoeFontを使用）
-    await coefontService.getTwilioPlayElement(gather, initialMessage);
+    console.log(`[TwiML Conference] TwiML generated with Media Stream connection`);
 
-    // フォールバック
-    twiml.redirect({
-      method: 'POST'
-    }, `${process.env.BASE_URL}/api/twilio/voice/gather/${callId}`);
-
-    console.log(`[TwiML Conference] Structure: immediate AI response -> gather -> redirect`);
-
-    // TwiMLを即座に返す（会話エンジン初期化は後で行う）
+    // TwiMLを返す
     const twimlResponse = twiml.toString();
-
-    // 会話エンジンを非同期で初期化（レスポンス送信後）
-    setImmediate(() => {
-      conversationEngine.initializeConversation(callId, callSession.aiConfiguration);
-      // AIが先に話したことを記録
-      conversationEngine.updateConversationState(callId, { systemSpokeFirst: true });
-      console.log(`[TwiML Conference] AI spoke first - systemSpokeFirst set to true`);
-    });
+    console.log(`[TwiML Conference] TwiML Response:\n${twimlResponse}`);
 
     res.type('text/xml').send(twimlResponse);
   } catch (error) {
@@ -1133,7 +1113,7 @@ exports.handleRecordingStatus = asyncHandler(async (req, res) => {
       );
 
       // Generate local URL
-      const baseUrl = process.env.BASE_URL || 'http://localhost:5001';
+      const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
       const localUrl = `${baseUrl}/${localPath}`;
 
       // Update CallSession with local URL

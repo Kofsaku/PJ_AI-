@@ -90,27 +90,24 @@ async function initializeSession(openaiWs, agentSettings) {
     instructions = "You are a helpful AI assistant for making business calls.";
   }
 
+  const temperature = agentSettings?.temperature || 0.8;
+
+  // Match Python sample session structure (line 210-228)
   const sessionUpdate = {
     type: "session.update",
     session: {
-      type: "realtime",
-      model: "gpt-realtime",  // ← Official sample uses this exact model name
-      output_modalities: ["audio"],
-      audio: {
-        input: {
-          format: { type: "audio/pcmu" },  // ← μ-law format (Twilio default)
-          turn_detection: { type: "server_vad" },  // ← Server-side voice activity detection
-          transcription: {  // ← Enable user speech transcription
-            model: "whisper-1"
-          }
-        },
-        output: {
-          format: { type: "audio/pcmu" },  // ← μ-law format
-          voice: agentSettings?.voice || "alloy"  // ← Voice selection
-        }
+      modalities: ["audio"],  // Audio only (matching Python sample line 215)
+      instructions: instructions,
+      voice: agentSettings?.voice || "alloy",
+      input_audio_format: "g711_ulaw",  // μ-law format for Twilio (matching Python "audio/pcmu")
+      output_audio_format: "g711_ulaw",  // μ-law format for Twilio
+      input_audio_transcription: {
+        model: "whisper-1"
       },
-      instructions: instructions,  // ← 受付突破特化型プロンプト
-      tools: agentSettings?.tools || []
+      turn_detection: {
+        type: "server_vad"
+      },
+      temperature: temperature
     }
   };
 
@@ -146,6 +143,13 @@ exports.handleMediaStream = async (twilioWs, req) => {
   const callId = req.params.callId;
   console.log('[MediaStream] Client connected, callId:', callId);
 
+  // Validate OpenAI API key (matching Python sample line 34-35)
+  if (!process.env.OPENAI_REALTIME_API_KEY) {
+    console.error('[MediaStream] Missing OpenAI API key');
+    twilioWs.close();
+    return;
+  }
+
   // Connection state variables (official sample line 76-81)
   let streamSid = null;
   let latestMediaTimestamp = 0;
@@ -175,15 +179,17 @@ exports.handleMediaStream = async (twilioWs, req) => {
 
     // Connect to OpenAI Realtime API (official sample line 68-73)
     // NOTE: Temperature parameter added (matching Python sample)
-    // NOTE: OpenAI-Beta header removed (not in Python sample)
     const temperature = agentSettings?.temperature || 0.8;
-    const openaiUrl = `wss://api.openai.com/v1/realtime?model=gpt-realtime&temperature=${temperature}`;
+    const openaiUrl = `wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01`;
     console.log('[OpenAI] Connecting to:', openaiUrl);
+    console.log('[OpenAI] Using temperature:', temperature);
+    console.log('[OpenAI] API Key present:', !!process.env.OPENAI_REALTIME_API_KEY);
+    console.log('[OpenAI] API Key prefix:', process.env.OPENAI_REALTIME_API_KEY?.substring(0, 10) + '...');
 
     openaiWs = new WebSocket(openaiUrl, {
       headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_REALTIME_API_KEY}`
-        // NO OpenAI-Beta header - Python sample doesn't use it
+        'Authorization': `Bearer ${process.env.OPENAI_REALTIME_API_KEY}`,
+        'OpenAI-Beta': 'realtime=v1'
       }
     });
 
@@ -202,11 +208,22 @@ exports.handleMediaStream = async (twilioWs, req) => {
     // Handle OpenAI WebSocket errors
     openaiWs.on('error', (error) => {
       console.error('[OpenAI] WebSocket error:', error.message);
+      console.error('[OpenAI] Error details:', error);
+
+      // Close Twilio connection on OpenAI error
+      if (twilioWs && twilioWs.readyState === 1) { // 1 = OPEN
+        twilioWs.close();
+      }
     });
 
     // Handle OpenAI WebSocket close
-    openaiWs.on('close', () => {
-      console.log('[OpenAI] WebSocket closed');
+    openaiWs.on('close', (code, reason) => {
+      console.log('[OpenAI] WebSocket closed, code:', code, 'reason:', reason?.toString());
+
+      // Close Twilio connection when OpenAI closes
+      if (twilioWs && twilioWs.readyState === 1) { // 1 = OPEN
+        twilioWs.close();
+      }
     });
 
     // Receive messages from OpenAI → Send to Twilio

@@ -13,7 +13,7 @@ echo -e "${BLUE}================================================${NC}"
 echo ""
 
 # プロジェクトのルートディレクトリを設定
-PROJECT_ROOT="/Users/kt/PJ_AI-"
+PROJECT_ROOT="/root/work_claude/PJ_AI-"
 BACKEND_DIR="${PROJECT_ROOT}/backend"
 FRONTEND_DIR="${PROJECT_ROOT}/frontend"
 
@@ -22,7 +22,7 @@ echo -e "${YELLOW}🧹 既存プロセスをクリーンアップ中...${NC}"
 pkill -f "node.*server" 2>/dev/null
 pkill -f "nodemon" 2>/dev/null
 pkill -f "next dev" 2>/dev/null
-lsof -ti:5001 | xargs kill -9 2>/dev/null
+lsof -ti:5000 | xargs kill -9 2>/dev/null
 lsof -ti:3000 | xargs kill -9 2>/dev/null
 lsof -ti:3001 | xargs kill -9 2>/dev/null
 lsof -ti:3002 | xargs kill -9 2>/dev/null
@@ -32,7 +32,7 @@ sleep 2
 echo -e "${YELLOW}🌐 ngrokトンネルを確認中...${NC}"
 if ! pgrep -x "ngrok" > /dev/null; then
     echo -e "${GREEN}   ngrokを起動します...${NC}"
-    ngrok http 5001 > /tmp/ngrok.log 2>&1 &
+    ngrok http 5000 > /tmp/ngrok.log 2>&1 &
     sleep 5
 else
     echo -e "${GREEN}   ✓ ngrokは既に起動しています${NC}"
@@ -72,7 +72,7 @@ echo -e "${GREEN}   ✓ バックエンドサーバー起動 (PID: $BACKEND_PID)
 # バックエンドの起動待機
 echo -e "${YELLOW}   サーバーの起動を待機中...${NC}"
 for i in {1..10}; do
-    if curl -s http://localhost:5001/health > /dev/null 2>&1; then
+    if curl -s http://localhost:5000/health > /dev/null 2>&1; then
         echo -e "${GREEN}   ✓ バックエンドサーバーが応答しました${NC}"
         break
     fi
@@ -89,13 +89,13 @@ if [ ! -f ".env.local" ]; then
     echo -e "${YELLOW}   .env.localファイルを作成します...${NC}"
     cat > .env.local << EOF
 # Backend API URL
-NEXT_PUBLIC_API_URL=http://localhost:5001
-NEXT_PUBLIC_BACKEND_URL=http://localhost:5001
-BACKEND_URL=http://localhost:5001
+NEXT_PUBLIC_API_URL=http://localhost:5000
+NEXT_PUBLIC_BACKEND_URL=http://localhost:5000
+BACKEND_URL=http://localhost:5000
 
-# WebSocket URL  
-NEXT_PUBLIC_WS_URL=ws://localhost:5001
-NEXT_PUBLIC_SOCKET_URL=http://localhost:5001
+# WebSocket URL
+NEXT_PUBLIC_WS_URL=ws://localhost:5000
+NEXT_PUBLIC_SOCKET_URL=http://localhost:5000
 
 # App Name
 NEXT_PUBLIC_APP_NAME=AI Call System
@@ -146,7 +146,7 @@ fi
 
 echo -e "${GREEN}🌐 アクセスURL:${NC}"
 echo -e "   Frontend: ${BLUE}http://localhost:${FRONTEND_PORT}${NC}"
-echo -e "   Backend API: ${BLUE}http://localhost:5001${NC}"
+echo -e "   Backend API: ${BLUE}http://localhost:5000${NC}"
 echo ""
 
 echo -e "${GREEN}📧 ログイン情報:${NC}"

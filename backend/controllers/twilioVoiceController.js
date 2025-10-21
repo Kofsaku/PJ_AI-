@@ -197,22 +197,49 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
       // ===== OpenAI Realtime API Mode (Media Streams) =====
       console.log('[Incoming Call] Using OpenAI Realtime API with Media Streams');
 
-      // Optional: Add greeting (uncomment if desired)
-      // twiml.say({ voice: 'Polly.Mizuki', language: 'ja-JP' },
-      //   'AIアシスタントに接続しています。少々お待ちください。');
-      // twiml.pause({ length: 1 });
+      // Add greeting message (matching Python sample behavior)
+      twiml.say(
+        'AIアシスタントに接続しています。少々お待ちください。',
+        { voice: 'Polly.Mizuki', language: 'ja-JP' }
+      );
+      twiml.pause({ length: 1 });
+      twiml.say(
+        'それでは、お話しください。',
+        { voice: 'Polly.Mizuki', language: 'ja-JP' }
+      );
 
-      // Connect to Media Streams WebSocket
-      const connect = twiml.connect();
+      // Connect to Media Streams WebSocket (matching Python sample structure)
+      // IMPORTANT: Extract hostname properly from request
+      const host = req.headers.host || req.hostname;
 
       // TEMPORARY: Use simplified endpoint for debugging
       // TODO: Revert to /api/twilio/media-stream/${callSession._id} after testing
       const useSimpleEndpoint = process.env.USE_SIMPLE_MEDIA_STREAM === 'true';
-      const streamUrl = useSimpleEndpoint
-        ? `wss://${req.headers.host}/api/twilio/media-stream-simple`
-        : `wss://${req.headers.host}/api/twilio/media-stream/${callSession._id}`;
+      const streamPath = useSimpleEndpoint
+        ? '/api/twilio/media-stream-simple'
+        : `/api/twilio/media-stream/${callSession._id}`;
 
-      console.log('[Incoming Call] Stream URL:', streamUrl);
+      const streamUrl = `wss://${host}${streamPath}`;
+
+      console.log('[Incoming Call] Host:', host);
+      console.log('[Incoming Call] Stream Path:', streamPath);
+      console.log('[Incoming Call] Full Stream URL:', streamUrl);
+
+      // Add voice guidance before connecting (matching Python sample line 46-54)
+      twiml.say({
+        voice: 'Polly.Mizuki',
+        language: 'ja-JP'
+      }, 'AIアシスタントに接続しています。少々お待ちください。');
+
+      twiml.pause({ length: 1 });
+
+      twiml.say({
+        voice: 'Polly.Mizuki',
+        language: 'ja-JP'
+      }, 'お話しください。');
+
+      // Create Connect and append Stream (matching Python sample line 56-58)
+      const connect = twiml.connect();
       connect.stream({ url: streamUrl });
 
       console.log('[Incoming Call] Media Streams TwiML generated');
@@ -267,8 +294,16 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
     
     // TwiMLレスポンスを送信（リダイレクトは上で既に追加済み）
     const twimlString = twiml.toString();
-    console.log('[Incoming Call] Sending TwiML response:');
+    console.log('[Incoming Call] ========== TwiML Response ==========');
     console.log(twimlString);
+    console.log('[Incoming Call] ====================================');
+
+    // Validate TwiML before sending
+    if (!twimlString || twimlString.length === 0) {
+      console.error('[Incoming Call] ERROR: Empty TwiML generated!');
+      return sendErrorResponse('TwiML生成エラー');
+    }
+
     res.type('text/xml').send(twimlString);
     
   } catch (error) {

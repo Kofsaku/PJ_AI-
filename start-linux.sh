@@ -186,7 +186,7 @@ echo -e "${GREEN}   ✓ バックエンドサーバー起動 (PID: $BACKEND_PID)
 # バックエンドの起動待機
 echo -e "${YELLOW}   サーバーの起動を待機中...${NC}"
 for i in {1..15}; do
-    if curl -s http://localhost:5001/health > /dev/null 2>&1; then
+    if curl -s http://localhost:5000/health > /dev/null 2>&1; then
         echo -e "${GREEN}   ✓ バックエンドサーバーが応答しました${NC}"
         break
     fi
@@ -208,13 +208,13 @@ if [ ! -f ".env.local" ]; then
     echo -e "${YELLOW}   .env.localファイルを作成します...${NC}"
     cat > .env.local << 'EOF'
 # Backend API URL
-NEXT_PUBLIC_API_URL=http://localhost:5001
-NEXT_PUBLIC_BACKEND_URL=http://localhost:5001
-BACKEND_URL=http://localhost:5001
+NEXT_PUBLIC_API_URL=http://localhost:5000
+NEXT_PUBLIC_BACKEND_URL=http://localhost:5000
+BACKEND_URL=http://localhost:5000
 
 # WebSocket URL  
-NEXT_PUBLIC_WS_URL=ws://localhost:5001
-NEXT_PUBLIC_SOCKET_URL=http://localhost:5001
+NEXT_PUBLIC_WS_URL=ws://localhost:5000
+NEXT_PUBLIC_SOCKET_URL=http://localhost:5000
 
 # App Name
 NEXT_PUBLIC_APP_NAME=AI Call System
@@ -279,7 +279,7 @@ fi
 
 echo -e "${GREEN}🌐 アクセスURL:${NC}"
 echo -e "   Frontend: ${BLUE}http://localhost:${FRONTEND_PORT}${NC}"
-echo -e "   Backend API: ${BLUE}http://localhost:5001${NC}"
+echo -e "   Backend API: ${BLUE}http://localhost:5000${NC}"
 if [ ! -z "$NGROK_URL" ]; then
     echo -e "   Public URL: ${BLUE}${NGROK_URL}${NC}"
 fi

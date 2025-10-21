@@ -19,12 +19,12 @@ const {
   handleTransferStatus
 } = require('../controllers/twilioController');
 const { handleIncomingCall } = require('../controllers/twilioVoiceController');
-const { handleIncomingCallUltraSimple } = require('../controllers/twilioVoiceController.ultraSimple');
+// const { handleIncomingCallUltraSimple } = require('../controllers/twilioVoiceController.ultraSimple');
 
 // ULTRA SIMPLE endpoint (Python sample equivalent)
 // Matches Python: @app.api_route("/incoming-call", methods=["GET", "POST"])
-router.post('/incoming-call', handleIncomingCallUltraSimple);
-router.get('/incoming-call', handleIncomingCallUltraSimple);
+// router.post('/incoming-call', handleIncomingCallUltraSimple);
+// router.get('/incoming-call', handleIncomingCallUltraSimple);
 
 // Main voice endpoint for incoming calls
 router.post('/voice', handleIncomingCall);

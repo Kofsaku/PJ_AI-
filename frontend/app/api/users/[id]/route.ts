@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const BACKEND_URL = process.env.NODE_ENV === 'development'
-  ? (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001')
+  ? (process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000')
   : (process.env.NEXT_PUBLIC_BACKEND_URL_PROD || 'https://pj-ai.onrender.com');
 
 async function proxyRequest(

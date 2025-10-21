@@ -43,9 +43,9 @@ echo ""
 echo -e "${YELLOW}🧹 既存プロセスをクリーンアップ中...${NC}"
 
 # バックエンドプロセスの終了
-if lsof -Pi :5001 -sTCP:LISTEN -t >/dev/null 2>&1; then
+if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1; then
     echo -e "${YELLOW}   ポート 5001 を解放中...${NC}"
-    lsof -ti:5001 | xargs kill -9 2>/dev/null || true
+    lsof -ti:5000 | xargs kill -9 2>/dev/null || true
     sleep 1
 fi
 
@@ -77,13 +77,13 @@ if [ ! -f "$FRONTEND_DIR/.env.local" ]; then
     echo -e "${YELLOW}   .env.localファイルを作成します...${NC}"
     cat > "$FRONTEND_DIR/.env.local" << 'EOF'
 # Backend API URL
-NEXT_PUBLIC_API_URL=http://localhost:5001
-NEXT_PUBLIC_BACKEND_URL=http://localhost:5001
-BACKEND_URL=http://localhost:5001
+NEXT_PUBLIC_API_URL=http://localhost:5000
+NEXT_PUBLIC_BACKEND_URL=http://localhost:5000
+BACKEND_URL=http://localhost:5000
 
 # WebSocket URL  
-NEXT_PUBLIC_WS_URL=ws://localhost:5001
-NEXT_PUBLIC_SOCKET_URL=http://localhost:5001
+NEXT_PUBLIC_WS_URL=ws://localhost:5000
+NEXT_PUBLIC_SOCKET_URL=http://localhost:5000
 
 # App Name
 NEXT_PUBLIC_APP_NAME=AI Call System
@@ -133,7 +133,7 @@ BACKEND_PID=$!
 echo -e "${YELLOW}   バックエンドの起動を待機中...${NC}"
 BACKEND_READY=false
 for i in {1..30}; do
-    if curl -s http://localhost:5001/health > /dev/null 2>&1; then
+    if curl -s http://localhost:5000/health > /dev/null 2>&1; then
         BACKEND_READY=true
         echo -e "${GREEN}   ✓ バックエンドサーバーが起動しました (PID: $BACKEND_PID)${NC}"
         break
@@ -237,7 +237,7 @@ echo ""
 
 echo -e "${GREEN}🌐 アクセスURL:${NC}"
 echo -e "   Frontend: ${BLUE}http://localhost:${FRONTEND_PORT}${NC}"
-echo -e "   Backend API: ${BLUE}http://localhost:5001${NC}"
+echo -e "   Backend API: ${BLUE}http://localhost:5000${NC}"
 if [ ! -z "$NGROK_URL" ]; then
     echo -e "   Public URL: ${BLUE}${NGROK_URL}${NC}"
 fi
