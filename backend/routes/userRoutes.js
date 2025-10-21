@@ -25,35 +25,40 @@ router.get('/', protect, authorize('admin'), async (req, res) => {
 router.put('/sales-pitch', protect, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { conversationSettings } = req.body;
-    
+    const { voice, conversationSettings } = req.body;
+
     if (!conversationSettings) {
       return res.status(400).json({
         success: false,
         message: 'conversationSettings is required'
       });
     }
-    
+
     const {
       // 基本設定
       companyName, serviceName, representativeName, targetDepartment,
       // その他設定
       serviceDescription, targetPerson,
+      // AI設定
+      conversationStyle, speechRate,
       // セールスピッチ設定
       salesPitch
     } = conversationSettings;
-    
+
     const { companyDescription, callToAction, keyBenefits } = salesPitch || {};
 
     console.log('[Sales Pitch Update] User ID:', userId);
     console.log('[Sales Pitch Update] Data:', req.body);
     console.log('[Sales Pitch Update] Received fields:', {
+      voice,
       companyName,
-      serviceName, 
+      serviceName,
       representativeName,
       targetDepartment,
       serviceDescription,
       targetPerson,
+      conversationStyle,
+      speechRate,
       companyDescription,
       callToAction,
       keyBenefits
@@ -109,6 +114,19 @@ router.put('/sales-pitch', protect, async (req, res) => {
     }
     if (targetPerson !== undefined) {
       agentSettings.conversationSettings.targetPerson = targetPerson;
+    }
+
+    // Update AI settings
+    if (conversationStyle !== undefined) {
+      agentSettings.conversationSettings.conversationStyle = conversationStyle;
+    }
+    if (speechRate !== undefined) {
+      agentSettings.conversationSettings.speechRate = speechRate;
+    }
+
+    // Update voice (top-level field in AgentSettings)
+    if (voice !== undefined) {
+      agentSettings.voice = voice;
     }
 
     // Initialize salesPitch if it doesn't exist
