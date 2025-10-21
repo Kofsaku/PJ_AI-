@@ -92,22 +92,25 @@ async function initializeSession(openaiWs, agentSettings) {
 
   const temperature = agentSettings?.temperature || 0.8;
 
-  // Match Python sample session structure (line 210-228)
+  // Use SIMPLE API format (matching working simple version)
   const sessionUpdate = {
     type: "session.update",
     session: {
-      modalities: ["audio"],  // Audio only (matching Python sample line 215)
-      instructions: instructions,
-      voice: agentSettings?.voice || "alloy",
-      input_audio_format: "g711_ulaw",  // μ-law format for Twilio (matching Python "audio/pcmu")
-      output_audio_format: "g711_ulaw",  // μ-law format for Twilio
-      input_audio_transcription: {
-        model: "whisper-1"
+      type: "realtime",  // ← シンプル版と同じ
+      model: "gpt-realtime",  // ← シンプル版と同じ
+      output_modalities: ["audio"],  // ← シンプル版と同じ
+      audio: {  // ← ネスト構造（シンプル版と同じ）
+        input: {
+          format: { type: "audio/pcmu" },
+          turn_detection: { type: "server_vad" }
+        },
+        output: {
+          format: { type: "audio/pcmu" },
+          voice: agentSettings?.voice || "alloy"
+        }
       },
-      turn_detection: {
-        type: "server_vad"
-      },
-      temperature: temperature
+      instructions: instructions
+      // temperature is passed in URL for simple version
     }
   };
 
@@ -177,10 +180,9 @@ exports.handleMediaStream = async (twilioWs, req) => {
       console.log('[MediaStream] AgentSettings loaded for user:', callSession.assignedAgent._id);
     }
 
-    // Connect to OpenAI Realtime API (official sample line 68-73)
-    // NOTE: Temperature parameter added (matching Python sample)
+    // Connect to OpenAI Realtime API (SIMPLE VERSION format)
     const temperature = agentSettings?.temperature || 0.8;
-    const openaiUrl = `wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01`;
+    const openaiUrl = `wss://api.openai.com/v1/realtime?model=gpt-realtime&temperature=${temperature}`;
     console.log('[OpenAI] Connecting to:', openaiUrl);
     console.log('[OpenAI] Using temperature:', temperature);
     console.log('[OpenAI] API Key present:', !!process.env.OPENAI_REALTIME_API_KEY);
@@ -188,8 +190,8 @@ exports.handleMediaStream = async (twilioWs, req) => {
 
     openaiWs = new WebSocket(openaiUrl, {
       headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_REALTIME_API_KEY}`,
-        'OpenAI-Beta': 'realtime=v1'
+        'Authorization': `Bearer ${process.env.OPENAI_REALTIME_API_KEY}`
+        // NO OpenAI-Beta header - Simple version doesn't use it
       }
     });
 

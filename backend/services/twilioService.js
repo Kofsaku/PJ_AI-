@@ -117,13 +117,13 @@ exports.makeCall = async (phoneNumber, sessionId, userId = null) => {
       : (process.env.BASE_URL || process.env.NGROK_URL || 'http://localhost:5000');
     console.log('[TwilioService] Making call to:', formattedNumber);
     console.log('[TwilioService] From number:', fromNumber);
-    console.log('[TwilioService] Using webhook URL:', `${baseUrl}/api/twilio/voice`);
+    console.log('[TwilioService] Using webhook URL:', `${baseUrl}/api/twilio/voice/conference/${sessionId}`);
     console.log('[TwilioService] Session ID:', sessionId);
-    
+
     const call = await client.calls.create({
       to: formattedNumber,
       from: fromNumber,
-      url: `${baseUrl}/api/twilio/voice`,
+      url: `${baseUrl}/api/twilio/voice/conference/${sessionId}`,
       statusCallback: `${baseUrl}/api/twilio/call/status/${sessionId}`,
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed', 'failed', 'busy', 'no-answer', 'cancelled'],
       statusCallbackMethod: 'POST',
