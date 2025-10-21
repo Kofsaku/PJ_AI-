@@ -262,6 +262,7 @@ ${guidelines}
 function buildConversationFlow(agentSettings) {
   const cs = agentSettings.conversationSettings || {};
   const style = cs.conversationStyle || 'formal';
+  const speechRate = cs.speechRate || 'normal';
 
   return `
 ## 【受付突破型テレアポの会話フロー】
@@ -346,7 +347,7 @@ function buildConversationFlow(agentSettings) {
 
 ## 【トーン・話し方】
 - スタイル: ${getConversationStyleDescription(style)}
-- 話す速度: ゆっくり、はっきり
+- 話す速度: ${getSpeechRateDescription(speechRate)}
 - 声のトーン: 落ち着いた、丁寧な声（押し売り感ゼロ）
 - 姿勢: 相手の時間を尊重し、簡潔に要件を伝える
 `;
@@ -362,6 +363,18 @@ function getConversationStyleDescription(style) {
     friendly: '丁寧さを保ちつつ、温かみのある対話。BtoC向け。'
   };
   return styles[style] || styles.formal;
+}
+
+/**
+ * 話す速度の説明文を取得
+ */
+function getSpeechRateDescription(rate) {
+  const rates = {
+    slow: 'ゆっくり、はっきり',
+    normal: '通常のペース、はっきり',
+    fast: 'やや早めのペース、はっきり'
+  };
+  return rates[rate] || rates.normal;
 }
 
 /**

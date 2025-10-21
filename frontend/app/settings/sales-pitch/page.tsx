@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Save, RotateCcw, Play, Plus, X, AlertCircle } from "lucide-react";
 import { Sidebar } from "@/components/sidebar";
@@ -17,15 +18,13 @@ interface SalesPitchSettings {
   serviceName: string;
   representativeName: string;
   targetDepartment: string;
-
-  // その他設定
   serviceDescription: string;
   targetPerson: string;
 
-  // セールスピッチ設定
-  companyDescription: string;
-  callToAction: string;
-  keyBenefits: string[];
+  // AI設定
+  voice: 'female' | 'male';
+  conversationStyle: 'formal' | 'casual' | 'friendly';
+  speechRate: 'slow' | 'normal' | 'fast';
 }
 
 export default function SalesPitchSettingsPage() {
@@ -35,15 +34,13 @@ export default function SalesPitchSettingsPage() {
     serviceName: "",
     representativeName: "",
     targetDepartment: "",
-
-    // その他設定
     serviceDescription: "",
     targetPerson: "",
 
-    // セールスピッチ設定
-    companyDescription: "",
-    callToAction: "",
-    keyBenefits: []
+    // AI設定
+    voice: 'female',
+    conversationStyle: 'formal',
+    speechRate: 'normal'
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -65,21 +62,28 @@ export default function SalesPitchSettingsPage() {
       const data = await response.json();
       if (data && data.data) {
         const agentData = data.data;
+        // voiceのマッピング: alloy/shimmer -> female, echo -> male
+        const voiceMapping: Record<string, 'female' | 'male'> = {
+          'alloy': 'female',
+          'shimmer': 'female',
+          'echo': 'male'
+        };
+        const voiceValue = agentData.voice || 'alloy';
+        const mappedVoice = voiceMapping[voiceValue] || 'female';
+
         setSettings({
           // 基本設定
           companyName: agentData.conversationSettings?.companyName || "",
           serviceName: agentData.conversationSettings?.serviceName || "",
           representativeName: agentData.conversationSettings?.representativeName || "",
           targetDepartment: agentData.conversationSettings?.targetDepartment || "",
-
-          // その他設定
           serviceDescription: agentData.conversationSettings?.serviceDescription || "",
           targetPerson: agentData.conversationSettings?.targetPerson || "",
 
-          // セールスピッチ設定
-          companyDescription: agentData.conversationSettings?.salesPitch?.companyDescription || "",
-          callToAction: agentData.conversationSettings?.salesPitch?.callToAction || "",
-          keyBenefits: agentData.conversationSettings?.salesPitch?.keyBenefits || []
+          // AI設定
+          voice: mappedVoice,
+          conversationStyle: agentData.conversationSettings?.conversationStyle || 'formal',
+          speechRate: agentData.conversationSettings?.speechRate || 'normal'
         });
       } else {
         console.log('Agent settings not found, using defaults');
@@ -89,15 +93,13 @@ export default function SalesPitchSettingsPage() {
           serviceName: "AIアシスタントサービス",
           representativeName: "佐藤",
           targetDepartment: "営業部",
-
-          // その他設定
           serviceDescription: "新規テレアポや掘り起こしなどの営業電話を人間に代わって生成AIが電話をかけるというサービスを提供している",
           targetPerson: "営業の担当者さま",
 
-          // セールスピッチ設定
-          companyDescription: "AIコールシステム株式会社では、生成AIを使った新規顧客獲得テレアポ支援により、AIが一次架電と仕分けを行い、見込み度の高いお客さまだけを営業におつなぎする仕組みをご提供しています。",
-          callToAction: "御社の営業部ご担当者さまに、概要だけご説明させていただけますか？",
-          keyBenefits: []
+          // AI設定
+          voice: 'female',
+          conversationStyle: 'formal',
+          speechRate: 'normal'
         });
       }
     } catch (error) {
@@ -118,6 +120,9 @@ export default function SalesPitchSettingsPage() {
       console.log('[Sales Pitch] Saving settings...', settings);
       
       const token = localStorage.getItem('token');
+      // voiceの逆マッピング: female -> alloy, male -> echo
+      const voiceApiValue = settings.voice === 'male' ? 'echo' : 'alloy';
+
       const response = await fetch('/api/users/sales-pitch', {
         method: 'PUT',
         headers: {
@@ -125,6 +130,7 @@ export default function SalesPitchSettingsPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          voice: voiceApiValue,
           conversationSettings: {
             companyName: settings.companyName,
             serviceName: settings.serviceName,
@@ -132,11 +138,8 @@ export default function SalesPitchSettingsPage() {
             targetDepartment: settings.targetDepartment,
             serviceDescription: settings.serviceDescription,
             targetPerson: settings.targetPerson,
-            salesPitch: {
-              companyDescription: settings.companyDescription,
-              callToAction: settings.callToAction,
-              keyBenefits: settings.keyBenefits
-            }
+            conversationStyle: settings.conversationStyle,
+            speechRate: settings.speechRate
           }
         })
       });
@@ -170,15 +173,13 @@ export default function SalesPitchSettingsPage() {
       serviceName: "AIアシスタントサービス",
       representativeName: "佐藤",
       targetDepartment: "営業部",
-
-      // その他設定
       serviceDescription: "新規テレアポや掘り起こしなどの営業電話を人間に代わって生成AIが電話をかけるというサービスを提供している",
       targetPerson: "営業の担当者さま",
 
-      // セールスピッチ設定
-      companyDescription: "弊社では、AIアシスタントサービスを提供しております。AIが一次架電を行い、見込み度の高いお客様だけを営業におつなぎする仕組みです。",
-      callToAction: "ぜひ御社の営業部ご担当者さまに概要をご案内できればと思いまして。",
-      keyBenefits: []
+      // AI設定
+      voice: 'female',
+      conversationStyle: 'formal',
+      speechRate: 'normal'
     });
   };
 
@@ -352,113 +353,82 @@ export default function SalesPitchSettingsPage() {
             </CardContent>
           </Card>
 
-          {/* 詳細設定セクション（任意） */}
+          {/* AI設定セクション */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                詳細設定（任意）
-                <Badge variant="secondary">任意</Badge>
-              </CardTitle>
+              <CardTitle>AI設定</CardTitle>
               <CardDescription>
-                より詳細な会社説明やキーメッセージを設定できます。
-                設定しない場合は基本設定から自動的に会話ガイドラインが生成されます。
+                AIの声や話し方を設定できます
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {/* 会社詳細説明 */}
-                <div>
-                  <Label htmlFor="companyDescription">会社詳細説明</Label>
-                  <Textarea
-                    id="companyDescription"
-                    placeholder="会社とサービスの詳しい説明を入力してください（任意）"
-                    value={settings.companyDescription}
-                    onChange={(e) => setSettings(prev => ({
-                      ...prev,
-                      companyDescription: e.target.value
-                    }))}
-                    className="min-h-[100px]"
-                  />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    💡 例：「弊社では、AIアシスタントサービスを提供しております。AIが一次架電を行い、見込み度の高いお客様だけを営業におつなぎする仕組みです。」<br />
-                    → 担当者との会話で、より詳しい説明が必要な際に使用されます
-                  </p>
+              <div className="space-y-6">
+                {/* AIボイス */}
+                <div className="space-y-3">
+                  <Label>AIボイスの性別</Label>
+                  <RadioGroup
+                    value={settings.voice}
+                    onValueChange={(value: 'female' | 'male') =>
+                      setSettings(prev => ({ ...prev, voice: value }))
+                    }
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="female" id="voice-female" />
+                      <Label htmlFor="voice-female" className="font-normal cursor-pointer">女性</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="male" id="voice-male" />
+                      <Label htmlFor="voice-male" className="font-normal cursor-pointer">男性</Label>
+                    </div>
+                  </RadioGroup>
                 </div>
 
-                {/* アクション呼びかけ */}
-                <div>
-                  <Label htmlFor="callToAction">アクション呼びかけ</Label>
-                  <Input
-                    id="callToAction"
-                    placeholder="最終的な依頼内容を入力してください（任意）"
-                    value={settings.callToAction}
-                    onChange={(e) => setSettings(prev => ({
-                      ...prev,
-                      callToAction: e.target.value
-                    }))}
-                  />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    💡 例：「ぜひ御社の営業部ご担当者さまに概要をご案内できればと思いまして。」<br />
-                    → 転送を打診する際のクロージングで使用されます
-                  </p>
+                {/* 会話トーン・スタイル */}
+                <div className="space-y-3">
+                  <Label>会話トーン・スタイル</Label>
+                  <RadioGroup
+                    value={settings.conversationStyle}
+                    onValueChange={(value: 'formal' | 'casual' | 'friendly') =>
+                      setSettings(prev => ({ ...prev, conversationStyle: value }))
+                    }
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="formal" id="style-formal" />
+                      <Label htmlFor="style-formal" className="font-normal cursor-pointer">フォーマル</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="casual" id="style-casual" />
+                      <Label htmlFor="style-casual" className="font-normal cursor-pointer">カジュアル</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="friendly" id="style-friendly" />
+                      <Label htmlFor="style-friendly" className="font-normal cursor-pointer">フレンドリー</Label>
+                    </div>
+                  </RadioGroup>
                 </div>
 
-                {/* キーベネフィット */}
-                <div>
-                  <Label>キーベネフィット（複数設定可能）</Label>
-                  <div className="space-y-2 mt-2">
-                    {settings.keyBenefits && settings.keyBenefits.length > 0 ? (
-                      settings.keyBenefits.map((benefit, index) => (
-                        <div key={index} className="flex items-center gap-2">
-                          <Input
-                            value={benefit}
-                            onChange={(e) => {
-                              const newBenefits = [...settings.keyBenefits];
-                              newBenefits[index] = e.target.value;
-                              setSettings(prev => ({
-                                ...prev,
-                                keyBenefits: newBenefits
-                              }));
-                            }}
-                            placeholder={`ベネフィット ${index + 1}`}
-                          />
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              const newBenefits = settings.keyBenefits.filter((_, i) => i !== index);
-                              setSettings(prev => ({
-                                ...prev,
-                                keyBenefits: newBenefits
-                              }));
-                            }}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-sm text-muted-foreground">まだベネフィットが設定されていません</p>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSettings(prev => ({
-                          ...prev,
-                          keyBenefits: [...(prev.keyBenefits || []), '']
-                        }));
-                      }}
-                      className="w-full"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      ベネフィットを追加
-                    </Button>
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    💡 例：「営業コスト削減」「商談化率向上」「24時間対応可能」<br />
-                    → サービスの主なメリットを簡潔に列挙します
-                  </p>
+                {/* 話す速度 */}
+                <div className="space-y-3">
+                  <Label>話す速度</Label>
+                  <RadioGroup
+                    value={settings.speechRate}
+                    onValueChange={(value: 'slow' | 'normal' | 'fast') =>
+                      setSettings(prev => ({ ...prev, speechRate: value }))
+                    }
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="slow" id="speed-slow" />
+                      <Label htmlFor="speed-slow" className="font-normal cursor-pointer">ゆっくり</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="normal" id="speed-normal" />
+                      <Label htmlFor="speed-normal" className="font-normal cursor-pointer">通常</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="fast" id="speed-fast" />
+                      <Label htmlFor="speed-fast" className="font-normal cursor-pointer">早く</Label>
+                    </div>
+                  </RadioGroup>
                 </div>
               </div>
             </CardContent>

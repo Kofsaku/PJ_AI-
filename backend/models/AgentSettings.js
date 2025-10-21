@@ -68,6 +68,17 @@ const AgentSettingsSchema = new mongoose.Schema({
       type: String,
       default: '営業の担当者さま'
     },
+    // AI設定
+    conversationStyle: {
+      type: String,
+      enum: ['formal', 'casual', 'friendly'],
+      default: 'formal'
+    },
+    speechRate: {
+      type: String,
+      enum: ['slow', 'normal', 'fast'],
+      default: 'normal'
+    },
     customTemplates: {
       initial: {
         type: String,
