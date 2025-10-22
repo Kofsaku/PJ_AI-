@@ -20,8 +20,84 @@ const LOG_EVENT_TYPES = [
   'input_audio_buffer.speech_stopped',
   'input_audio_buffer.speech_started',
   'session.created',
-  'session.updated'
+  'session.updated',
+  'response.output_item.done',  // For Function Calling detection
+  'response.function_call_arguments.done'  // Alternative event name
 ];
+
+/**
+ * Execute automatic handoff when AI determines transfer is appropriate
+ * @param {Object} callSession - CallSession document
+ * @param {String} functionCallId - OpenAI function call ID
+ * @param {Object} args - Function arguments (customer_consent, reason)
+ */
+async function executeAutoHandoff(callSession, functionCallId, args) {
+  try {
+    console.log('[AutoHandoff] Executing automatic handoff');
+    console.log('[AutoHandoff] CallSession ID:', callSession._id);
+    console.log('[AutoHandoff] Function Call ID:', functionCallId);
+    console.log('[AutoHandoff] Arguments:', args);
+
+    // 顧客の同意確認
+    if (args.customer_consent !== true) {
+      console.log('[AutoHandoff] Customer did not consent, skipping handoff');
+      return;
+    }
+
+    // CallSessionからユーザー情報を取得
+    const userId = callSession.assignedAgent;
+    if (!userId) {
+      console.error('[AutoHandoff] No assigned agent for this call session');
+      return;
+    }
+
+    const User = require('../models/User');
+    const user = await User.findById(userId);
+
+    if (!user) {
+      console.error('[AutoHandoff] User not found:', userId);
+      return;
+    }
+
+    if (!user.handoffPhoneNumber) {
+      console.error('[AutoHandoff] No handoff phone number configured for user:', userId);
+      return;
+    }
+
+    console.log('[AutoHandoff] User found:', user.email);
+    console.log('[AutoHandoff] Handoff phone:', user.handoffPhoneNumber);
+
+    // 既存のhandoffControllerロジックを利用
+    const handoffController = require('./handoffController');
+
+    // ハンドオフ実行
+    const result = await handoffController.executeHandoffLogic(
+      callSession,
+      user,
+      'ai-auto',  // ハンドオフ方法
+      args.reason || '顧客の承諾'  // 転送理由
+    );
+
+    console.log('[AutoHandoff] Handoff executed successfully:', result);
+
+    // Function call の結果をOpenAIに返す（成功）
+    return {
+      success: true,
+      message: '担当者への転送を開始しました',
+      handoffCallSid: result.handoffCallSid
+    };
+
+  } catch (error) {
+    console.error('[AutoHandoff] Error executing handoff:', error);
+
+    // Function call の結果をOpenAIに返す（失敗）
+    return {
+      success: false,
+      message: '転送に失敗しました。申し訳ございません。',
+      error: error.message
+    };
+  }
+}
 
 /**
  * Extract text from OpenAI Realtime API content array
@@ -114,8 +190,32 @@ async function initializeSession(openaiWs, agentSettings) {
           voice: agentSettings?.voice || "alloy"
         }
       },
-      instructions: instructions
+      instructions: instructions,
       // temperature is passed in URL for simple version
+      // Function calling for automatic handoff
+      tools: [
+        {
+          type: "function",
+          name: "transfer_to_human",
+          description: "顧客が営業担当との会話を承諾した時、人間の営業担当に電話転送する。顧客が「はい」「お願いします」「聞きます」などポジティブに応答し、転送準備が整った時のみ呼び出す。重要：顧客が明確に同意した時のみ使用すること。",
+          parameters: {
+            type: "object",
+            properties: {
+              customer_consent: {
+                type: "boolean",
+                description: "顧客が転送に明確に同意したか（true=同意、false=拒否）"
+              },
+              reason: {
+                type: "string",
+                description: "転送理由（例：詳細説明希望、価格質問、技術的質問、担当者希望）",
+                enum: ["詳細説明希望", "価格質問", "技術的質問", "担当者希望", "その他"]
+              }
+            },
+            required: ["customer_consent"]
+          }
+        }
+      ],
+      tool_choice: "auto"  // AIが自動的に判断して関数を呼び出す
     }
   };
 
@@ -165,6 +265,9 @@ exports.handleMediaStream = async (twilioWs, req) => {
   let markQueue = [];
   let responseStartTimestamp = null;
   let openaiWs = null;
+
+  // Auto handoff state - store function call info to execute after AI finishes speaking
+  let pendingHandoff = null;
 
   try {
     // Load CallSession from database
@@ -255,6 +358,12 @@ exports.handleMediaStream = async (twilioWs, req) => {
     openaiWs.on('message', async (data) => {
       try {
         const response = JSON.parse(data.toString());
+
+        // TEMPORARY DEBUG: Log ALL event types to identify function calling events
+        if (response.type && response.type.includes('function') || response.type && response.type.includes('output_item')) {
+          console.log('[OpenAI DEBUG] Event type:', response.type);
+          console.log('[OpenAI DEBUG] Full response:', JSON.stringify(response, null, 2));
+        }
 
         // Log important events (official sample line 116-117)
         if (LOG_EVENT_TYPES.includes(response.type)) {
@@ -403,6 +512,96 @@ exports.handleMediaStream = async (twilioWs, req) => {
 
             await callSession.save();
             console.log('[Conversation] Saved to database, total items:', callSession.realtimeConversation.length);
+          }
+
+          // Execute pending handoff AFTER AI finishes speaking
+          if (pendingHandoff) {
+            console.log('[AutoHandoff] AI response completed, waiting for audio playback to finish');
+            console.log('[AutoHandoff] Pending handoff data:', pendingHandoff);
+
+            // Wait 5 seconds to ensure AI's full handoff message completes
+            // "それでは担当者におつなぎいたします。よろしくお願いいたします。"
+            // This accounts for:
+            // - Network latency between OpenAI → Twilio → Customer
+            // - Audio playback duration for the longer handoff message
+            // - Audio buffering on customer's device
+            // - Natural pause before transfer
+            setTimeout(async () => {
+              try {
+                console.log('[AutoHandoff] Audio playback buffer complete, executing handoff now');
+                const result = await executeAutoHandoff(callSession, pendingHandoff.callId, pendingHandoff.args);
+                console.log('[AutoHandoff] Successfully executed after AI response:', result);
+              } catch (error) {
+                console.error('[AutoHandoff] Error executing pending handoff:', error);
+              } finally {
+                // Clear pending handoff regardless of success/failure
+                pendingHandoff = null;
+              }
+            }, 5000);  // 5 second delay
+          }
+        }
+
+        // Handle Function Calling - Auto Handoff
+        if (response.type === 'response.output_item.done' && response.item) {
+          const item = response.item;
+          console.log('[FunctionCall] Detected output_item.done:', item.type);
+
+          if (item.type === 'function_call' && item.name === 'transfer_to_human') {
+            console.log('[FunctionCall] Transfer function called by AI');
+            console.log('[FunctionCall] Arguments:', item.arguments);
+            console.log('[FunctionCall] Storing for execution after AI response completes');
+
+            // Store function call info to execute AFTER AI finishes speaking
+            try {
+              const args = JSON.parse(item.arguments);
+              pendingHandoff = {
+                callId: item.call_id,
+                args: args
+              };
+
+              // Send success result back to OpenAI immediately so it can generate response
+              if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                const functionOutput = {
+                  type: 'conversation.item.create',
+                  item: {
+                    type: 'function_call_output',
+                    call_id: item.call_id,
+                    output: JSON.stringify({
+                      success: true,
+                      message: '転送準備が整いました。お客様にご案内後、転送を実行します。'
+                    })
+                  }
+                };
+                openaiWs.send(JSON.stringify(functionOutput));
+                console.log('[FunctionCall] Sent function result to OpenAI (handoff pending)');
+
+                // Request AI to generate response
+                const responseCreate = {
+                  type: 'response.create'
+                };
+                openaiWs.send(JSON.stringify(responseCreate));
+              }
+            } catch (error) {
+              console.error('[FunctionCall] Error parsing function arguments:', error);
+              pendingHandoff = null;
+
+              // Send error back to OpenAI
+              if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                const functionOutput = {
+                  type: 'conversation.item.create',
+                  item: {
+                    type: 'function_call_output',
+                    call_id: item.call_id,
+                    output: JSON.stringify({
+                      success: false,
+                      message: '転送準備に失敗しました',
+                      error: error.message
+                    })
+                  }
+                };
+                openaiWs.send(JSON.stringify(functionOutput));
+              }
+            }
           }
         }
 

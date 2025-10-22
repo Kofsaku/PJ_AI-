@@ -62,21 +62,8 @@ exports.handleHandoffRedirect = asyncHandler(async (req, res, next) => {
     // Generate TwiML to join Conference
     const twiml = new VoiceResponse();
 
-    // Add announcement message
-    const message = '担当者におつなぎします。';
-
-    try {
-      // Try to use CoeFont
-      const audioUrl = await coefontService.generateSpeechUrl(message);
-      if (audioUrl) {
-        twiml.play(audioUrl);
-      } else {
-        twiml.say({ voice: 'Polly.Mizuki', language: 'ja-JP' }, message);
-      }
-    } catch (error) {
-      console.error('[Handoff Redirect] CoeFont error:', error.message);
-      twiml.say({ voice: 'Polly.Mizuki', language: 'ja-JP' }, message);
-    }
+    // Removed duplicate announcement message (AI already announces handoff)
+    // The OpenAI Realtime API handles the handoff announcement naturally
 
     // Add customer to Conference with recording enabled
     const dial = twiml.dial();
