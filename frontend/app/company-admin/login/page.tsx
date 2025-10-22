@@ -24,7 +24,7 @@ export default function CompanyAdminLoginPage() {
     setIsLoading(true);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
+      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
       
       // ログインAPI呼び出し
       const response = await fetch(`${apiUrl}/api/auth/login`, {

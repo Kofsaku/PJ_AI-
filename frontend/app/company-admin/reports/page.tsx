@@ -70,7 +70,7 @@ export default function CompanyReportsPage() {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
+      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
       
       const response = await fetch(`${apiUrl}/api/company-admin/reports?period=${period}`, {
         headers: {
@@ -112,7 +112,7 @@ export default function CompanyReportsPage() {
   const exportReport = async () => {
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
+      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
       
       const response = await fetch(`${apiUrl}/api/company-admin/reports/export?period=${period}`, {
         headers: {

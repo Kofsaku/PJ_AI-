@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, RotateCcw, Play, Plus, X, AlertCircle } from "lucide-react";
+import { Loader2, Save, RotateCcw } from "lucide-react";
 import { Sidebar } from "@/components/sidebar";
 
 interface SalesPitchSettings {
@@ -200,7 +200,7 @@ export default function SalesPitchSettingsPage() {
           </div>
 
           {/* 基本設定セクション */}
-          <Card className="border-2 border-blue-200">
+          <Card className="shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 基本設定（必須）
@@ -344,7 +344,7 @@ export default function SalesPitchSettingsPage() {
           </Card>
 
           {/* AI設定セクション */}
-          <Card>
+          <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>AI設定</CardTitle>
               <CardDescription>
@@ -399,112 +399,6 @@ export default function SalesPitchSettingsPage() {
                       <Label htmlFor="speed-fast" className="font-normal cursor-pointer">早く</Label>
                     </div>
                   </RadioGroup>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* AI会話ガイドラインプレビュー */}
-          <Card className="border-2 border-green-200 bg-gradient-to-br from-green-50 to-white">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Play className="h-5 w-5 text-green-600" />
-                🤖 AI会話ガイドラインプレビュー
-              </CardTitle>
-              <CardDescription>
-                入力した設定がどのようにAI会話ガイドラインに反映されるかを確認できます。<br />
-                <Badge variant="secondary" className="mt-2">
-                  <AlertCircle className="h-3 w-3 mr-1" />
-                  重要: これらは「例」であり、AIは状況に応じて自然な言い回しで対応します
-                </Badge>
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {/* Step 1: 受付への初回挨拶 */}
-                <div className="border-l-4 border-blue-500 pl-4">
-                  <h4 className="font-semibold text-sm text-gray-800 mb-2">📞 Step 1: 受付への初回挨拶</h4>
-                  <div className="bg-white border border-blue-200 rounded-lg p-4 mb-2">
-                    <p className="text-xs text-gray-600 mb-2 font-semibold">やること:</p>
-                    <ol className="text-sm text-gray-700 list-decimal list-inside space-y-1 mb-3">
-                      <li>丁寧に名乗る（会社名と自分の名前）</li>
-                      <li>サービス名を簡潔に伝える</li>
-                      <li>担当部署の担当者を呼び出す</li>
-                    </ol>
-                    <p className="text-xs text-gray-600 mb-2 font-semibold">例:</p>
-                    <div className="bg-blue-50 border border-blue-300 rounded p-3">
-                      <p className="text-sm text-gray-800 leading-relaxed">
-                        「お世話になります。<span className="font-bold text-blue-700">{settings.companyName || '○○株式会社'}</span>の<span className="font-bold text-blue-700">{settings.representativeName || '○○'}</span>です。<span className="font-bold text-blue-700">{settings.serviceName || '○○サービス'}</span>のご案内でお電話しました。<span className="font-bold text-blue-700">{settings.targetDepartment || '○○部'}</span>のご担当者様はいらっしゃいますでしょうか？」
-                      </p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-500 italic">トーン: 落ち着いて、丁寧に。押し売り感は絶対に出さない。</p>
-                </div>
-
-                {/* Step 2: 用件を聞かれた時 */}
-                <div className="border-l-4 border-purple-500 pl-4">
-                  <h4 className="font-semibold text-sm text-gray-800 mb-2">🔍 Step 2: 「どういったご用件ですか？」と聞かれた時</h4>
-                  <div className="bg-white border border-purple-200 rounded-lg p-4 mb-2">
-                    <p className="text-xs text-gray-600 mb-2 font-semibold">やること:</p>
-                    <ol className="text-sm text-gray-700 list-decimal list-inside space-y-1 mb-3">
-                      <li>「新規サービスのご案内」と伝える</li>
-                      <li>サービスの要点を1文で説明</li>
-                      <li>「詳細は担当者様に直接ご説明したい」と伝える</li>
-                      <li>再度、担当者への取次を依頼</li>
-                    </ol>
-                    {settings.serviceDescription && (
-                      <div className="bg-purple-50 border border-purple-300 rounded p-3">
-                        <p className="text-sm text-gray-800 leading-relaxed">
-                          「新規サービスのご案内です。<span className="font-bold text-purple-700">{settings.serviceDescription}</span> 詳細はご担当者様に直接ご説明したく存じます。」
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 italic">ポイント: 受付を説得しようとしない、詳細な機能説明はしない</p>
-                </div>
-
-                {/* Step 3: 担当者に代わった時 */}
-                <div className="border-l-4 border-green-500 pl-4">
-                  <h4 className="font-semibold text-sm text-gray-800 mb-2">🎙️ Step 3: 担当者に電話が代わった時</h4>
-                  <div className="bg-white border border-green-200 rounded-lg p-4 mb-2">
-                    <p className="text-xs text-gray-600 mb-2 font-semibold">やること:</p>
-                    <ol className="text-sm text-gray-700 list-decimal list-inside space-y-1 mb-3">
-                      <li>電話を代わってくれたことに感謝</li>
-                      <li>改めて名乗る</li>
-                      <li>サービスの概要を2〜3文で簡潔に説明</li>
-                      <li>「詳細は弊社の営業担当からご説明したい」と伝える</li>
-                      <li>「2〜3分お時間よろしいでしょうか？」と転送を打診</li>
-                    </ol>
-                    {settings.companyDescription && (
-                      <div className="bg-green-50 border border-green-300 rounded p-3 mb-2">
-                        <p className="text-sm text-gray-800 leading-relaxed">
-                          <span className="font-bold text-green-700">{settings.companyDescription}</span>
-                        </p>
-                      </div>
-                    )}
-                    {settings.callToAction && (
-                      <div className="bg-green-50 border border-green-300 rounded p-3">
-                        <p className="text-sm text-gray-800 leading-relaxed">
-                          「<span className="font-bold text-green-700">{settings.callToAction}</span> 2〜3分お時間よろしいでしょうか？」
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 italic">ポイント: サービスの「何が」「どう役立つか」の要点のみ、すぐに転送打診に移る</p>
-                </div>
-
-                {/* 重要な注意事項 */}
-                <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-4">
-                  <h4 className="font-semibold text-sm text-amber-900 mb-2 flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4" />
-                    重要な注意事項
-                  </h4>
-                  <ul className="text-sm text-amber-900 space-y-1 list-disc list-inside">
-                    <li>上記は「例」であり、AIが一字一句守る必要はありません</li>
-                    <li>状況に応じて自然な言い回しで対応します</li>
-                    <li>ただし、会社情報やサービス名は正確に伝えます</li>
-                    <li>押し売り感は絶対に出さず、丁寧な対応を心がけます</li>
-                  </ul>
                 </div>
               </div>
             </CardContent>

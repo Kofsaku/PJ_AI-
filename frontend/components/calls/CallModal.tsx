@@ -46,7 +46,7 @@ export function CallModal({
       // Initialize socket connection
       const token = localStorage.getItem('token');
 
-      const newSocket = io(process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001", {
+      const newSocket = io(process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000", {
         transports: ["websocket"],
         auth: { token }
       });

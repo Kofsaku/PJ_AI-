@@ -78,7 +78,7 @@ export function CallStatusModal({
       const normalizedPhone = normalizePhoneNumber(phoneNumber);
       
       // Initialize socket connection
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
       const token = localStorage.getItem('token');
 
       const newSocket = io(backendUrl, {
@@ -409,7 +409,7 @@ export function CallStatusModal({
 
       // CallSession IDからcallIdを抽出（callSidはCA...形式なので、CallSession IDが必要）
       // まずCallSession IDを取得するためのAPI呼び出し、またはcallSidをそのまま使用
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 
       // CallSidからCallSession IDを検索する必要がある場合は、別のAPIを使用
       // ここでは簡易的にcallSidをそのまま使用（バックエンドで対応が必要）

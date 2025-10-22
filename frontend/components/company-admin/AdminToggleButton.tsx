@@ -31,7 +31,7 @@ export function AdminToggleButton({ userId, isAdmin, userName, onToggle }: Admin
     setIsLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001';
+      const apiUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
       
       const response = await fetch(`${apiUrl}/api/company-admin/users/${userId}/admin`, {
         method: 'PUT',

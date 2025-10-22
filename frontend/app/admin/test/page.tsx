@@ -21,7 +21,7 @@ export default function TestPage() {
     
     try {
       console.log('Token being sent:', token);
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5001'}/api/users`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000'}/api/users`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
