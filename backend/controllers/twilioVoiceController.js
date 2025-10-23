@@ -197,20 +197,10 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
       // ===== OpenAI Realtime API Mode (Media Streams) =====
       console.log('[Incoming Call] Using OpenAI Realtime API with Media Streams');
 
-      // Add greeting message (matching Python sample behavior)
-      twiml.say(
-        'AIアシスタントに接続しています。少々お待ちください。',
-        { voice: 'Polly.Mizuki', language: 'ja-JP' }
-      );
-      twiml.pause({ length: 1 });
-      twiml.say(
-        'それでは、お話しください。',
-        { voice: 'Polly.Mizuki', language: 'ja-JP' }
-      );
-
       // Connect to Media Streams WebSocket (matching Python sample structure)
-      // IMPORTANT: Extract hostname properly from request
-      const host = req.headers.host || req.hostname;
+      // Use BASE_URL for reliable hostname in production (auto-detects environment)
+      const baseUrl = process.env.BASE_URL || `https://${req.headers.host || req.hostname}`;
+      const wsBaseUrl = baseUrl.replace(/^https?:/, 'wss:');
 
       // TEMPORARY: Use simplified endpoint for debugging
       // TODO: Revert to /api/twilio/media-stream/${callSession._id} after testing
@@ -219,9 +209,10 @@ exports.handleIncomingCall = asyncHandler(async (req, res) => {
         ? '/api/twilio/media-stream-simple'
         : `/api/twilio/media-stream/${callSession._id}`;
 
-      const streamUrl = `wss://${host}${streamPath}`;
+      const streamUrl = `${wsBaseUrl}${streamPath}`;
 
-      console.log('[Incoming Call] Host:', host);
+      console.log('[Incoming Call] Base URL:', baseUrl);
+      console.log('[Incoming Call] WS Base URL:', wsBaseUrl);
       console.log('[Incoming Call] Stream Path:', streamPath);
       console.log('[Incoming Call] Full Stream URL:', streamUrl);
 
