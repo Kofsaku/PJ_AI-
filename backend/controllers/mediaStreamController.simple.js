@@ -58,14 +58,27 @@ async function initializeSession(openaiWs) {
  * Send mark event (Python sample line 177-185)
  */
 function sendMark(twilioWs, streamSid, markQueue) {
-  if (streamSid) {
-    const markEvent = {
-      event: "mark",
-      streamSid: streamSid,
-      mark: { name: "responsePart" }
-    };
+  if (!streamSid) {
+    console.warn('[Simple Mark] Skipped: streamSid is null');
+    return;
+  }
+
+  if (!twilioWs || twilioWs.readyState !== 1) { // 1 = OPEN
+    console.error('[Simple Mark] ERROR: Twilio WebSocket not open. State:', twilioWs?.readyState);
+    return;
+  }
+
+  const markEvent = {
+    event: "mark",
+    streamSid: streamSid,
+    mark: { name: "responsePart" }
+  };
+
+  try {
     twilioWs.send(JSON.stringify(markEvent));
     markQueue.push('responsePart');
+  } catch (error) {
+    console.error('[Simple Mark] ERROR sending mark:', error.message);
   }
 }
 
@@ -89,22 +102,38 @@ async function handleSpeechStarted(
 
     if (lastAssistantItem) {
       // Truncate OpenAI response (Python line 160-166)
-      const truncateEvent = {
-        type: "conversation.item.truncate",
-        item_id: lastAssistantItem,
-        content_index: 0,
-        audio_end_ms: elapsedTime
-      };
-      openaiWs.send(JSON.stringify(truncateEvent));
-      console.log('[Simple] Sent truncate to OpenAI');
+      if (openaiWs && openaiWs.readyState === 1) { // 1 = OPEN
+        const truncateEvent = {
+          type: "conversation.item.truncate",
+          item_id: lastAssistantItem,
+          content_index: 0,
+          audio_end_ms: elapsedTime
+        };
+        try {
+          openaiWs.send(JSON.stringify(truncateEvent));
+          console.log('[Simple] ✓ Sent truncate to OpenAI');
+        } catch (error) {
+          console.error('[Simple] ERROR sending truncate:', error.message);
+        }
+      } else {
+        console.error('[Simple] ERROR: OpenAI WebSocket not open');
+      }
     }
 
     // Clear Twilio buffer (Python line 168-171)
-    twilioWs.send(JSON.stringify({
-      event: "clear",
-      streamSid: streamSid
-    }));
-    console.log('[Simple] Cleared Twilio buffer');
+    if (twilioWs && twilioWs.readyState === 1) { // 1 = OPEN
+      try {
+        twilioWs.send(JSON.stringify({
+          event: "clear",
+          streamSid: streamSid
+        }));
+        console.log('[Simple] ✓ Cleared Twilio buffer');
+      } catch (error) {
+        console.error('[Simple] ERROR clearing buffer:', error.message);
+      }
+    } else {
+      console.error('[Simple] ERROR: Twilio WebSocket not open');
+    }
 
     // Clear queue
     markQueue.length = 0;
@@ -167,6 +196,22 @@ exports.handleSimpleMediaStream = async (twilioWs, req) => {
 
         // Audio delta (Python line 118-128)
         if (response.type === 'response.output_audio.delta' && response.delta) {
+          // Verify Twilio WebSocket is ready
+          if (!twilioWs) {
+            console.error('[Simple Audio] ERROR: twilioWs is null/undefined');
+            return;
+          }
+
+          if (twilioWs.readyState !== 1) { // 1 = OPEN
+            console.error('[Simple Audio] ERROR: Twilio WebSocket not open. State:', twilioWs.readyState);
+            return;
+          }
+
+          if (!streamSid) {
+            console.error('[Simple Audio] ERROR: streamSid is null');
+            return;
+          }
+
           // Re-encode base64 (Python line 119)
           const audioPayload = Buffer.from(
             Buffer.from(response.delta, 'base64')
@@ -180,7 +225,12 @@ exports.handleSimpleMediaStream = async (twilioWs, req) => {
             }
           };
 
-          twilioWs.send(JSON.stringify(audioEvent));
+          try {
+            twilioWs.send(JSON.stringify(audioEvent));
+            console.log('[Simple Audio] ✓ Sent audio chunk, size:', audioPayload.length);
+          } catch (error) {
+            console.error('[Simple Audio] ERROR sending to Twilio:', error.message);
+          }
 
           // Track response timing (Python line 130-134)
           if (response.item_id && response.item_id !== lastAssistantItem) {

@@ -229,14 +229,27 @@ async function initializeSession(openaiWs, agentSettings) {
  * Reference: official sample line 178-186
  */
 function sendMark(twilioWs, streamSid, markQueue) {
-  if (streamSid) {
-    const markEvent = {
-      event: "mark",
-      streamSid: streamSid,
-      mark: { name: "responsePart" }
-    };
+  if (!streamSid) {
+    console.warn('[Mark] Skipped: streamSid is null');
+    return;
+  }
+
+  if (!twilioWs || twilioWs.readyState !== WebSocket.OPEN) {
+    console.error('[Mark] ERROR: Twilio WebSocket not open. State:', twilioWs?.readyState);
+    return;
+  }
+
+  const markEvent = {
+    event: "mark",
+    streamSid: streamSid,
+    mark: { name: "responsePart" }
+  };
+
+  try {
     twilioWs.send(JSON.stringify(markEvent));
     markQueue.push('responsePart');
+  } catch (error) {
+    console.error('[Mark] ERROR sending mark:', error.message);
   }
 }
 
@@ -372,6 +385,23 @@ exports.handleMediaStream = async (twilioWs, req) => {
 
         // Handle audio delta from OpenAI (official sample line 119-128)
         if (response.type === 'response.output_audio.delta' && response.delta) {
+          // Verify Twilio WebSocket is ready
+          if (!twilioWs) {
+            console.error('[Audio] ERROR: twilioWs is null/undefined');
+            return;
+          }
+
+          if (twilioWs.readyState !== WebSocket.OPEN) {
+            console.error('[Audio] ERROR: Twilio WebSocket not open. State:', twilioWs.readyState);
+            console.error('[Audio] States: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED');
+            return;
+          }
+
+          if (!streamSid) {
+            console.error('[Audio] ERROR: streamSid is null - stream not initialized');
+            return;
+          }
+
           const audioPayload = Buffer.from(
             Buffer.from(response.delta, 'base64')
           ).toString('base64');  // Re-encode (official sample line 120)
@@ -384,12 +414,19 @@ exports.handleMediaStream = async (twilioWs, req) => {
             }
           };
 
-          twilioWs.send(JSON.stringify(audioEvent));
+          try {
+            twilioWs.send(JSON.stringify(audioEvent));
+            console.log('[Audio] ✓ Sent audio chunk to Twilio, size:', audioPayload.length);
+          } catch (error) {
+            console.error('[Audio] ERROR sending to Twilio:', error.message);
+            console.error('[Audio] WebSocket state:', twilioWs.readyState);
+          }
 
           // Track response timing (official sample line 131-136)
           if (response.item_id && response.item_id !== lastAssistantItem) {
             responseStartTimestamp = latestMediaTimestamp;
             lastAssistantItem = response.item_id;
+            console.log('[Audio] New assistant item:', response.item_id);
           }
 
           // Send mark for tracking (official sample line 137)
@@ -714,22 +751,38 @@ async function handleSpeechStarted(
 
     if (lastAssistantItem) {
       // Send truncate command to OpenAI (official sample line 161-167)
-      const truncateEvent = {
-        type: "conversation.item.truncate",
-        item_id: lastAssistantItem,
-        content_index: 0,
-        audio_end_ms: elapsedTime
-      };
-      openaiWs.send(JSON.stringify(truncateEvent));
-      console.log('[Interrupt] Sent truncate to OpenAI');
+      if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+        const truncateEvent = {
+          type: "conversation.item.truncate",
+          item_id: lastAssistantItem,
+          content_index: 0,
+          audio_end_ms: elapsedTime
+        };
+        try {
+          openaiWs.send(JSON.stringify(truncateEvent));
+          console.log('[Interrupt] ✓ Sent truncate to OpenAI');
+        } catch (error) {
+          console.error('[Interrupt] ERROR sending truncate:', error.message);
+        }
+      } else {
+        console.error('[Interrupt] ERROR: OpenAI WebSocket not open');
+      }
     }
 
     // Clear Twilio buffer (official sample line 169-172)
-    twilioWs.send(JSON.stringify({
-      event: "clear",
-      streamSid: streamSid
-    }));
-    console.log('[Interrupt] Cleared Twilio buffer');
+    if (twilioWs && twilioWs.readyState === WebSocket.OPEN) {
+      try {
+        twilioWs.send(JSON.stringify({
+          event: "clear",
+          streamSid: streamSid
+        }));
+        console.log('[Interrupt] ✓ Cleared Twilio buffer');
+      } catch (error) {
+        console.error('[Interrupt] ERROR clearing Twilio buffer:', error.message);
+      }
+    } else {
+      console.error('[Interrupt] ERROR: Twilio WebSocket not open');
+    }
   }
 }
 
