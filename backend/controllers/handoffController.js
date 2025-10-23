@@ -13,81 +13,20 @@ const client = twilio(
   process.env.TWILIO_AUTH_TOKEN
 );
 
-// @desc    Initiate handoff to human agent
-// @route   POST /api/calls/:callId/handoff
-// @access  Private
-exports.initiateHandoff = asyncHandler(async (req, res, next) => {
-  console.log('[Handoff] Starting handoff process');
-  console.log('[Handoff] Call ID:', req.params.callId);
-  console.log('[Handoff] User:', req.user);
-  
-  const { callId } = req.params;
-  
-  // req.userが存在することを確認
-  if (!req.user || !req.user.id) {
-    console.error('[Handoff] req.user or req.user.id is undefined');
-    return next(new ErrorResponse('ユーザー認証情報が無効です。', 401));
-  }
-  
-  const userId = req.user.id;
-  console.log('[Handoff] User ID:', userId);
+/**
+ * Execute handoff logic (shared between manual and auto handoff)
+ * @param {Object} callSession - CallSession document
+ * @param {Object} user - User document with handoff phone number
+ * @param {String} handoffMethod - 'manual' or 'ai-auto'
+ * @param {String} handoffReason - Reason for handoff (optional)
+ * @returns {Object} Result with handoffCallSid, conferenceName, etc.
+ */
+exports.executeHandoffLogic = async (callSession, user, handoffMethod = 'manual', handoffReason = null) => {
+  const callId = callSession._id.toString();
 
-  // 通話セッションを取得
-  const callSession = await CallSession.findById(callId)
-    .populate('customerId');
-  
-  if (!callSession) {
-    return next(new ErrorResponse('Call session not found', 404));
-  }
-
-  // ステータスチェック
-  if (!['ai-responding', 'initiated', 'in-progress'].includes(callSession.status)) {
-    return next(new ErrorResponse('Cannot handoff call in current status', 400));
-  }
-
-  // 既に取次中または人間が対応中の場合
-  if (callSession.status === 'transferring' || callSession.status === 'human-connected') {
-    return next(new ErrorResponse('Handoff already in progress or completed', 400));
-  }
-
-  // ユーザー情報を取得（確実に初期化）
-  let user = null;
-  
-  try {
-    // モックユーザーIDの場合はデータベース検索をスキップ
-    if (userId === 'dev-user-id' || userId === 'direct-user-id' || userId === 'test-user-id') {
-      console.log('[Handoff] Using mock user for development');
-      user = {
-        _id: userId,
-        handoffPhoneNumber: '08070239355', // 開発環境用の固定番号
-        getTwilioPhoneNumber: function() {
-          return '+818070239355';
-        }
-      };
-    } else {
-      console.log('[Handoff] Looking up real user from database');
-      user = await User.findById(userId);
-      if (!user) {
-        console.error('[Handoff] User not found in database:', userId);
-        return next(new ErrorResponse('ユーザーが見つかりません。', 404));
-      }
-      if (!user.handoffPhoneNumber) {
-        console.error('[Handoff] User has no handoff phone number:', userId);
-        return next(new ErrorResponse('取次用電話番号が設定されていません。ユーザー情報画面で設定してください。', 400));
-      }
-    }
-
-    // userが正しく設定されていることを確認
-    if (!user) {
-      console.error('[Handoff] User initialization failed');
-      return next(new ErrorResponse('ユーザー情報の取得に失敗しました。', 500));
-    }
-    
-    console.log('[Handoff] User successfully initialized:', user._id);
-  } catch (userError) {
-    console.error('[Handoff] Error during user initialization:', userError);
-    return next(new ErrorResponse('ユーザー情報の取得中にエラーが発生しました。', 500));
-  }
+  console.log('[Handoff] Executing handoff logic');
+  console.log('[Handoff] Method:', handoffMethod);
+  console.log('[Handoff] Call ID:', callId);
 
   try {
     // Check if this is an OpenAI Realtime API call (Media Streams mode)
@@ -122,12 +61,13 @@ exports.initiateHandoff = asyncHandler(async (req, res, next) => {
       status: 'transferring',
       'handoffDetails.requestedAt': new Date(),
       'handoffDetails.handoffPhoneNumber': agentPhoneNumber,
-      'handoffDetails.handoffMethod': 'manual'
+      'handoffDetails.handoffMethod': handoffMethod
     };
     
     // モックユーザーでない場合のみrequestByを設定
-    if (!['dev-user-id', 'direct-user-id', 'test-user-id'].includes(userId)) {
-      updateData['handoffDetails.requestedBy'] = userId;
+    const userIdStr = user._id.toString();
+    if (!['dev-user-id', 'direct-user-id', 'test-user-id'].includes(userIdStr)) {
+      updateData['handoffDetails.requestedBy'] = user._id;
     }
     
     await CallSession.findByIdAndUpdate(callId, updateData);
@@ -237,7 +177,7 @@ exports.initiateHandoff = asyncHandler(async (req, res, next) => {
     // WebSocketで通知
     webSocketService.broadcastCallEvent('handoff-initiated', {
       callId,
-      agentId: userId,
+      agentId: user._id,
       agentCallSid: agentCall.sid,
       timestamp: new Date()
     });
@@ -251,15 +191,14 @@ exports.initiateHandoff = asyncHandler(async (req, res, next) => {
       timestamp: new Date()
     });
 
-    res.status(200).json({
-      success: true,
-      data: {
-        callId,
-        handoffCallSid: agentCall.sid,
-        status: 'connecting',
-        agentPhoneNumber: agentPhoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')  // マスク表示
-      }
-    });
+    // Return result data
+    return {
+      callId,
+      handoffCallSid: agentCall.sid,
+      status: 'connecting',
+      conferenceName,
+      agentPhoneNumber: agentPhoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')  // マスク表示
+    };
 
   } catch (error) {
     // エラー時は状態を戻す
@@ -268,7 +207,97 @@ exports.initiateHandoff = asyncHandler(async (req, res, next) => {
       $unset: { handoffDetails: 1 }
     });
 
-    return next(new ErrorResponse(`Failed to initiate handoff: ${error.message}`, 500));
+    throw new Error(`Failed to initiate handoff: ${error.message}`);
+  }
+};
+
+// @desc    Initiate handoff to human agent
+// @route   POST /api/calls/:callId/handoff
+// @access  Private
+exports.initiateHandoff = asyncHandler(async (req, res, next) => {
+  console.log('[Handoff] Starting handoff process');
+  console.log('[Handoff] Call ID:', req.params.callId);
+  console.log('[Handoff] User:', req.user);
+
+  const { callId } = req.params;
+
+  // req.userが存在することを確認
+  if (!req.user || !req.user.id) {
+    console.error('[Handoff] req.user or req.user.id is undefined');
+    return next(new ErrorResponse('ユーザー認証情報が無効です。', 401));
+  }
+
+  const userId = req.user.id;
+  console.log('[Handoff] User ID:', userId);
+
+  // 通話セッションを取得
+  const callSession = await CallSession.findById(callId)
+    .populate('customerId');
+
+  if (!callSession) {
+    return next(new ErrorResponse('Call session not found', 404));
+  }
+
+  // ステータスチェック
+  if (!['ai-responding', 'initiated', 'in-progress'].includes(callSession.status)) {
+    return next(new ErrorResponse('Cannot handoff call in current status', 400));
+  }
+
+  // 既に取次中または人間が対応中の場合
+  if (callSession.status === 'transferring' || callSession.status === 'human-connected') {
+    return next(new ErrorResponse('Handoff already in progress or completed', 400));
+  }
+
+  // ユーザー情報を取得（確実に初期化）
+  let user = null;
+
+  try {
+    // モックユーザーIDの場合はデータベース検索をスキップ
+    if (userId === 'dev-user-id' || userId === 'direct-user-id' || userId === 'test-user-id') {
+      console.log('[Handoff] Using mock user for development');
+      user = {
+        _id: userId,
+        handoffPhoneNumber: '08070239355', // 開発環境用の固定番号
+        getTwilioPhoneNumber: function() {
+          return '+818070239355';
+        }
+      };
+    } else {
+      console.log('[Handoff] Looking up real user from database');
+      user = await User.findById(userId);
+      if (!user) {
+        console.error('[Handoff] User not found in database:', userId);
+        return next(new ErrorResponse('ユーザーが見つかりません。', 404));
+      }
+      if (!user.handoffPhoneNumber) {
+        console.error('[Handoff] User has no handoff phone number:', userId);
+        return next(new ErrorResponse('取次用電話番号が設定されていません。ユーザー情報画面で設定してください。', 400));
+      }
+    }
+
+    // userが正しく設定されていることを確認
+    if (!user) {
+      console.error('[Handoff] User initialization failed');
+      return next(new ErrorResponse('ユーザー情報の取得に失敗しました。', 500));
+    }
+
+    console.log('[Handoff] User successfully initialized:', user._id);
+  } catch (userError) {
+    console.error('[Handoff] Error during user initialization:', userError);
+    return next(new ErrorResponse('ユーザー情報の取得中にエラーが発生しました。', 500));
+  }
+
+  try {
+    // 共通ロジックを実行
+    const result = await exports.executeHandoffLogic(callSession, user, 'manual', null);
+
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+
+  } catch (error) {
+    return next(new ErrorResponse(error.message, 500));
   }
 });
 
@@ -596,12 +625,13 @@ exports.initiateHandoffByPhone = asyncHandler(async (req, res, next) => {
       status: 'transferring',
       'handoffDetails.requestedAt': new Date(),
       'handoffDetails.handoffPhoneNumber': agentPhoneNumber,
-      'handoffDetails.handoffMethod': 'manual'
+      'handoffDetails.handoffMethod': handoffMethod
     };
     
     // モックユーザーでない場合のみrequestByを設定
-    if (!['dev-user-id', 'direct-user-id', 'test-user-id'].includes(userId)) {
-      updateData['handoffDetails.requestedBy'] = userId;
+    const userIdStr = user._id.toString();
+    if (!['dev-user-id', 'direct-user-id', 'test-user-id'].includes(userIdStr)) {
+      updateData['handoffDetails.requestedBy'] = user._id;
     }
     
     await CallSession.findByIdAndUpdate(callSession._id, updateData);
