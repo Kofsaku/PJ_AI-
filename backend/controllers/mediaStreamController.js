@@ -172,26 +172,22 @@ async function initializeSession(openaiWs, agentSettings) {
 
   const temperature = agentSettings?.temperature || 0.8;
 
-  // Use SIMPLE API format (matching working simple version)
+  // OpenAI Realtime API session configuration
   const sessionUpdate = {
     type: "session.update",
     session: {
-      type: "realtime",  // ← シンプル版と同じ
-      model: "gpt-realtime",  // ← シンプル版と同じ
-      output_modalities: ["audio"],  // ← シンプル版と同じ
-      audio: {  // ← ネスト構造（シンプル版と同じ）
-        input: {
-          format: { type: "audio/pcmu" },
-          turn_detection: { type: "server_vad" },
-          transcription: { model: "whisper-1" }  // ← ユーザー発話をテキスト化
-        },
-        output: {
-          format: { type: "audio/pcmu" },
-          voice: agentSettings?.voice || "alloy"
-        }
-      },
+      modalities: ["text", "audio"],  // Enable both text and audio
       instructions: instructions,
-      // temperature is passed in URL for simple version
+      voice: agentSettings?.voice || "alloy",
+      input_audio_format: "g711_ulaw",  // Twilio uses G.711 μ-law (pcmu)
+      output_audio_format: "g711_ulaw",
+      input_audio_transcription: {
+        model: "whisper-1"  // Transcribe user speech
+      },
+      turn_detection: {
+        type: "server_vad"  // Server-side voice activity detection
+      },
+      temperature: temperature,
       // Function calling for automatic handoff
       tools: [
         {
