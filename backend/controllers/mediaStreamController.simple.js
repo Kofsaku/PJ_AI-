@@ -33,15 +33,20 @@ async function initializeSession(openaiWs) {
   const sessionUpdate = {
     type: "session.update",
     session: {
-      modalities: ["text", "audio"],  // Enable both text and audio
-      instructions: SYSTEM_MESSAGE,
-      voice: VOICE,
-      input_audio_format: "g711_ulaw",  // Twilio uses G.711 μ-law
-      output_audio_format: "g711_ulaw",
-      turn_detection: {
-        type: "server_vad"
+      type: "realtime",
+      model: "gpt-realtime",
+      output_modalities: ["audio"],
+      audio: {
+        input: {
+          format: { type: "audio/pcmu" },
+          turn_detection: { type: "server_vad" }
+        },
+        output: {
+          format: { type: "audio/pcmu" },
+          voice: VOICE
+        }
       },
-      temperature: TEMPERATURE
+      instructions: SYSTEM_MESSAGE
     }
   };
 
