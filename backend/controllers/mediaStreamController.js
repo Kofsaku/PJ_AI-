@@ -282,9 +282,90 @@ exports.handleMediaStream = async (twilioWs, req) => {
   // Auto handoff state - store function call info to execute after AI finishes speaking
   let pendingHandoff = null;
 
+  // CallSession reference (will be loaded later)
+  let callSession = null;
+
+  // ========================================
+  // Register Twilio WebSocket handlers IMMEDIATELY
+  // This ensures we don't miss 'connected' and 'start' events
+  // ========================================
+
+  // Receive messages from Twilio → Send to OpenAI
+  // Reference: official sample line 83-108
+  twilioWs.on('message', (message) => {
+    try {
+      const data = JSON.parse(message);
+      console.log('[Twilio→Backend] Received message:', JSON.stringify(data).substring(0, 200), 'callId:', callId);
+      console.log('[Twilio→Backend] Event type:', data.event || 'NO EVENT FIELD');
+
+      // Handle media event (official sample line 89-95)
+      if (data.event === 'media' && openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+        latestMediaTimestamp = parseInt(data.media.timestamp);
+        const audioAppend = {
+          type: "input_audio_buffer.append",
+          audio: data.media.payload  // ← Already base64-encoded μ-law, send as-is
+        };
+        openaiWs.send(JSON.stringify(audioAppend));
+      }
+
+      // Handle stream start (official sample line 96-101)
+      else if (data.event === 'start') {
+        streamSid = data.start.streamSid;
+        console.log('[MediaStream] Stream started:', streamSid);
+        responseStartTimestamp = null;
+        latestMediaTimestamp = 0;
+        lastAssistantItem = null;
+
+        // Update streamSid in global map
+        const connection = global.activeMediaStreams.get(callId);
+        if (connection) {
+          connection.streamSid = streamSid;
+          console.log('[MediaStream] Updated streamSid in global map:', callId);
+        }
+      }
+
+      // Handle mark confirmation (official sample line 102-104)
+      else if (data.event === 'mark') {
+        if (markQueue.length > 0) {
+          markQueue.shift();  // Remove first mark
+        }
+      }
+
+    } catch (error) {
+      console.error('[MediaStream] Error processing Twilio message:', error.message);
+    }
+  });
+
+  // Handle Twilio WebSocket close
+  twilioWs.on('close', async () => {
+    console.log('[MediaStream] Client disconnected');
+
+    // Remove from global map
+    if (global.activeMediaStreams.has(callId)) {
+      global.activeMediaStreams.delete(callId);
+      console.log('[MediaStream] Removed connection from global map:', callId);
+    }
+
+    // Close OpenAI connection
+    if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+      openaiWs.close();
+    }
+
+    // Update CallSession
+    if (callSession) {
+      callSession.status = 'completed';
+      await callSession.save();
+    }
+  });
+
+  // Handle Twilio WebSocket errors
+  twilioWs.on('error', (error) => {
+    console.error('[MediaStream] Twilio WebSocket error:', error.message);
+  });
+
   try {
     // Load CallSession from database
-    const callSession = await CallSession.findById(callId).populate('assignedAgent');
+    callSession = await CallSession.findById(callId).populate('assignedAgent');
 
     if (!callSession) {
       console.error('[MediaStream] CallSession not found:', callId);
@@ -647,78 +728,7 @@ exports.handleMediaStream = async (twilioWs, req) => {
       }
     });
 
-    // Receive messages from Twilio → Send to OpenAI
-    // Reference: official sample line 83-108
-    twilioWs.on('message', (message) => {
-      try {
-        const data = JSON.parse(message);
-        console.log('[Twilio→Backend] Received message:', JSON.stringify(data).substring(0, 200), 'callId:', callId);
-        console.log('[Twilio→Backend] Event type:', data.event || 'NO EVENT FIELD');
-
-        // Handle media event (official sample line 89-95)
-        if (data.event === 'media' && openaiWs && openaiWs.readyState === WebSocket.OPEN) {
-          latestMediaTimestamp = parseInt(data.media.timestamp);
-          const audioAppend = {
-            type: "input_audio_buffer.append",
-            audio: data.media.payload  // ← Already base64-encoded μ-law, send as-is
-          };
-          openaiWs.send(JSON.stringify(audioAppend));
-        }
-
-        // Handle stream start (official sample line 96-101)
-        else if (data.event === 'start') {
-          streamSid = data.start.streamSid;
-          console.log('[MediaStream] Stream started:', streamSid);
-          responseStartTimestamp = null;
-          latestMediaTimestamp = 0;
-          lastAssistantItem = null;
-
-          // Update streamSid in global map
-          const connection = global.activeMediaStreams.get(callId);
-          if (connection) {
-            connection.streamSid = streamSid;
-            console.log('[MediaStream] Updated streamSid in global map:', callId);
-          }
-        }
-
-        // Handle mark confirmation (official sample line 102-104)
-        else if (data.event === 'mark') {
-          if (markQueue.length > 0) {
-            markQueue.shift();  // Remove first mark
-          }
-        }
-
-      } catch (error) {
-        console.error('[MediaStream] Error processing Twilio message:', error.message);
-      }
-    });
-
-    // Handle Twilio WebSocket close
-    twilioWs.on('close', async () => {
-      console.log('[MediaStream] Client disconnected');
-
-      // Remove from global map
-      if (global.activeMediaStreams.has(callId)) {
-        global.activeMediaStreams.delete(callId);
-        console.log('[MediaStream] Removed connection from global map:', callId);
-      }
-
-      // Close OpenAI connection
-      if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
-        openaiWs.close();
-      }
-
-      // Update CallSession
-      if (callSession) {
-        callSession.status = 'completed';
-        await callSession.save();
-      }
-    });
-
-    // Handle Twilio WebSocket errors
-    twilioWs.on('error', (error) => {
-      console.error('[MediaStream] Twilio WebSocket error:', error.message);
-    });
+    // Twilio event handlers are registered at the top of this function
 
   } catch (error) {
     console.error('[MediaStream] Error in handleMediaStream:', error.message);
