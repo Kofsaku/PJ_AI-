@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { io, Socket } from "socket.io-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -494,17 +495,14 @@ const getSessionKey = useCallback((session: any, phone: string) => {
   // ポーリングベースのリアルタイム通話状態更新
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (!token) return;
+    if (!token || pausePolling) return;
 
-    console.log("[Dashboard] Starting polling for call status updates");
+    // 開発環境でのみログ出力
+    const isDev = process.env.NODE_ENV === 'development';
+    if (isDev) console.log("[Dashboard] Starting polling for call status updates");
 
     // 通話状態を取得する関数
     const fetchCallStatuses = async () => {
-      if (pausePolling) {
-        console.log("[Dashboard] Polling paused for status update");
-        return;
-      }
-      
       try {
         const data = await authenticatedApiRequest('/api/calls/bulk');
         if (!data.success || !data.sessions) return;
@@ -568,7 +566,7 @@ const getSessionKey = useCallback((session: any, phone: string) => {
           const hasChanges = prev.size !== newCallingSessions.size ||
             [...prev].some(id => !newCallingSessions.has(id));
           if (hasChanges) {
-            console.log('[Dashboard] Updated calling sessions:', newCallingSessions);
+            if (isDev) console.log('[Dashboard] Updated calling sessions:', newCallingSessions);
             return newCallingSessions;
           }
           return prev;
@@ -615,26 +613,16 @@ const getSessionKey = useCallback((session: any, phone: string) => {
     // 初回実行
     fetchCallStatuses();
 
-    // 3秒間隔でポーリング（通話中の場合は頻度を上げる）
-    const pollingInterval = setInterval(() => {
-      if ((isBulkCallActive || callingSessions.size > 0) && !pausePolling) {
-        fetchCallStatuses();
-      }
-    }, 3000);
+    // WebSocketがメインとなったため、ポーリングは30秒間隔のフォールバック用のみ
+    const interval = 30000; // 30秒 (従来: 通話中3秒、通常10秒)
 
-    // 通話状態が非アクティブの場合は低頻度ポーリング
-    const lowFrequencyInterval = setInterval(() => {
-      if (!isBulkCallActive && callingSessions.size === 0 && !pausePolling) {
-        fetchCallStatuses();
-      }
-    }, 10000);
+    const pollingInterval = setInterval(fetchCallStatuses, interval);
 
     return () => {
       clearInterval(pollingInterval);
-      clearInterval(lowFrequencyInterval);
-      console.log('[Dashboard] Stopped polling for call status updates');
+      if (isDev) console.log('[Dashboard] Stopped polling for call status updates');
     };
-  }, [customers, isBulkCallActive, callingSessions.size, pausePolling, phoneToCustomerMap, normalizePhoneNumber, getSessionKey]);
+  }, [pausePolling]); // phoneToCustomerMapは参照型なので依存配列から削除
 
   // 通話状態監視 - 全通話終了時に一斉通話状態を自動リセット（遅延実行）
   useEffect(() => {
@@ -661,6 +649,109 @@ const getSessionKey = useCallback((session: any, phone: string) => {
       };
     }
   }, [callingSessions.size, isBulkCallActive, bulkCallQueue, toast]);
+
+  // WebSocket - リアルタイム通話状態更新
+  useEffect(() => {
+    // WebSocketのURL（開発環境: localhost:5000、本番環境: APIサーバー）
+    const wsUrl = process.env.NODE_ENV === 'production'
+      ? process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+      : 'http://localhost:5000';
+
+    const socket = io(wsUrl);
+    console.log('[Dashboard WebSocket] Connecting to:', wsUrl);
+
+    // 電話番号正規化関数（ローカル）
+    const normalize = (phone?: string | null) => {
+      if (!phone) return "";
+      let normalized = phone.replace(/[\s-]/g, "");
+      if (normalized.startsWith("+81")) {
+        normalized = "0" + normalized.substring(3);
+      }
+      return normalized;
+    };
+
+    socket.on('connect', () => {
+      console.log('[Dashboard WebSocket] Connected');
+    });
+
+    socket.on('callStatusUpdate', (data) => {
+      console.log('[Dashboard WebSocket] Received callStatusUpdate:', data);
+
+      const { customerId, phoneNumber, status, callResult, callId, twilioCallSid } = data;
+
+      // 通話状態に応じてローカルステートを更新
+      if (status === 'calling' || status === 'ai-responding') {
+        // 通話中セッションに追加
+        setCallingSessions(prev => {
+          const newSet = new Set(prev);
+          newSet.add(customerId);
+          console.log('[Dashboard WebSocket] Added to calling sessions:', customerId);
+          return newSet;
+        });
+
+        // 電話番号 → 顧客IDマップを更新
+        if (phoneNumber) {
+          setPhoneToCustomerMap(prev => {
+            const newMap = new Map(prev);
+            const normalized = normalize(phoneNumber);
+            newMap.set(normalized, customerId);
+            return newMap;
+          });
+        }
+
+        // 新しい通話開始時はモーダルを自動表示
+        if (status === 'calling' && phoneNumber) {
+          setActivePhoneNumber(phoneNumber);
+          setIsCallStatusModalOpen(true);
+          console.log('[Dashboard WebSocket] Auto-opened call status modal for:', phoneNumber);
+        }
+
+      } else if (status === 'completed') {
+        // 通話完了: セッションから削除
+        setCallingSessions(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(customerId);
+          console.log('[Dashboard WebSocket] Removed from calling sessions:', customerId);
+          return newSet;
+        });
+
+        // 顧客リストに通話結果を反映
+        if (callResult) {
+          setCustomers(prev =>
+            prev.map(c =>
+              getCustomerId(c) === customerId
+                ? { ...c, result: callResult, callResult: callResult }
+                : c
+            )
+          );
+          console.log('[Dashboard WebSocket] Updated customer result:', customerId, callResult);
+        }
+
+        // 電話番号マップから削除
+        if (phoneNumber) {
+          setPhoneToCustomerMap(prev => {
+            const newMap = new Map(prev);
+            const normalized = normalize(phoneNumber);
+            newMap.delete(normalized);
+            return newMap;
+          });
+        }
+      }
+    });
+
+    socket.on('disconnect', () => {
+      console.log('[Dashboard WebSocket] Disconnected');
+    });
+
+    socket.on('error', (error) => {
+      console.error('[Dashboard WebSocket] Error:', error);
+    });
+
+    return () => {
+      console.log('[Dashboard WebSocket] Cleaning up connection');
+      socket.disconnect();
+    };
+  }, []); // 依存配列を空にしてマウント時のみ実行
 
   // Filter customers based on search and filters
   const filteredCustomers = customers.filter((customer) => {

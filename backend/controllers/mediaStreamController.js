@@ -322,6 +322,18 @@ exports.handleMediaStream = async (twilioWs, req) => {
           connection.streamSid = streamSid;
           console.log('[MediaStream] Updated streamSid in global map:', callId);
         }
+
+        // Notify frontend via WebSocket - call started
+        if (callSession && global.io) {
+          global.io.emit('callStatusUpdate', {
+            customerId: callSession.customer,
+            phoneNumber: callSession.phoneNumber,
+            status: 'calling',
+            callId: callSession._id.toString(),
+            twilioCallSid: callSession.twilioCallSid
+          });
+          console.log('[WebSocket] Emitted callStatusUpdate: calling');
+        }
       }
 
       // Handle mark confirmation (official sample line 102-104)
@@ -355,6 +367,19 @@ exports.handleMediaStream = async (twilioWs, req) => {
     if (callSession) {
       callSession.status = 'completed';
       await callSession.save();
+
+      // Notify frontend via WebSocket - call ended
+      if (global.io) {
+        global.io.emit('callStatusUpdate', {
+          customerId: callSession.customer,
+          phoneNumber: callSession.phoneNumber,
+          status: 'completed',
+          callResult: callSession.callResult || '完了',
+          callId: callSession._id.toString(),
+          twilioCallSid: callSession.twilioCallSid
+        });
+        console.log('[WebSocket] Emitted callStatusUpdate: completed');
+      }
     }
   });
 
@@ -508,6 +533,18 @@ exports.handleMediaStream = async (twilioWs, req) => {
             responseStartTimestamp = latestMediaTimestamp;
             lastAssistantItem = response.item_id;
             console.log('[Audio] New assistant item:', response.item_id);
+
+            // Notify frontend via WebSocket - AI is responding
+            if (callSession && global.io) {
+              global.io.emit('callStatusUpdate', {
+                customerId: callSession.customer,
+                phoneNumber: callSession.phoneNumber,
+                status: 'ai-responding',
+                callId: callSession._id.toString(),
+                twilioCallSid: callSession.twilioCallSid
+              });
+              console.log('[WebSocket] Emitted callStatusUpdate: ai-responding');
+            }
           }
 
           // Send mark for tracking (official sample line 137)
