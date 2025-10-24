@@ -468,13 +468,9 @@ export function CallStatusModal({
   const handleEndCall = async () => {
     if (callSid) {
       try {
-        // Send end call request via API
-        await fetch("/api/twilio/call/end", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ callSid }),
-        });
-        
+        // Note: Twilio call termination is handled by backend via WebSocket
+        // No need to call /api/twilio/call/end endpoint
+
         // Emit end call event via socket
         if (socket) {
           socket.emit("end-call", { callSid, phoneNumber });
