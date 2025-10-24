@@ -179,7 +179,8 @@ exports.generateConferenceTwiML = asyncHandler(async (req, res) => {
 
     const connect = twiml.connect();
     connect.stream({
-      url: streamUrl
+      url: streamUrl,
+      name: `stream_${callId}` // Add name attribute to ensure 'start' event is sent
     });
 
     console.log(`[TwiML Conference] TwiML generated with Media Stream connection`);
