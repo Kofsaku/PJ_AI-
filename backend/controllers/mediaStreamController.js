@@ -652,6 +652,7 @@ exports.handleMediaStream = async (twilioWs, req) => {
     twilioWs.on('message', (message) => {
       try {
         const data = JSON.parse(message);
+        console.log('[Twilio→Backend] Received event:', data.event || 'unknown', 'callId:', callId);
 
         // Handle media event (official sample line 89-95)
         if (data.event === 'media' && openaiWs && openaiWs.readyState === WebSocket.OPEN) {
