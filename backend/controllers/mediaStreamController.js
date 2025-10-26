@@ -26,6 +26,64 @@ const LOG_EVENT_TYPES = [
 ];
 
 /**
+ * Execute automatic call termination when customer rejects the offer
+ * @param {Object} callSession - CallSession document
+ * @param {String} functionCallId - OpenAI function call ID
+ * @param {Object} args - Function arguments (rejection_reason)
+ */
+async function executeAutoCallEnd(callSession, functionCallId, args) {
+  try {
+    console.log('[AutoCallEnd] 顧客拒否による自動切電を実行');
+    console.log('[AutoCallEnd] CallSession ID:', callSession._id);
+    console.log('[AutoCallEnd] Function Call ID:', functionCallId);
+    console.log('[AutoCallEnd] 拒否理由:', args.rejection_reason);
+
+    // CallSessionの更新
+    callSession.status = 'completed';
+    callSession.endTime = new Date();
+    callSession.callResult = '拒否';  // 顧客応答結果
+    callSession.endReason = 'ai_initiated';
+    callSession.notes = args.rejection_reason ? `AI判断による切電: ${args.rejection_reason}` : 'AI判断による切電';
+
+    await callSession.save();
+    console.log('[AutoCallEnd] CallSession更新完了');
+
+    // Twilio通話終了
+    if (callSession.twilioCallSid && callSession.twilioCallSid !== 'pending') {
+      const twilioService = require('../services/twilioService');
+      await twilioService.endCall(callSession.twilioCallSid);
+      console.log('[AutoCallEnd] Twilio通話終了完了:', callSession.twilioCallSid);
+    }
+
+    // WebSocket通知
+    if (global.io) {
+      global.io.emit('callStatusUpdate', {
+        customerId: callSession.customer,
+        phoneNumber: callSession.phoneNumber,
+        status: 'completed',
+        callResult: '拒否',
+        callId: callSession._id.toString(),
+        twilioCallSid: callSession.twilioCallSid
+      });
+      console.log('[WebSocket] Emitted callStatusUpdate: completed (拒否)');
+    }
+
+    return {
+      success: true,
+      message: '通話を終了しました'
+    };
+
+  } catch (error) {
+    console.error('[AutoCallEnd] エラー:', error);
+    return {
+      success: false,
+      message: '切電処理に失敗しました',
+      error: error.message
+    };
+  }
+}
+
+/**
  * Execute automatic handoff when AI determines transfer is appropriate
  * @param {Object} callSession - CallSession document
  * @param {String} functionCallId - OpenAI function call ID
@@ -213,6 +271,22 @@ async function initializeSession(openaiWs, agentSettings) {
             },
             required: ["customer_consent"]
           }
+        },
+        {
+          type: "function",
+          name: "end_call_on_rejection",
+          description: "顧客が明確に興味がないと表明し、会話の継続を拒否した時に使用する。「結構です」「必要ありません」「忙しいので」「間に合っています」などの明確な拒否表現を検知した時のみ呼び出す。重要：顧客が明確に拒否した時のみ使用すること。",
+          parameters: {
+            type: "object",
+            properties: {
+              rejection_reason: {
+                type: "string",
+                description: "顧客の拒否理由カテゴリ",
+                enum: ["興味なし", "忙しい", "既存サービス利用中", "不要", "その他"]
+              }
+            },
+            required: ["rejection_reason"]
+          }
         }
       ],
       tool_choice: "auto"  // AIが自動的に判断して関数を呼び出す
@@ -281,6 +355,9 @@ exports.handleMediaStream = async (twilioWs, req) => {
 
   // Auto handoff state - store function call info to execute after AI finishes speaking
   let pendingHandoff = null;
+
+  // Auto call end state - store function call info to execute after AI finishes speaking
+  let pendingCallEnd = null;
 
   // CallSession reference (will be loaded later)
   let callSession = null;
@@ -674,6 +751,10 @@ exports.handleMediaStream = async (twilioWs, req) => {
             console.log('[AutoHandoff] AI response completed, waiting for audio playback to finish');
             console.log('[AutoHandoff] Pending handoff data:', pendingHandoff);
 
+            // Store reference and clear immediately to prevent duplicate execution
+            const handoffData = pendingHandoff;
+            pendingHandoff = null;
+
             // Wait 5 seconds to ensure AI's full handoff message completes
             // "それでは担当者におつなぎいたします。よろしくお願いいたします。"
             // This accounts for:
@@ -684,15 +765,39 @@ exports.handleMediaStream = async (twilioWs, req) => {
             setTimeout(async () => {
               try {
                 console.log('[AutoHandoff] Audio playback buffer complete, executing handoff now');
-                const result = await executeAutoHandoff(callSession, pendingHandoff.callId, pendingHandoff.args);
+                const result = await executeAutoHandoff(callSession, handoffData.callId, handoffData.args);
                 console.log('[AutoHandoff] Successfully executed after AI response:', result);
               } catch (error) {
                 console.error('[AutoHandoff] Error executing pending handoff:', error);
-              } finally {
-                // Clear pending handoff regardless of success/failure
-                pendingHandoff = null;
               }
             }, 5000);  // 5 second delay
+          }
+
+          // Execute pending call end AFTER AI finishes speaking
+          if (pendingCallEnd) {
+            console.log('[AutoCallEnd] AI応答完了、音声再生完了後に切電を実行');
+            console.log('[AutoCallEnd] Pending call end data:', pendingCallEnd);
+
+            // Store reference and clear immediately to prevent duplicate execution
+            const callEndData = pendingCallEnd;
+            pendingCallEnd = null;
+
+            // Wait 8 seconds to ensure AI's farewell message completes
+            // "承知いたしました。お忙しいところ失礼いたしました。失礼いたします。"
+            // This accounts for:
+            // - AI response generation time
+            // - Network latency between OpenAI → Twilio → Customer
+            // - Audio playback duration for the farewell message (~7 seconds)
+            // - Audio buffering on customer's device
+            setTimeout(async () => {
+              try {
+                console.log('[AutoCallEnd] 音声再生バッファ完了、切電を実行します');
+                const result = await executeAutoCallEnd(callSession, callEndData.callId, callEndData.args);
+                console.log('[AutoCallEnd] 切電実行完了:', result);
+              } catch (error) {
+                console.error('[AutoCallEnd] 切電実行エラー:', error);
+              }
+            }, 8000);  // 8 second delay
           }
         }
 
@@ -750,6 +855,64 @@ exports.handleMediaStream = async (twilioWs, req) => {
                     output: JSON.stringify({
                       success: false,
                       message: '転送準備に失敗しました',
+                      error: error.message
+                    })
+                  }
+                };
+                openaiWs.send(JSON.stringify(functionOutput));
+              }
+            }
+          }
+
+          // Handle Function Calling - Auto Call End on Rejection
+          else if (item.type === 'function_call' && item.name === 'end_call_on_rejection') {
+            console.log('[FunctionCall] 顧客拒否検知 - 切電処理を予約');
+            console.log('[FunctionCall] Arguments:', item.arguments);
+            console.log('[FunctionCall] AI応答完了後に切電を実行します');
+
+            try {
+              const args = JSON.parse(item.arguments);
+              pendingCallEnd = {
+                callId: item.call_id,
+                args: args
+              };
+
+              // OpenAIに成功結果を返す（AIが丁寧な挨拶を生成できるように）
+              if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                const functionOutput = {
+                  type: 'conversation.item.create',
+                  item: {
+                    type: 'function_call_output',
+                    call_id: item.call_id,
+                    output: JSON.stringify({
+                      success: true,
+                      message: '切電準備が整いました。お客様にご挨拶後、通話を終了します。'
+                    })
+                  }
+                };
+                openaiWs.send(JSON.stringify(functionOutput));
+                console.log('[FunctionCall] Sent function result to OpenAI (call end pending)');
+
+                // AI応答生成をリクエスト
+                const responseCreate = {
+                  type: 'response.create'
+                };
+                openaiWs.send(JSON.stringify(responseCreate));
+              }
+            } catch (error) {
+              console.error('[FunctionCall] Error parsing function arguments:', error);
+              pendingCallEnd = null;
+
+              // エラー結果をOpenAIに返す
+              if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                const functionOutput = {
+                  type: 'conversation.item.create',
+                  item: {
+                    type: 'function_call_output',
+                    call_id: item.call_id,
+                    output: JSON.stringify({
+                      success: false,
+                      message: '切電準備に失敗しました',
                       error: error.message
                     })
                   }

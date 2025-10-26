@@ -180,15 +180,20 @@ exports.makeCall = async (phoneNumber, sessionId, userId = null) => {
 };
 
 exports.endCall = async (callSid) => {
-  if (!isTwilioConfigured) {
+  const config = getTwilioConfig();
+
+  if (!config.isConfigured) {
     console.log('Twilio not configured - simulating end call:', callSid);
     return { status: 'completed' };
   }
 
+  const client = initializeTwilioClient(config);
+
   try {
-    const call = await twilioClient.calls(callSid).update({
+    const call = await client.calls(callSid).update({
       status: 'completed'
     });
+    console.log('[TwilioService] Call ended successfully:', callSid);
     return call;
   } catch (error) {
     console.error('Twilio end call error:', error);
@@ -197,13 +202,17 @@ exports.endCall = async (callSid) => {
 };
 
 exports.getCallStatus = async (callSid) => {
-  if (!isTwilioConfigured) {
+  const config = getTwilioConfig();
+
+  if (!config.isConfigured) {
     console.log('Twilio not configured - simulating get call status:', callSid);
     return { status: 'completed', duration: 60 };
   }
 
+  const client = initializeTwilioClient(config);
+
   try {
-    const call = await twilioClient.calls(callSid).fetch();
+    const call = await client.calls(callSid).fetch();
     return call;
   } catch (error) {
     console.error('Twilio get call status error:', error);
