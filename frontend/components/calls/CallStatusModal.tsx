@@ -37,6 +37,7 @@ export function CallStatusModal({
   const [callSid, setCallSid] = useState<string | null>(null);
   const callSidRef = useRef<string | null>(null);
   const callStatusRef = useRef<"connecting" | "connected" | "ended">("connecting");
+  const existingDataReceivedRef = useRef<boolean>(false);
   const [modalOpenTime, setModalOpenTime] = useState<Date | null>(null);
   const [processedMessages, setProcessedMessages] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -51,18 +52,17 @@ export function CallStatusModal({
 
   useEffect(() => {
     if (isOpen && phoneNumber) {
-      // 新しい通話のためにトランスクリプトをクリア
+      // モーダルを開いた時刻を記録
       const openTime = new Date();
       setModalOpenTime(openTime);
-      setTranscript([{
-        speaker: "System",
-        text: "会話が開始されると、ここに表示されます",
-        timestamp: new Date().toLocaleTimeString("ja-JP"),
-      }]);
+
+      // existing-call-dataの受信フラグをリセット
+      existingDataReceivedRef.current = false;
+
+      // transcriptはまだクリアしない（existing-call-dataのレスポンスを待つ）
       setCallStatus("connecting");
-      setCallSid(null); // CallSidもリセット
-      setProcessedMessages(new Set()); // 処理済みメッセージをクリア
-      
+      // callSidとprocessedMessagesもリセットしない（既存の通話の場合、保持する必要がある）
+
       // 電話番号を正規化（ハイフンを除去し、0906... 形式に統一）
       const normalizePhoneNumber = (phone: string) => {
         if (!phone) return '';
@@ -190,19 +190,74 @@ export function CallStatusModal({
 
       // Listen for existing call data response
       newSocket.on("existing-call-data", (data) => {
-        if (data && data.transcript && Array.isArray(data.transcript)) {
-          const existingTranscript = data.transcript.map((entry: any) => ({
-            speaker: entry.speaker as "AI" | "Customer" | "System",
-            text: entry.text || entry.message,
-            timestamp: entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString("ja-JP") : new Date().toLocaleTimeString("ja-JP"),
-          }));
+        existingDataReceivedRef.current = true;
+        console.log("[CallStatusModal] existing-call-data received:", data);
 
-          if (existingTranscript.length > 0) {
-            setTranscript(existingTranscript);
-            setCallStatus(data.status === "completed" ? "ended" : "connected");
+        if (data && data.transcript && Array.isArray(data.transcript) && data.transcript.length > 0) {
+          // 既存の会話履歴がある場合、それを表示
+          const existingTranscript = data.transcript.map((entry: any) => {
+            // speakerの正しいマッピング（transcript-updateと同じロジック）
+            let speakerType: "AI" | "Customer" | "System" = "System";
+            if (entry.speaker === "ai" || entry.speaker === "AI") {
+              speakerType = "AI";
+            } else if (entry.speaker === "customer" || entry.speaker === "Customer") {
+              speakerType = "Customer";
+            } else if (entry.speaker === "system" || entry.speaker === "System") {
+              speakerType = "System";
+            }
+
+            return {
+              speaker: speakerType,
+              text: entry.text || entry.message,
+              timestamp: entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString("ja-JP") : new Date().toLocaleTimeString("ja-JP"),
+            };
+          });
+
+          console.log("[CallStatusModal] Restoring existing transcript:", existingTranscript.length, "entries");
+
+          // 既存の履歴をprocessedMessagesに登録（重複防止のため）
+          const newProcessedMessages = new Set<string>();
+          existingTranscript.forEach(entry => {
+            const messageId = `${entry.speaker}-${entry.text}-${entry.timestamp}`;
+            newProcessedMessages.add(messageId);
+          });
+          setProcessedMessages(newProcessedMessages);
+          console.log("[CallStatusModal] Registered", newProcessedMessages.size, "messages as processed");
+
+          setTranscript(existingTranscript);
+          setCallStatus(data.status === "completed" ? "ended" : "connected");
+          if (data.callSid) {
+            setCallSid(data.callSid);
           }
+        } else {
+          // 既存の会話履歴がない場合、新しい通話として初期化
+          console.log("[CallStatusModal] No existing transcript, initializing new call");
+          setTranscript([{
+            speaker: "System",
+            text: "会話が開始されると、ここに表示されます",
+            timestamp: new Date().toLocaleTimeString("ja-JP"),
+          }]);
+          setCallSid(null);
+          setProcessedMessages(new Set());
         }
       });
+
+      // タイムアウト：1秒経ってもexisting-call-dataが返ってこない場合、新しい通話として扱う
+      const existingDataTimeout = setTimeout(() => {
+        // refを使用してクロージャの問題を回避
+        if (!existingDataReceivedRef.current) {
+          console.log("[CallStatusModal] No existing-call-data received within timeout, initializing new call");
+          setTranscript([{
+            speaker: "System",
+            text: "会話が開始されると、ここに表示されます",
+            timestamp: new Date().toLocaleTimeString("ja-JP"),
+          }]);
+          setCallSid(null);
+          setProcessedMessages(new Set());
+        } else {
+          console.log("[CallStatusModal] existing-call-data received, timeout cancelled");
+        }
+      }, 1000);
 
       // Listen for transcript updates
       newSocket.on("transcript-update", (data) => {
@@ -314,6 +369,7 @@ export function CallStatusModal({
       // }, 2000);
 
       return () => {
+        clearTimeout(existingDataTimeout);
         newSocket.off("call-status", handleCallStatus);
         newSocket.off("call-terminated", handleCallTerminated);
         newSocket.emit("leave-call", { phoneNumber });
@@ -325,7 +381,8 @@ export function CallStatusModal({
         socket.disconnect();
         setSocket(null);
       }
-      setTranscript([]);
+      // モーダルを閉じてもtranscriptはクリアしない（再度開いた時に復元するため）
+      // setTranscript([]);
     }
   }, [isOpen, phoneNumber]);
 

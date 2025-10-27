@@ -317,19 +317,9 @@ class WebSocketService {
               }))
             });
 
-            // 個別のtranscript-updateイベントも送信（既存の互換性のため）
-            activeCall.transcript.forEach((entry, index) => {
-              console.log(`[WebSocket] トランスクリプト[${index}]: ${entry.speaker} - ${entry.message}`);
-              socket.emit('transcript-update', {
-                phoneNumber: normalizedPhone,
-                callSid: activeCall.twilioCallSid,
-                callId: activeCall._id.toString(),
-                speaker: entry.speaker,
-                message: entry.message,
-                text: entry.message,
-                timestamp: entry.timestamp
-              });
-            });
+            // 注：個別のtranscript-updateイベントは送信しない
+            // モーダルを再度開いた際に履歴が重複して上書きされるのを防ぐため
+            console.log(`[WebSocket] 既存トランスクリプト ${activeCall.transcript.length} 件を一括送信完了`);
           } else {
             console.log('[WebSocket] トランスクリプトなし - 空の通話');
             // トランスクリプトがない場合も empty existing-call-data を送信
