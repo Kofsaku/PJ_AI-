@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Sidebar } from "@/components/sidebar"
 import { useToast } from "@/components/ui/use-toast"
+import { authenticatedApiRequest } from "@/lib/apiHelper"
 
 export default function NewCustomerPage() {
   const [formData, setFormData] = useState({
@@ -42,7 +43,7 @@ export default function NewCustomerPage() {
         date: new Date().toLocaleDateString('ja-JP'),
         time: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
         duration: "0:00",
-        result: "未実施",
+        result: "未対応",
         notes: formData.notes,
         email: formData.email,
         phone: formData.phone,
@@ -51,17 +52,10 @@ export default function NewCustomerPage() {
         zipCode: formData.zipCode
       }
 
-      const response = await fetch('/api/customers', {
+      const response = await authenticatedApiRequest('/api/customers', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(customerData),
       })
-
-      if (!response.ok) {
-        throw new Error('Failed to create customer')
-      }
 
       toast({
         title: "成功",
