@@ -35,10 +35,20 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       const errorText = await response.text();
       console.log(`[Customer Import API] Error response:`, errorText);
+
+      // Try to parse error message from JSON
+      let errorMessage = 'インポートに失敗しました';
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch {
+        errorMessage = errorText;
+      }
+
       return NextResponse.json(
-        { 
-          success: false, 
-          message: `Backend error: ${response.status} ${errorText}` 
+        {
+          success: false,
+          error: errorMessage
         },
         { status: response.status }
       );

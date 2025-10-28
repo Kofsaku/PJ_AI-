@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Upload, FileText } from "lucide-react"
+import { Upload, FileText, Download } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 
 export default function ImportPage() {
@@ -44,6 +44,25 @@ export default function ImportPage() {
       setFile(e.target.files[0])
       setError(null)
     }
+  }
+
+  const handleDownloadSample = () => {
+    const sample = `customer,email,phone,address,company,result,notes,url
+山田太郎,yamada@example.com,090-1234-5678,東京都渋谷区1-2-3,株式会社サンプル,未対応,サンプルデータ,https://example.com`
+
+    // UTF-8 BOMを追加してExcelでも正しく表示されるようにする
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF])
+    const blob = new Blob([bom, sample], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+
+    link.setAttribute('href', url)
+    link.setAttribute('download', 'customer_sample.csv')
+    link.style.visibility = 'hidden'
+
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
   const parseCSV = (text: string): any[] => {
@@ -113,7 +132,8 @@ export default function ImportPage() {
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.message || 'インポートに失敗しました')
+        const errorMessage = errorData.error || errorData.message || 'インポートに失敗しました'
+        throw new Error(errorMessage)
       }
 
       const result = await response.json()
@@ -140,20 +160,19 @@ export default function ImportPage() {
       <Sidebar />
 
       <main className="ml-64 p-6">
-        <h1 className="text-2xl font-bold mb-6">CSVファイルインポート</h1>
+        <h1 className="text-2xl font-bold mb-6">顧客情報インポート</h1>
 
-        <div className="max-w-2xl">
-          <Card>
+        <Card>
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 m-6 mb-0">
+              <p className="text-red-700 text-sm">{error}</p>
+            </div>
+          )}
             <CardHeader>
               <CardTitle>ファイルを選択してください</CardTitle>
               <p className="text-sm text-gray-600">CSVファイルをドラッグ&ドロップするか、ファイルを選択してください</p>
             </CardHeader>
             <CardContent className="space-y-4">
-              {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                  <p className="text-red-700 text-sm">{error}</p>
-                </div>
-              )}
 
               <div
                 className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
@@ -171,17 +190,29 @@ export default function ImportPage() {
                     <p className="text-sm text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-4">
                     <Upload className="h-12 w-12 text-gray-400 mx-auto" />
                     <p className="text-gray-600">ファイルをここにドラッグ&ドロップ</p>
                     <p className="text-sm text-gray-500">または</p>
+                    <label htmlFor="file-upload" className="inline-block cursor-pointer">
+                      <Input id="file-upload" type="file" accept=".csv" onChange={handleFileChange} className="hidden" />
+                      <Button type="button" variant="outline" className="pointer-events-none">
+                        ファイルを選択
+                      </Button>
+                    </label>
                   </div>
                 )}
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="file-upload">ファイルを選択</Label>
-                <Input id="file-upload" type="file" accept=".csv" onChange={handleFileChange} />
+              <div className="flex justify-start">
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadSample}
+                  className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  サンプルCSVをダウンロード
+                </Button>
               </div>
 
               <div className="bg-blue-50 p-4 rounded-lg">
@@ -189,13 +220,16 @@ export default function ImportPage() {
                 <ul className="text-sm text-blue-800 space-y-1">
                   <li>• 1行目はヘッダー行として扱われます</li>
                   <li>• 文字コードはUTF-8で保存してください</li>
-                  <li>• 必須項目: customer, email</li>
+                  <li>• 必須項目: customer, phone</li>
                   <li>• 最大10,000件まで一度にインポート可能です</li>
                 </ul>
               </div>
 
               <div className="flex justify-end space-x-2 pt-4">
-                <Button variant="outline" onClick={() => router.back()} disabled={loading}>
+                <Button variant="outline" onClick={() => {
+                  setFile(null)
+                  setError(null)
+                }} disabled={loading}>
                   キャンセル
                 </Button>
                 <Button 
@@ -208,7 +242,6 @@ export default function ImportPage() {
               </div>
             </CardContent>
           </Card>
-        </div>
       </main>
     </div>
   )

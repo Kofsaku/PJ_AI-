@@ -323,18 +323,27 @@ router.post('/import', protect, async (req, res) => {
 
     // Validate and format customer data
     const validatedCustomers = customers.map((customer, index) => {
+      // Validate required fields
+      if (!customer.customer || !customer.customer.trim()) {
+        throw new Error(`行 ${index + 2}: 顧客名(customer)は必須項目です`);
+      }
+      if (!customer.phone || !customer.phone.trim()) {
+        throw new Error(`行 ${index + 2}: 電話番号(phone)は必須項目です`);
+      }
+
       const validated = {
         userId: req.user._id.toString(),
-        customer: customer.customer || 'Unknown',
+        customer: customer.customer.trim(),
         date: customer.date || new Date().toISOString().split('T')[0],
         time: customer.time || '00:00',
         duration: customer.duration || '0',
         result: customer.result || '未対応',
         notes: customer.notes || '',
         address: customer.address || '',
-        phone: customer.phone || '',
+        phone: customer.phone.trim(),
         email: customer.email || '',
-        company: customer.company || ''
+        company: customer.company || '',
+        url: customer.url || ''
       };
 
       if (index === 0) {

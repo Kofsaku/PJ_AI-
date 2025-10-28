@@ -36,13 +36,17 @@ const customerSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    required: false
+    required: true
   },
   email: {
     type: String,
     required: false
   },
   company: {
+    type: String,
+    required: false
+  },
+  url: {
     type: String,
     required: false
   }

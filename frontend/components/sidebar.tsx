@@ -130,7 +130,7 @@ const navigation: NavigationItem[] = [
                       isActive("/import") ? "bg-blue-800" : ""
                     }`}
                   >
-                    データインポート
+                    顧客情報インポート
                   </div>
                 </Link>
                 <Link href="/settings/sales-pitch">

@@ -104,7 +104,7 @@ export default function DashboardPage() {
   const [callResults, setCallResults] = useState<any[]>([]);
   const [isCalling, setIsCalling] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState<string | null>(null);
-  const [pausePolling, setPausePolling] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
   const [activeCallModal, setActiveCallModal] = useState<{
     isOpen: boolean;
     customerName: string;
@@ -368,9 +368,8 @@ const getSessionKey = useCallback((session: any, phone: string) => {
   // Handle status change
   const handleStatusChange = async (customerId: string, newStatus: string) => {
     if (isUpdatingStatus === customerId) return; // 重複更新を防ぐ
-    
+
     setIsUpdatingStatus(customerId);
-    setPausePolling(true); // ポーリングを一時停止
     try {
       await authenticatedApiRequest(`/api/customers?id=${customerId}`, {
         method: 'PATCH',
@@ -402,8 +401,6 @@ const getSessionKey = useCallback((session: any, phone: string) => {
       });
     } finally {
       setIsUpdatingStatus(null);
-      // 1秒後にポーリング再開（サーバー更新の反映時間を考慮）
-      setTimeout(() => setPausePolling(false), 1000);
     }
   };
 
@@ -491,139 +488,6 @@ const getSessionKey = useCallback((session: any, phone: string) => {
     }
   };
 
-
-  // ポーリングベースのリアルタイム通話状態更新
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token || pausePolling) return;
-
-    // 開発環境でのみログ出力
-    const isDev = process.env.NODE_ENV === 'development';
-    if (isDev) console.log("[Dashboard] Starting polling for call status updates");
-
-    // 通話状態を取得する関数
-    const fetchCallStatuses = async () => {
-      try {
-        const data = await authenticatedApiRequest('/api/calls/bulk');
-        if (!data.success || !data.sessions) return;
-
-        // アクティブな通話セッションを特定
-        const newCallingSessions = new Set<string>();
-        let activeCallCount = 0;
-        let queuedCallCount = 0;
-        const currentActiveSessionKeys = new Set<string>();
-
-        data.sessions.forEach((session: any) => {
-          const rawPhone = session.phoneNumber
-            || session.customer?.phone
-            || (() => {
-              const targetId = session.customer?._id || session.customerId || session.customer;
-              if (!targetId) return undefined;
-              for (const [phone, id] of phoneToCustomerMap.entries()) {
-                if (id === targetId) {
-                  return phone;
-                }
-              }
-              return undefined;
-            })();
-
-          const phoneNumber = normalizePhoneNumber(rawPhone);
-
-          let customerId = session.customer?._id || session.customer;
-          if (!customerId) {
-            const customer = customers.find(c => normalizePhoneNumber(c.phone) === phoneNumber);
-            if (customer) {
-              customerId = getCustomerId(customer);
-            }
-          }
-
-          if (customerId) {
-            // アクティブな通話状態をチェック
-            if (['calling', 'initiated', 'ai-responding', 'in-progress', 'human-connected', 'transferring'].includes(session.status)) {
-              newCallingSessions.add(customerId);
-              activeCallCount++;
-              const sessionKey = getSessionKey(session, phoneNumber);
-              currentActiveSessionKeys.add(sessionKey);
-            } else if (session.status === 'queued') {
-              queuedCallCount++;
-            }
-
-            // 通話結果が更新されていれば顧客リストに反映
-            if (session.callResult) {
-              setCustomers(prev =>
-                prev.map(c =>
-                  getCustomerId(c) === customerId
-                    ? { ...c, result: session.callResult, callResult: session.callResult }
-                    : c
-                )
-              );
-            }
-          }
-        });
-
-        // 通話中セッションを更新
-        setCallingSessions(prev => {
-          const hasChanges = prev.size !== newCallingSessions.size ||
-            [...prev].some(id => !newCallingSessions.has(id));
-          if (hasChanges) {
-            if (isDev) console.log('[Dashboard] Updated calling sessions:', newCallingSessions);
-            return newCallingSessions;
-          }
-          return prev;
-        });
-
-        const previousActiveKeys = activeSessionKeysRef.current;
-        const newlyActiveKey = [...currentActiveSessionKeys].find(key => !previousActiveKeys.has(key));
-
-        activeSessionKeysRef.current = currentActiveSessionKeys;
-
-        const extractPhoneFromKey = (key?: string) => {
-          if (!key) return '';
-          const [, phonePart] = key.split('|');
-          if (!phonePart || phonePart === 'unknown') return '';
-          return phonePart;
-        };
-
-        if (newlyActiveKey) {
-          const nextPhone = extractPhoneFromKey(newlyActiveKey);
-          setActivePhoneNumber(nextPhone);
-          setIsCallStatusModalOpen(true);
-        } else if (currentActiveSessionKeys.size > 0 && !isCallStatusModalOpenRef.current) {
-          const fallbackKey = currentActiveSessionKeys.values().next().value as string;
-          const fallbackPhone = extractPhoneFromKey(fallbackKey);
-          setActivePhoneNumber(fallbackPhone);
-          setIsCallStatusModalOpen(true);
-        }
-
-        // バルクコール状態を更新
-        const totalActiveCalls = activeCallCount + queuedCallCount;
-        if (totalActiveCalls > 0) {
-          setIsBulkCallActive(true);
-          setBulkCallQueue(queuedCallCount);
-        } else if (isBulkCallActive && newCallingSessions.size === 0) {
-          setIsBulkCallActive(false);
-          setBulkCallQueue(0);
-        }
-
-      } catch (error) {
-        console.error('[Dashboard] Error polling call statuses:', error);
-      }
-    };
-
-    // 初回実行
-    fetchCallStatuses();
-
-    // WebSocketがメインとなったため、ポーリングは30秒間隔のフォールバック用のみ
-    const interval = 30000; // 30秒 (従来: 通話中3秒、通常10秒)
-
-    const pollingInterval = setInterval(fetchCallStatuses, interval);
-
-    return () => {
-      clearInterval(pollingInterval);
-      if (isDev) console.log('[Dashboard] Stopped polling for call status updates');
-    };
-  }, [pausePolling]); // phoneToCustomerMapは参照型なので依存配列から削除
-
   // 通話状態監視 - 全通話終了時に一斉通話状態を自動リセット（遅延実行）
   useEffect(() => {
     if (isBulkCallActive && callingSessions.size === 0 && bulkCallQueue === 0) {
@@ -672,6 +536,30 @@ const getSessionKey = useCallback((session: any, phone: string) => {
 
     socket.on('connect', () => {
       console.log('[Dashboard WebSocket] Connected');
+      setWsConnected(true);
+
+      // 再接続時に最新の通話状態を1度だけ取得（同期）
+      authenticatedApiRequest('/api/calls/bulk')
+        .then(data => {
+          if (data.success && data.sessions) {
+            const activeSessions = data.sessions.filter((s: any) =>
+              ['calling', 'initiated', 'ai-responding', 'in-progress'].includes(s.status)
+            );
+
+            const activeIds = new Set<string>(
+              activeSessions
+                .map((s: any) => {
+                  const id = s.customer?._id || s.customer;
+                  return typeof id === 'string' ? id : String(id);
+                })
+                .filter((id: string): id is string => Boolean(id))
+            );
+
+            setCallingSessions(activeIds);
+            console.log('[Dashboard WebSocket] Synced active calls on reconnect:', activeIds.size);
+          }
+        })
+        .catch(err => console.error('[Dashboard WebSocket] Sync failed:', err));
     });
 
     socket.on('callStatusUpdate', (data) => {
@@ -715,16 +603,26 @@ const getSessionKey = useCallback((session: any, phone: string) => {
           return newSet;
         });
 
-        // 顧客リストに通話結果を反映
+        // 顧客リストに通話結果を反映（定義済みステータスのみ）
         if (callResult) {
-          setCustomers(prev =>
-            prev.map(c =>
-              getCustomerId(c) === customerId
-                ? { ...c, result: callResult, callResult: callResult }
-                : c
-            )
-          );
-          console.log('[Dashboard WebSocket] Updated customer result:', customerId, callResult);
+          // ステータスバリデーション
+          const normalizedResult = normalizeStatus(callResult);
+
+          // 定義済みステータスの場合のみ更新
+          if (VALID_CALL_RESULTS.includes(normalizedResult)) {
+            console.log('[Dashboard WebSocket] Updating customer result:', customerId, normalizedResult);
+            setCustomers(prev =>
+              prev.map(c => {
+                const cId = getCustomerId(c);
+                if (cId === customerId) {
+                  return { ...c, result: normalizedResult, callResult: normalizedResult };
+                }
+                return c;
+              })
+            );
+          } else {
+            console.warn('[Dashboard WebSocket] Invalid callResult ignored:', callResult, '→', normalizedResult);
+          }
         }
 
         // 電話番号マップから削除
@@ -741,6 +639,7 @@ const getSessionKey = useCallback((session: any, phone: string) => {
 
     socket.on('disconnect', () => {
       console.log('[Dashboard WebSocket] Disconnected');
+      setWsConnected(false);
     });
 
     socket.on('error', (error) => {
@@ -824,7 +723,14 @@ const getSessionKey = useCallback((session: any, phone: string) => {
         )}
 
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">顧客リスト</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold">顧客リスト</h1>
+            {!wsConnected && (
+              <span className="text-xs text-gray-500 bg-yellow-100 px-2 py-1 rounded">
+                再接続中...
+              </span>
+            )}
+          </div>
           <div className="flex gap-2">
             {selectedCustomers.size > 0 && (
               <Button
@@ -863,24 +769,15 @@ const getSessionKey = useCallback((session: any, phone: string) => {
               </Button>
             )}
             
-            <label htmlFor="csv-import-btn" className="cursor-pointer">
-              <Input
-                type="file"
-                accept=".csv"
-                onChange={handleFileChange}
-                className="hidden"
-                id="csv-import-btn"
-                disabled={isImporting}
-              />
+            <Link href="/import">
               <Button
                 variant="outline"
-                className="border-orange-500 text-orange-500 bg-transparent pointer-events-none"
-                disabled={isImporting}
+                className="border-orange-500 text-orange-500 bg-transparent hover:bg-orange-50"
               >
                 <Upload className="mr-2 h-4 w-4" />
-                {isImporting ? "インポート中..." : "インポート"}
+                インポート
               </Button>
-            </label>
+            </Link>
 
             <Link href="/customer/new">
               <Button className="bg-orange-500 hover:bg-orange-600">
