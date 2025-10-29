@@ -85,6 +85,64 @@ async function executeAutoCallEnd(callSession, functionCallId, args) {
 }
 
 /**
+ * Execute automatic call termination when customer stops responding
+ * @param {Object} callSession - CallSession document
+ * @param {String} functionCallId - OpenAI function call ID
+ * @param {Object} args - Function arguments
+ */
+async function executeAutoCallEndOnNoResponse(callSession, functionCallId, args) {
+  try {
+    console.log('[AutoCallEnd-NoResponse] 顧客無応答による自動切電を実行');
+    console.log('[AutoCallEnd-NoResponse] CallSession ID:', callSession._id);
+    console.log('[AutoCallEnd-NoResponse] Function Call ID:', functionCallId);
+
+    // CallSessionの更新
+    callSession.status = 'completed';
+    callSession.endTime = new Date();
+    callSession.callResult = '無応答';
+    callSession.endReason = 'ai_initiated';
+    callSession.notes = 'AI判断による切電: 顧客が応答しなくなった';
+
+    await callSession.save();
+    console.log('[AutoCallEnd-NoResponse] CallSession更新完了');
+
+    // Twilio通話終了
+    if (callSession.twilioCallSid && callSession.twilioCallSid !== 'pending') {
+      const twilioService = require('../services/twilioService');
+      await twilioService.endCall(callSession.twilioCallSid);
+      console.log('[AutoCallEnd-NoResponse] Twilio通話終了完了:', callSession.twilioCallSid);
+    }
+
+    // WebSocket通知
+    if (global.io) {
+      const eventData = {
+        customerId: callSession.customerId?.toString() || callSession.customerId,
+        phoneNumber: callSession.phoneNumber,
+        status: 'completed',
+        callResult: '無応答',
+        callId: callSession._id.toString(),
+        twilioCallSid: callSession.twilioCallSid
+      };
+      global.io.emit('callStatusUpdate', eventData);
+      console.log('[WebSocket] Emitted callStatusUpdate: completed (無応答)', JSON.stringify(eventData));
+    }
+
+    return {
+      success: true,
+      message: '通話を終了しました'
+    };
+
+  } catch (error) {
+    console.error('[AutoCallEnd-NoResponse] エラー:', error);
+    return {
+      success: false,
+      message: '切電処理に失敗しました',
+      error: error.message
+    };
+  }
+}
+
+/**
  * Execute automatic handoff when AI determines transfer is appropriate
  * @param {Object} callSession - CallSession document
  * @param {String} functionCallId - OpenAI function call ID
@@ -320,6 +378,21 @@ async function initializeSession(openaiWs, agentSettings) {
             },
             required: ["voicemail_detected"]
           }
+        },
+        {
+          type: "function",
+          name: "end_call_on_no_response",
+          description: "顧客が長時間応答しなくなった場合、最後の確認後に通話を終了する時に使用する。システムから「顧客が応答しません」というメッセージを受け取り、2回確認しても応答がない場合に呼び出す。",
+          parameters: {
+            type: "object",
+            properties: {
+              no_response_confirmed: {
+                type: "boolean",
+                description: "顧客の無応答を確認したか"
+              }
+            },
+            required: ["no_response_confirmed"]
+          }
         }
       ],
       tool_choice: "auto"  // AIが自動的に判断して関数を呼び出す
@@ -391,6 +464,10 @@ exports.handleMediaStream = async (twilioWs, req) => {
 
   // Auto call end state - store function call info to execute after AI finishes speaking
   let pendingCallEnd = null;
+
+  // Customer silence detection state
+  let customerSilenceTimer = null;
+  let customerSilenceCheckCount = 0;  // 0, 1, or 2 (for first, second check)
 
   // CallSession reference (will be loaded later)
   let callSession = null;
@@ -682,6 +759,14 @@ exports.handleMediaStream = async (twilioWs, req) => {
         if (response.type === 'input_audio_buffer.speech_started') {
           console.log('[Interrupt] Speech started detected');
 
+          // Reset customer silence timer when customer starts speaking
+          if (customerSilenceTimer) {
+            console.log('[SilenceDetection] Clearing timer - customer started speaking');
+            clearTimeout(customerSilenceTimer);
+            customerSilenceTimer = null;
+            customerSilenceCheckCount = 0;
+          }
+
           if (lastAssistantItem && markQueue.length > 0 && responseStartTimestamp !== null) {
             // Handle interruption (official sample line 148-176)
             await handleSpeechStarted(
@@ -735,6 +820,91 @@ exports.handleMediaStream = async (twilioWs, req) => {
 
             // Send via WebSocket
             sendConversationUpdate(callSession, 'user', transcript);
+
+            // Start customer silence detection timer after user finishes speaking
+            // Clear any existing timer first
+            if (customerSilenceTimer) {
+              clearTimeout(customerSilenceTimer);
+            }
+
+            customerSilenceTimer = setTimeout(() => {
+              console.log('[SilenceDetection] 30 seconds of silence detected - sending first check message');
+              customerSilenceCheckCount = 1;
+
+              // Send system message to OpenAI to prompt AI to check
+              if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                const systemMessage = {
+                  type: 'conversation.item.create',
+                  item: {
+                    type: 'message',
+                    role: 'user',
+                    content: [{
+                      type: 'input_text',
+                      text: '[システムメッセージ] 顧客が30秒間応答していません。「もしもし、おつながりでしょうか？」と確認してください。'
+                    }]
+                  }
+                };
+                openaiWs.send(JSON.stringify(systemMessage));
+
+                // Request AI response
+                const responseCreate = { type: 'response.create' };
+                openaiWs.send(JSON.stringify(responseCreate));
+              }
+
+              // Set timer for second check (30 more seconds)
+              customerSilenceTimer = setTimeout(() => {
+                console.log('[SilenceDetection] 60 seconds total silence - sending second check message');
+                customerSilenceCheckCount = 2;
+
+                if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                  const systemMessage = {
+                    type: 'conversation.item.create',
+                    item: {
+                      type: 'message',
+                      role: 'user',
+                      content: [{
+                        type: 'input_text',
+                        text: '[システムメッセージ] 顧客がまだ応答していません。「恐れ入りますが、お電話つながっておりますでしょうか？」と確認してください。'
+                      }]
+                    }
+                  };
+                  openaiWs.send(JSON.stringify(systemMessage));
+
+                  // Request AI response
+                  const responseCreate = { type: 'response.create' };
+                  openaiWs.send(JSON.stringify(responseCreate));
+                }
+
+                // Set timer for final check (20 more seconds)
+                customerSilenceTimer = setTimeout(() => {
+                  console.log('[SilenceDetection] 80 seconds total silence - sending final message');
+                  customerSilenceCheckCount = 0;  // Reset
+
+                  if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                    const systemMessage = {
+                      type: 'conversation.item.create',
+                      item: {
+                        type: 'message',
+                        role: 'user',
+                        content: [{
+                          type: 'input_text',
+                          text: '[システムメッセージ] 顧客が応答しません。「お電話が遠いようですので、改めてご連絡させていただきます。失礼いたします」と言って end_call_on_no_response 関数を呼び出して通話を終了してください。'
+                        }]
+                      }
+                    };
+                    openaiWs.send(JSON.stringify(systemMessage));
+
+                    // Request AI response
+                    const responseCreate = { type: 'response.create' };
+                    openaiWs.send(JSON.stringify(responseCreate));
+                  }
+
+                  customerSilenceTimer = null;
+                }, 20000);  // 20 seconds for final check
+              }, 30000);  // 30 seconds for second check
+            }, 30000);  // 30 seconds for first check
+
+            console.log('[SilenceDetection] Started timer after user speech completion');
           }
         }
 
@@ -842,7 +1012,16 @@ exports.handleMediaStream = async (twilioWs, req) => {
             setTimeout(async () => {
               try {
                 console.log('[AutoCallEnd] 音声再生バッファ完了、切電を実行します');
-                const result = await executeAutoCallEnd(callSession, callEndData.callId, callEndData.args);
+                console.log('[AutoCallEnd] Call end type:', callEndData.type);
+
+                // Execute appropriate function based on call end type
+                let result;
+                if (callEndData.type === 'no_response') {
+                  result = await executeAutoCallEndOnNoResponse(callSession, callEndData.callId, callEndData.args);
+                } else {
+                  result = await executeAutoCallEnd(callSession, callEndData.callId, callEndData.args);
+                }
+
                 console.log('[AutoCallEnd] 切電実行完了:', result);
               } catch (error) {
                 console.error('[AutoCallEnd] 切電実行エラー:', error);
@@ -1011,6 +1190,65 @@ exports.handleMediaStream = async (twilioWs, req) => {
               }
             } catch (error) {
               console.error('[FunctionCall] Error parsing voicemail function arguments:', error);
+              pendingCallEnd = null;
+
+              // エラー結果をOpenAIに返す
+              if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                const functionOutput = {
+                  type: 'conversation.item.create',
+                  item: {
+                    type: 'function_call_output',
+                    call_id: item.call_id,
+                    output: JSON.stringify({
+                      success: false,
+                      message: '切電準備に失敗しました',
+                      error: error.message
+                    })
+                  }
+                };
+                openaiWs.send(JSON.stringify(functionOutput));
+              }
+            }
+          }
+
+          // Handle Function Calling - Auto Call End on No Response
+          else if (item.type === 'function_call' && item.name === 'end_call_on_no_response') {
+            console.log('[FunctionCall] 顧客無応答検知 - 切電処理を予約');
+            console.log('[FunctionCall] Arguments:', item.arguments);
+            console.log('[FunctionCall] 挨拶完了後に切電を実行します');
+
+            try {
+              const args = JSON.parse(item.arguments);
+              pendingCallEnd = {
+                callId: item.call_id,
+                args: args,
+                type: 'no_response'
+              };
+
+              // OpenAIに成功結果を返す（AIが挨拶を生成できるように）
+              if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                const functionOutput = {
+                  type: 'conversation.item.create',
+                  item: {
+                    type: 'function_call_output',
+                    call_id: item.call_id,
+                    output: JSON.stringify({
+                      success: true,
+                      message: '顧客の無応答を確認しました。挨拶の後、通話を終了します。'
+                    })
+                  }
+                };
+                openaiWs.send(JSON.stringify(functionOutput));
+                console.log('[FunctionCall] Sent function result to OpenAI (no response end pending)');
+
+                // AI応答生成をリクエスト
+                const responseCreate = {
+                  type: 'response.create'
+                };
+                openaiWs.send(JSON.stringify(responseCreate));
+              }
+            } catch (error) {
+              console.error('[FunctionCall] Error parsing no response function arguments:', error);
               pendingCallEnd = null;
 
               // エラー結果をOpenAIに返す
