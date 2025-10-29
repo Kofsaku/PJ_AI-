@@ -820,91 +820,6 @@ exports.handleMediaStream = async (twilioWs, req) => {
 
             // Send via WebSocket
             sendConversationUpdate(callSession, 'user', transcript);
-
-            // Start customer silence detection timer after user finishes speaking
-            // Clear any existing timer first
-            if (customerSilenceTimer) {
-              clearTimeout(customerSilenceTimer);
-            }
-
-            customerSilenceTimer = setTimeout(() => {
-              console.log('[SilenceDetection] 30 seconds of silence detected - sending first check message');
-              customerSilenceCheckCount = 1;
-
-              // Send system message to OpenAI to prompt AI to check
-              if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
-                const systemMessage = {
-                  type: 'conversation.item.create',
-                  item: {
-                    type: 'message',
-                    role: 'user',
-                    content: [{
-                      type: 'input_text',
-                      text: '[システムメッセージ] 顧客が30秒間応答していません。「もしもし、おつながりでしょうか？」と確認してください。'
-                    }]
-                  }
-                };
-                openaiWs.send(JSON.stringify(systemMessage));
-
-                // Request AI response
-                const responseCreate = { type: 'response.create' };
-                openaiWs.send(JSON.stringify(responseCreate));
-              }
-
-              // Set timer for second check (30 more seconds)
-              customerSilenceTimer = setTimeout(() => {
-                console.log('[SilenceDetection] 60 seconds total silence - sending second check message');
-                customerSilenceCheckCount = 2;
-
-                if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
-                  const systemMessage = {
-                    type: 'conversation.item.create',
-                    item: {
-                      type: 'message',
-                      role: 'user',
-                      content: [{
-                        type: 'input_text',
-                        text: '[システムメッセージ] 顧客がまだ応答していません。「恐れ入りますが、お電話つながっておりますでしょうか？」と確認してください。'
-                      }]
-                    }
-                  };
-                  openaiWs.send(JSON.stringify(systemMessage));
-
-                  // Request AI response
-                  const responseCreate = { type: 'response.create' };
-                  openaiWs.send(JSON.stringify(responseCreate));
-                }
-
-                // Set timer for final check (20 more seconds)
-                customerSilenceTimer = setTimeout(() => {
-                  console.log('[SilenceDetection] 80 seconds total silence - sending final message');
-                  customerSilenceCheckCount = 0;  // Reset
-
-                  if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
-                    const systemMessage = {
-                      type: 'conversation.item.create',
-                      item: {
-                        type: 'message',
-                        role: 'user',
-                        content: [{
-                          type: 'input_text',
-                          text: '[システムメッセージ] 顧客が応答しません。「お電話が遠いようですので、改めてご連絡させていただきます。失礼いたします」と言って end_call_on_no_response 関数を呼び出して通話を終了してください。'
-                        }]
-                      }
-                    };
-                    openaiWs.send(JSON.stringify(systemMessage));
-
-                    // Request AI response
-                    const responseCreate = { type: 'response.create' };
-                    openaiWs.send(JSON.stringify(responseCreate));
-                  }
-
-                  customerSilenceTimer = null;
-                }, 20000);  // 20 seconds for final check
-              }, 30000);  // 30 seconds for second check
-            }, 30000);  // 30 seconds for first check
-
-            console.log('[SilenceDetection] Started timer after user speech completion');
           }
         }
 
@@ -964,6 +879,97 @@ exports.handleMediaStream = async (twilioWs, req) => {
 
             await callSession.save();
             console.log('[Conversation] Saved to database, total items:', callSession.realtimeConversation.length);
+          }
+
+          // Start customer silence timer after AI completes speaking
+          // This ensures we check for customer response after every AI utterance
+          if (!pendingHandoff && !pendingCallEnd) {
+            // Clear any existing timer
+            if (customerSilenceTimer) {
+              clearTimeout(customerSilenceTimer);
+              console.log('[SilenceDetection] Cleared previous timer');
+            }
+
+            // Determine timeout based on check count
+            let timeoutDuration;
+            if (customerSilenceCheckCount === 0) {
+              timeoutDuration = 30000; // 30 seconds for first check
+            } else if (customerSilenceCheckCount === 1) {
+              timeoutDuration = 30000; // 30 seconds for second check
+            } else {
+              timeoutDuration = 20000; // 20 seconds for final check
+            }
+
+            console.log(`[SilenceDetection] Starting timer (check ${customerSilenceCheckCount + 1}, ${timeoutDuration}ms) after AI response completion`);
+
+            customerSilenceTimer = setTimeout(() => {
+              console.log(`[SilenceDetection] ${timeoutDuration / 1000} seconds of silence detected`);
+
+              if (customerSilenceCheckCount === 0) {
+                console.log('[SilenceDetection] Sending first check message');
+                customerSilenceCheckCount = 1;
+
+                if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                  const systemMessage = {
+                    type: 'conversation.item.create',
+                    item: {
+                      type: 'message',
+                      role: 'user',
+                      content: [{
+                        type: 'input_text',
+                        text: '[システムメッセージ] 顧客が30秒間応答していません。「もしもし、おつながりでしょうか？」と確認してください。'
+                      }]
+                    }
+                  };
+                  openaiWs.send(JSON.stringify(systemMessage));
+
+                  const responseCreate = { type: 'response.create' };
+                  openaiWs.send(JSON.stringify(responseCreate));
+                }
+              } else if (customerSilenceCheckCount === 1) {
+                console.log('[SilenceDetection] Sending second check message');
+                customerSilenceCheckCount = 2;
+
+                if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                  const systemMessage = {
+                    type: 'conversation.item.create',
+                    item: {
+                      type: 'message',
+                      role: 'user',
+                      content: [{
+                        type: 'input_text',
+                        text: '[システムメッセージ] 顧客がまだ応答していません。「恐れ入りますが、お電話つながっておりますでしょうか？」と確認してください。'
+                      }]
+                    }
+                  };
+                  openaiWs.send(JSON.stringify(systemMessage));
+
+                  const responseCreate = { type: 'response.create' };
+                  openaiWs.send(JSON.stringify(responseCreate));
+                }
+              } else {
+                console.log('[SilenceDetection] Sending final termination message');
+                customerSilenceCheckCount = 0; // Reset
+
+                if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                  const systemMessage = {
+                    type: 'conversation.item.create',
+                    item: {
+                      type: 'message',
+                      role: 'user',
+                      content: [{
+                        type: 'input_text',
+                        text: '[システムメッセージ] 顧客が応答しません。「お電話が遠いようですので、改めてご連絡させていただきます。失礼いたします」と言って end_call_on_no_response 関数を呼び出して通話を終了してください。'
+                      }]
+                    }
+                  };
+                  openaiWs.send(JSON.stringify(systemMessage));
+
+                  const responseCreate = { type: 'response.create' };
+                  openaiWs.send(JSON.stringify(responseCreate));
+                }
+              }
+            }, timeoutDuration);
           }
 
           // Execute pending handoff AFTER AI finishes speaking
