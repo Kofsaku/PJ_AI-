@@ -99,7 +99,7 @@ async function executeAutoCallEndOnNoResponse(callSession, functionCallId, args)
     // CallSessionの更新
     callSession.status = 'completed';
     callSession.endTime = new Date();
-    callSession.callResult = '無応答';
+    callSession.callResult = '不在';
     callSession.endReason = 'ai_initiated';
     callSession.notes = 'AI判断による切電: 顧客が応答しなくなった';
 
@@ -119,12 +119,12 @@ async function executeAutoCallEndOnNoResponse(callSession, functionCallId, args)
         customerId: callSession.customerId?.toString() || callSession.customerId,
         phoneNumber: callSession.phoneNumber,
         status: 'completed',
-        callResult: '無応答',
+        callResult: '不在',
         callId: callSession._id.toString(),
         twilioCallSid: callSession.twilioCallSid
       };
       global.io.emit('callStatusUpdate', eventData);
-      console.log('[WebSocket] Emitted callStatusUpdate: completed (無応答)', JSON.stringify(eventData));
+      console.log('[WebSocket] Emitted callStatusUpdate: completed (不在)', JSON.stringify(eventData));
     }
 
     return {
