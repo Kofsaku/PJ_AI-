@@ -305,6 +305,21 @@ async function initializeSession(openaiWs, agentSettings) {
             },
             required: ["rejection_reason"]
           }
+        },
+        {
+          type: "function",
+          name: "end_call_on_voicemail",
+          description: "留守番電話に転送されたことを検知した時に使用する。「留守番電話に転送されました」「発信音の後で」「メッセージを録音」などのキーワードを検知した時、または機械的な音声アナウンスを検知した時に呼び出す。簡潔なメッセージを残した後、この関数を呼び出して通話を終了する。",
+          parameters: {
+            type: "object",
+            properties: {
+              voicemail_detected: {
+                type: "boolean",
+                description: "留守番電話が検出されたか"
+              }
+            },
+            required: ["voicemail_detected"]
+          }
         }
       ],
       tool_choice: "auto"  // AIが自動的に判断して関数を呼び出す
@@ -909,7 +924,8 @@ exports.handleMediaStream = async (twilioWs, req) => {
               const args = JSON.parse(item.arguments);
               pendingCallEnd = {
                 callId: item.call_id,
-                args: args
+                args: args,
+                type: 'rejection'
               };
 
               // OpenAIに成功結果を返す（AIが丁寧な挨拶を生成できるように）
@@ -936,6 +952,65 @@ exports.handleMediaStream = async (twilioWs, req) => {
               }
             } catch (error) {
               console.error('[FunctionCall] Error parsing function arguments:', error);
+              pendingCallEnd = null;
+
+              // エラー結果をOpenAIに返す
+              if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                const functionOutput = {
+                  type: 'conversation.item.create',
+                  item: {
+                    type: 'function_call_output',
+                    call_id: item.call_id,
+                    output: JSON.stringify({
+                      success: false,
+                      message: '切電準備に失敗しました',
+                      error: error.message
+                    })
+                  }
+                };
+                openaiWs.send(JSON.stringify(functionOutput));
+              }
+            }
+          }
+
+          // Handle Function Calling - Auto Call End on Voicemail
+          else if (item.type === 'function_call' && item.name === 'end_call_on_voicemail') {
+            console.log('[FunctionCall] 留守番電話検知 - 切電処理を予約');
+            console.log('[FunctionCall] Arguments:', item.arguments);
+            console.log('[FunctionCall] メッセージ完了後に切電を実行します');
+
+            try {
+              const args = JSON.parse(item.arguments);
+              pendingCallEnd = {
+                callId: item.call_id,
+                args: args,
+                type: 'voicemail'
+              };
+
+              // OpenAIに成功結果を返す（AIがメッセージを残せるように）
+              if (openaiWs && openaiWs.readyState === WebSocket.OPEN) {
+                const functionOutput = {
+                  type: 'conversation.item.create',
+                  item: {
+                    type: 'function_call_output',
+                    call_id: item.call_id,
+                    output: JSON.stringify({
+                      success: true,
+                      message: '留守番電話を検出しました。メッセージを残した後、通話を終了します。'
+                    })
+                  }
+                };
+                openaiWs.send(JSON.stringify(functionOutput));
+                console.log('[FunctionCall] Sent function result to OpenAI (voicemail end pending)');
+
+                // AI応答生成をリクエスト
+                const responseCreate = {
+                  type: 'response.create'
+                };
+                openaiWs.send(JSON.stringify(responseCreate));
+              }
+            } catch (error) {
+              console.error('[FunctionCall] Error parsing voicemail function arguments:', error);
               pendingCallEnd = null;
 
               // エラー結果をOpenAIに返す
