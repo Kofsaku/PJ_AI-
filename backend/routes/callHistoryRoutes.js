@@ -266,6 +266,72 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// @desc    Delete call history records (bulk)
+// @route   DELETE /api/call-history/bulk
+// @access  Private
+router.delete('/bulk', async (req, res) => {
+  try {
+    const { callIds } = req.body;
+
+    if (!callIds || !Array.isArray(callIds) || callIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: '削除するコールIDを指定してください'
+      });
+    }
+
+    // ログインユーザーに属するコールのみ削除
+    const result = await CallSession.deleteMany({
+      _id: { $in: callIds },
+      assignedAgent: req.user._id || req.user.id
+    });
+
+    res.json({
+      success: true,
+      message: `${result.deletedCount}件のコール履歴を削除しました`,
+      deletedCount: result.deletedCount
+    });
+
+  } catch (error) {
+    console.error('Error deleting call history:', error);
+    res.status(500).json({
+      success: false,
+      error: 'コール履歴の削除に失敗しました'
+    });
+  }
+});
+
+// @desc    Delete single call history record
+// @route   DELETE /api/call-history/:id
+// @access  Private
+router.delete('/:id', async (req, res) => {
+  try {
+    const call = await CallSession.findOneAndDelete({
+      _id: req.params.id,
+      assignedAgent: req.user._id || req.user.id
+    });
+
+    if (!call) {
+      return res.status(404).json({
+        success: false,
+        error: '通話記録が見つかりません'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'コール履歴を削除しました'
+    });
+
+  } catch (error) {
+    console.error('Error deleting call:', error);
+    res.status(500).json({
+      success: false,
+      error: 'コール履歴の削除に失敗しました'
+    });
+  }
+});
+
 // @desc    Get call statistics
 // @route   GET /api/call-history/stats/summary
 // @access  Private

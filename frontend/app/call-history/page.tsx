@@ -9,9 +9,12 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Search, ChevronLeft, ChevronRight, Phone, Calendar, Clock, User, FileText, Loader2 } from "lucide-react"
 import { Sidebar } from "@/components/sidebar"
 import { CallDetailModal } from "@/components/CallDetailModal"
+import { CallHistoryExportModal } from "@/components/calls/CallHistoryExportModal"
+import { CallHistoryDeleteModal } from "@/components/calls/CallHistoryDeleteModal"
 import { authenticatedApiRequest } from "@/lib/apiHelper"
 import { format } from "date-fns"
 import { ja } from "date-fns/locale"
+import { toast } from "sonner"
 
 interface Customer {
   id?: string
@@ -127,6 +130,9 @@ export default function CallHistoryPage() {
   const [statsLoading, setStatsLoading] = useState(false)
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null)
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false)
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // 統計情報を取得
   const fetchStatistics = async () => {
@@ -260,6 +266,111 @@ export default function CallHistoryPage() {
     setSelectedCallId(null)
     // データの更新があった可能性があるため、履歴を再取得
     fetchCallHistory(pagination.currentPage)
+  }
+
+  // CSVエクスポートモーダルを開く
+  const handleOpenExportModal = () => {
+    if (selectedCalls.size === 0) {
+      toast.error("エクスポートするコールを選択してください")
+      return
+    }
+    setIsExportModalOpen(true)
+  }
+
+  // CSVエクスポート処理
+  const handleExportCSV = () => {
+    try {
+      // 選択されたコールデータを取得
+      const selectedCallData = calls.filter(call => selectedCalls.has(call.id))
+
+      if (selectedCallData.length === 0) {
+        toast.error("エクスポートするデータがありません")
+        return
+      }
+
+      // CSV形式に変換
+      const headers = ["顧客名", "電話番号", "会社名", "日付", "開始時刻", "終了時刻", "通話時間", "結果", "メモ"]
+      const csvRows = [
+        headers.join(","),
+        ...selectedCallData.map(call => {
+          const row = [
+            `"${call.customer?.name || call.customer?.customer || '不明'}"`,
+            `"${call.customer?.phone || '不明'}"`,
+            `"${call.customer?.company || ''}"`,
+            `"${formatDate(call.date)}"`,
+            `"${formatTime(call.startTime)}"`,
+            `"${call.endTime ? formatTime(call.endTime) : ''}"`,
+            `"${call.duration}"`,
+            `"${call.result || '未設定'}"`,
+            `"${(call.notes || '').replace(/"/g, '""')}"` // ダブルクォートをエスケープ
+          ]
+          return row.join(",")
+        })
+      ]
+
+      const csvContent = "\uFEFF" + csvRows.join("\n") // BOM付きUTF-8
+
+      // Blobを作成してダウンロード
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.style.display = "none"
+      link.href = url
+      link.download = `call-history-${new Date().toISOString().split('T')[0]}.csv`
+      document.body.appendChild(link)
+      link.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(link)
+
+      toast.success(`${selectedCallData.length}件のコール履歴をエクスポートしました`)
+      setIsExportModalOpen(false)
+    } catch (error) {
+      console.error("CSV export error:", error)
+      toast.error("CSVエクスポートに失敗しました")
+    }
+  }
+
+  // 削除モーダルを開く
+  const handleOpenDeleteModal = () => {
+    if (selectedCalls.size === 0) {
+      toast.error("削除するコールを選択してください")
+      return
+    }
+    setIsDeleteModalOpen(true)
+  }
+
+  // 削除処理
+  const handleDeleteCalls = async () => {
+    setIsDeleting(true)
+    try {
+      const callIds = Array.from(selectedCalls)
+
+      if (callIds.length === 0) {
+        toast.error("削除するコールがありません")
+        return
+      }
+
+      const data = await authenticatedApiRequest('/api/call-history/bulk', {
+        method: 'DELETE',
+        body: JSON.stringify({ callIds }),
+      })
+
+      if (data.success) {
+        toast.success(`${data.deletedCount}件のコール履歴を削除しました`)
+        setIsDeleteModalOpen(false)
+        setSelectedCalls(new Set()) // 選択をクリア
+        // データを再取得
+        await fetchCallHistory(pagination.currentPage)
+        await fetchStatistics() // 統計情報も更新
+      } else {
+        throw new Error(data.error || "削除に失敗しました")
+      }
+    } catch (error) {
+      console.error("Delete error:", error)
+      toast.error(error instanceof Error ? error.message : "コール履歴の削除に失敗しました")
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   return (
@@ -499,10 +610,10 @@ export default function CallHistoryPage() {
               {selectedCalls.size}件選択中
             </p>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline">
+              <Button size="sm" variant="outline" onClick={handleOpenExportModal}>
                 CSVエクスポート
               </Button>
-              <Button size="sm" variant="destructive">
+              <Button size="sm" variant="destructive" onClick={handleOpenDeleteModal}>
                 削除
               </Button>
             </div>
@@ -514,6 +625,23 @@ export default function CallHistoryPage() {
           isOpen={isDetailModalOpen}
           onClose={handleCloseDetailModal}
           callId={selectedCallId}
+        />
+
+        {/* CSVエクスポートモーダル */}
+        <CallHistoryExportModal
+          isOpen={isExportModalOpen}
+          onClose={() => setIsExportModalOpen(false)}
+          selectedCalls={calls.filter(call => selectedCalls.has(call.id))}
+          onExport={handleExportCSV}
+        />
+
+        {/* 削除確認モーダル */}
+        <CallHistoryDeleteModal
+          isOpen={isDeleteModalOpen}
+          onClose={() => setIsDeleteModalOpen(false)}
+          selectedCalls={calls.filter(call => selectedCalls.has(call.id))}
+          onDelete={handleDeleteCalls}
+          isDeleting={isDeleting}
         />
       </main>
     </div>
