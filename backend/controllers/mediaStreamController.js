@@ -55,8 +55,8 @@ async function executeAutoCallEnd(callSession, functionCallId, args) {
       console.log('[AutoCallEnd] Twilio通話終了完了:', callSession.twilioCallSid);
     }
 
-    // WebSocket通知
-    if (global.io) {
+    // WebSocket通知（ユーザー専用ルームに送信）
+    if (global.io && callSession.userId) {
       const eventData = {
         customerId: callSession.customerId?.toString() || callSession.customerId,
         phoneNumber: callSession.phoneNumber,
@@ -65,8 +65,8 @@ async function executeAutoCallEnd(callSession, functionCallId, args) {
         callId: callSession._id.toString(),
         twilioCallSid: callSession.twilioCallSid
       };
-      global.io.emit('callStatusUpdate', eventData);
-      console.log('[WebSocket] Emitted callStatusUpdate: completed (拒否)', JSON.stringify(eventData));
+      global.io.to(`user-${callSession.userId}`).emit('callStatusUpdate', eventData);
+      console.log(`[WebSocket] Emitted callStatusUpdate to user ${callSession.userId}: completed (拒否)`, JSON.stringify(eventData));
     }
 
     return {
@@ -113,8 +113,8 @@ async function executeAutoCallEndOnNoResponse(callSession, functionCallId, args)
       console.log('[AutoCallEnd-NoResponse] Twilio通話終了完了:', callSession.twilioCallSid);
     }
 
-    // WebSocket通知
-    if (global.io) {
+    // WebSocket通知（ユーザー専用ルームに送信）
+    if (global.io && callSession.userId) {
       const eventData = {
         customerId: callSession.customerId?.toString() || callSession.customerId,
         phoneNumber: callSession.phoneNumber,
@@ -123,8 +123,8 @@ async function executeAutoCallEndOnNoResponse(callSession, functionCallId, args)
         callId: callSession._id.toString(),
         twilioCallSid: callSession.twilioCallSid
       };
-      global.io.emit('callStatusUpdate', eventData);
-      console.log('[WebSocket] Emitted callStatusUpdate: completed (不在)', JSON.stringify(eventData));
+      global.io.to(`user-${callSession.userId}`).emit('callStatusUpdate', eventData);
+      console.log(`[WebSocket] Emitted callStatusUpdate to user ${callSession.userId}: completed (不在)`, JSON.stringify(eventData));
     }
 
     return {
@@ -266,16 +266,19 @@ function sendConversationUpdate(callSession, role, text) {
     transcriptLength: callSession.transcript.length
   });
 
-  // WebSocketでリアルタイム送信
-  global.io.emit('transcript-update', {
-    callId: callSession._id.toString(),
-    callSid: callSession.twilioCallSid,
-    phoneNumber: phoneNumber,
-    speaker: speaker,
-    text: text,
-    message: text,
-    timestamp: timestamp
-  });
+  // WebSocketでリアルタイム送信（ユーザー専用ルームに送信）
+  if (global.io && callSession.userId) {
+    global.io.to(`user-${callSession.userId}`).emit('transcript-update', {
+      callId: callSession._id.toString(),
+      callSid: callSession.twilioCallSid,
+      phoneNumber: phoneNumber,
+      speaker: speaker,
+      text: text,
+      message: text,
+      timestamp: timestamp
+    });
+    console.log(`[WebSocket] Emitted transcript-update to user ${callSession.userId}`);
+  }
 
   console.log('[Conversation] Sent WebSocket update:', {
     callId: callSession._id.toString(),
@@ -556,8 +559,8 @@ exports.handleMediaStream = async (twilioWs, req) => {
       await callSession.save();
       console.log('[MediaStream] CallSession saved with transcript');
 
-      // Notify frontend via WebSocket - call ended
-      if (global.io) {
+      // Notify frontend via WebSocket - call ended（ユーザー専用ルームに送信）
+      if (global.io && callSession.userId) {
         const eventData = {
           customerId: callSession.customerId?.toString() || callSession.customerId,
           phoneNumber: callSession.phoneNumber,
@@ -566,8 +569,8 @@ exports.handleMediaStream = async (twilioWs, req) => {
           callId: callSession._id.toString(),
           twilioCallSid: callSession.twilioCallSid
         };
-        global.io.emit('callStatusUpdate', eventData);
-        console.log('[WebSocket] Emitted callStatusUpdate: completed', JSON.stringify(eventData));
+        global.io.to(`user-${callSession.userId}`).emit('callStatusUpdate', eventData);
+        console.log(`[WebSocket] Emitted callStatusUpdate to user ${callSession.userId}: completed`, JSON.stringify(eventData));
       }
     }
   });
@@ -631,9 +634,9 @@ exports.handleMediaStream = async (twilioWs, req) => {
       callSession.realtimeSessionId = 'session-' + Date.now();
       await callSession.save();
 
-      // Notify frontend via WebSocket - call started (calling status)
+      // Notify frontend via WebSocket - call started (calling status)（ユーザー専用ルームに送信）
       // This is sent here to avoid race condition where 'start' event arrives before callSession is loaded
-      if (global.io) {
+      if (global.io && callSession.userId) {
         const eventData = {
           customerId: callSession.customerId?.toString() || callSession.customerId,
           phoneNumber: callSession.phoneNumber,
@@ -641,8 +644,8 @@ exports.handleMediaStream = async (twilioWs, req) => {
           callId: callSession._id.toString(),
           twilioCallSid: callSession.twilioCallSid
         };
-        global.io.emit('callStatusUpdate', eventData);
-        console.log('[WebSocket] Emitted callStatusUpdate: calling', JSON.stringify(eventData));
+        global.io.to(`user-${callSession.userId}`).emit('callStatusUpdate', eventData);
+        console.log(`[WebSocket] Emitted callStatusUpdate to user ${callSession.userId}: calling`, JSON.stringify(eventData));
       }
 
       // Register connection in global map for handoff support
@@ -737,8 +740,8 @@ exports.handleMediaStream = async (twilioWs, req) => {
             lastAssistantItem = response.item_id;
             console.log('[Audio] New assistant item:', response.item_id);
 
-            // Notify frontend via WebSocket - AI is responding
-            if (callSession && global.io) {
+            // Notify frontend via WebSocket - AI is responding（ユーザー専用ルームに送信）
+            if (callSession && global.io && callSession.userId) {
               const eventData = {
                 customerId: callSession.customerId?.toString() || callSession.customerId,
                 phoneNumber: callSession.phoneNumber,
@@ -746,8 +749,8 @@ exports.handleMediaStream = async (twilioWs, req) => {
                 callId: callSession._id.toString(),
                 twilioCallSid: callSession.twilioCallSid
               };
-              global.io.emit('callStatusUpdate', eventData);
-              console.log('[WebSocket] Emitted callStatusUpdate: ai-responding', JSON.stringify(eventData));
+              global.io.to(`user-${callSession.userId}`).emit('callStatusUpdate', eventData);
+              console.log(`[WebSocket] Emitted callStatusUpdate to user ${callSession.userId}: ai-responding`, JSON.stringify(eventData));
             }
           }
 

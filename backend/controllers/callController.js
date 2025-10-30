@@ -86,15 +86,16 @@ exports.startCall = asyncHandler(async (req, res, next) => {
     callSession.status = 'ai-responding';
     await callSession.save();
 
-    // WebSocketで通話開始を通知
+    // WebSocketで通話開始を通知（ユーザー専用ルームに送信）
     if (global.io) {
-      global.io.emit('call-started', {
+      global.io.to(`user-${userId}`).emit('call-started', {
         callId: callSession._id,
         customerId,
         customerName: customer.name,
         status: 'ai-responding',
         startTime: callSession.startTime
       });
+      console.log(`[WebSocket] Emitted call-started to user ${userId}`);
     }
 
     res.status(201).json({
@@ -235,14 +236,15 @@ exports.handoffCall = asyncHandler(async (req, res, next) => {
     callSession.handoffReason = reason || 'Manual handoff';
     await callSession.save();
 
-    // WebSocketで引き継ぎを通知
-    if (global.io) {
-      global.io.emit('call-updated', {
+    // WebSocketで引き継ぎを通知（ユーザー専用ルームに送信）
+    if (global.io && callSession.userId) {
+      global.io.to(`user-${callSession.userId}`).emit('call-updated', {
         callId: callSession._id,
         status: 'transferring',
         assignedAgent: agentId || req.user._id,
         handoffTime: callSession.handoffTime
       });
+      console.log(`[WebSocket] Emitted call-updated to user ${callSession.userId}`);
     }
 
     // 引き継ぎメッセージを再生（AIから顧客へ）
@@ -318,13 +320,14 @@ exports.endCall = asyncHandler(async (req, res, next) => {
     }
   }
 
-  // WebSocketで通話終了を通知
-  if (global.io) {
-    global.io.emit('call-ended', {
+  // WebSocketで通話終了を通知（ユーザー専用ルームに送信）
+  if (global.io && callSession.userId) {
+    global.io.to(`user-${callSession.userId}`).emit('call-ended', {
       callId: callSession._id,
       result: callSession.callResult,
       duration: callSession.duration
     });
+    console.log(`[WebSocket] Emitted call-ended to user ${callSession.userId}`);
   }
 
   res.status(200).json({
@@ -440,9 +443,9 @@ exports.updateTranscript = asyncHandler(async (req, res, next) => {
 
   await call.save();
 
-  // WebSocketでトランスクリプト更新を通知
-  if (global.io) {
-    global.io.emit('transcript-update', {
+  // WebSocketでトランスクリプト更新を通知（ユーザー専用ルームに送信）
+  if (global.io && call.userId) {
+    global.io.to(`user-${call.userId}`).emit('transcript-update', {
       callId,
       message: {
         speaker,
@@ -450,6 +453,7 @@ exports.updateTranscript = asyncHandler(async (req, res, next) => {
         timestamp: new Date()
       }
     });
+    console.log(`[WebSocket] Emitted transcript-update to user ${call.userId}`);
   }
 
   res.status(200).json({

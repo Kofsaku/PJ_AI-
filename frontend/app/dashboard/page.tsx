@@ -521,7 +521,13 @@ const getSessionKey = useCallback((session: any, phone: string) => {
       ? process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
       : 'http://localhost:5000';
 
-    const socket = io(wsUrl);
+    // 認証トークンを取得
+    const token = localStorage.getItem('token');
+
+    const socket = io(wsUrl, {
+      transports: ["websocket"],
+      auth: { token }
+    });
     console.log('[Dashboard WebSocket] Connecting to:', wsUrl);
 
     // 電話番号正規化関数（ローカル）

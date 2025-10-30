@@ -49,13 +49,33 @@ class WebSocketService {
     // グローバルに io インスタンスを設定
     global.io = this.io;
 
-    // WebSocket認証は不要（ログイン済みユーザーのみアクセス）
+    // WebSocket認証ミドルウェア（JWTトークンからユーザーIDを取得）
     this.io.use(async (socket, next) => {
-      // シンプルにユーザーIDを生成して接続を許可
-      socket.userId = 'user-' + Math.random().toString(36).substr(2, 9);
-      socket.user = { _id: socket.userId, role: 'user' };
-      console.log(`[WebSocket] User connected: ${socket.userId}`);
-      next();
+      try {
+        const token = socket.handshake.auth.token;
+
+        if (!token) {
+          console.error('[WebSocket] 認証トークンがありません');
+          return next(new Error('認証トークンが必要です'));
+        }
+
+        // JWTトークンをデコード
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+        // ユーザー情報をソケットに設定
+        socket.userId = decoded.userId || decoded._id || decoded.id;
+        socket.user = {
+          _id: socket.userId,
+          role: decoded.role || 'user',
+          companyId: decoded.companyId
+        };
+
+        console.log(`[WebSocket] 認証成功: User ${socket.userId} (role: ${socket.user.role})`);
+        next();
+      } catch (error) {
+        console.error('[WebSocket] 認証エラー:', error.message);
+        return next(new Error('無効な認証トークン'));
+      }
     });
 
     // 接続イベント
@@ -98,6 +118,11 @@ class WebSocketService {
     // ユーザーとソケットのマッピングを保存
     this.connectedUsers.set(socket.userId, socket.id);
     this.socketToUser.set(socket.id, socket.userId);
+
+    // ユーザー専用ルームに参加（ユーザー別にイベントを送信するため）
+    const userRoom = `user-${socket.userId}`;
+    socket.join(userRoom);
+    console.log(`[WebSocket] Socket ${socket.id} がユーザールーム '${userRoom}' に参加しました`);
 
     // エージェントステータスを更新
     this.updateAgentOnlineStatus(socket.userId, true);
@@ -166,13 +191,15 @@ class WebSocketService {
     // 通話状況取得リクエスト
     socket.on('get-call-status', async (data) => {
       console.log('[WebSocket] get-call-statusリクエスト:', data);
+      console.log('[WebSocket] リクエストユーザー:', socket.userId);
       try {
         const { phoneNumber } = data;
         const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
 
-        // 電話番号からアクティブな通話を検索（キュー待ちも含む）
+        // 電話番号とuserIdでフィルタリング（セキュリティ強化）
         const activeCall = await CallSession.findOne({
           phoneNumber: { $in: [phoneNumber, normalizedPhone] },
+          userId: socket.userId, // ログイン中のユーザーの通話のみ
           status: { $in: ['calling', 'initiated', 'ai-responding', 'in-progress', 'human-connected', 'transferring', 'queued'] }
         }).sort({ createdAt: -1 });
         
@@ -275,15 +302,17 @@ class WebSocketService {
     // 既存の通話データ取得リクエスト（モーダル再オープン時）
     socket.on('get-existing-call-data', async (data) => {
       console.log('[WebSocket] get-existing-call-dataリクエスト:', data);
+      console.log('[WebSocket] リクエストユーザー:', socket.userId);
       try {
         const { phoneNumber } = data;
         const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
 
-        console.log('[WebSocket] 既存通話データ検索:', { originalPhone: phoneNumber, normalizedPhone });
-        
-        // 電話番号からアクティブな通話セッションを検索（キュー待ちも含む）
+        console.log('[WebSocket] 既存通話データ検索:', { originalPhone: phoneNumber, normalizedPhone, userId: socket.userId });
+
+        // 電話番号とuserIdでフィルタリング（セキュリティ強化）
         const activeCall = await CallSession.findOne({
           phoneNumber: { $in: [phoneNumber, normalizedPhone] },
+          userId: socket.userId, // ログイン中のユーザーの通話のみ
           status: { $in: ['calling', 'initiated', 'ai-responding', 'in-progress', 'human-connected', 'transferring', 'queued'] }
         }).sort({ createdAt: -1 });
         
@@ -355,12 +384,16 @@ class WebSocketService {
     try {
       // まず古い通話をクリーンアップ
       await this.cleanupStaleCallSessions();
-      
-      const activeCalls = await CallSession.getActiveCalls();
-      
+
+      // ユーザー自身のアクティブな通話のみ取得（セキュリティ強化）
+      const activeCalls = await CallSession.find({
+        userId: socket.userId, // ログイン中のユーザーの通話のみ
+        status: { $in: ['initiating', 'calling', 'initiated', 'ai-responding', 'transferring', 'human-connected', 'in-progress'] }
+      }).populate('customerId assignedAgent');
+
       // 5分以上前の通話は古いとみなす
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-      
+
       // 実際にアクティブな通話のみフィルタリング（最近の通話のみ）
       const filteredCalls = activeCalls.filter(call => {
         // 古い通話は除外
@@ -368,17 +401,17 @@ class WebSocketService {
           console.log(`[WebSocket] Ignoring stale call: ${call._id}, age: ${Math.floor((Date.now() - call.startTime) / 1000 / 60)}min`);
           return false;
         }
-        
+
         // 通話が本当に進行中か確認（queuedは含まない）
-        return call.twilioCallSid && 
+        return call.twilioCallSid &&
                call.twilioCallSid !== 'pending' &&
                ['calling', 'initiated', 'ai-responding', 'in-progress', 'human-connected'].includes(call.status);
       });
-      
+
       // 一斉通話では1社のみが通話中になるべき
       const actuallyActiveCalls = filteredCalls.slice(0, 1); // 最初の1件のみを送信
-      
-      console.log(`[WebSocket] Sending ${actuallyActiveCalls.length} active calls to socket ${socket.id}`);
+
+      console.log(`[WebSocket] Sending ${actuallyActiveCalls.length} active calls for user ${socket.userId} to socket ${socket.id}`);
       socket.emit('active-calls', actuallyActiveCalls);
     } catch (error) {
       console.error('Error sending active calls:', error);
@@ -586,6 +619,17 @@ class WebSocketService {
     if (socketId && this.io) {
       this.io.to(socketId).emit(event, data);
     }
+  }
+
+  // 特定のユーザーにメッセージを送信（ユーザールーム方式）
+  emitToUser(userId, event, data) {
+    if (!userId || !this.io) {
+      console.error('[WebSocket] emitToUser: userIdまたはioが無効です');
+      return;
+    }
+    const userRoom = `user-${userId}`;
+    this.io.to(userRoom).emit(event, data);
+    console.log(`[WebSocket] ${event} イベントをユーザー ${userId} (ルーム: ${userRoom}) に送信しました`);
   }
 
   // 接続中のユーザー数を取得
