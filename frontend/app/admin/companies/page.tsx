@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Search, Filter, Plus, ChevronLeft, ChevronRight, Trash2, Edit } from 'lucide-react'
+import { Search, Filter, Plus, ChevronLeft, ChevronRight, Trash2, Edit, Check } from 'lucide-react'
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import Link from "next/link"
@@ -30,6 +30,9 @@ export default function CompanyList() {
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all")
+  const [showFilterMenu, setShowFilterMenu] = useState(false)
+  const filterMenuRef = useRef<HTMLDivElement>(null)
   const itemsPerPage = 10
 
   useEffect(() => {
@@ -45,6 +48,23 @@ export default function CompanyList() {
     }
     fetchCompanies();
   }, [router])
+
+  // フィルターメニューの外側クリックで閉じる
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(event.target as Node)) {
+        setShowFilterMenu(false)
+      }
+    }
+
+    if (showFilterMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showFilterMenu])
 
   const fetchCompanies = async () => {
     try {
@@ -116,11 +136,19 @@ export default function CompanyList() {
     }
   }
 
-  const filteredCompanies = companies.filter(company =>
-    company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    company.companyId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    company.address.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredCompanies = companies.filter(company => {
+    // 検索フィルター
+    const matchesSearch = company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      company.companyId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      company.address.toLowerCase().includes(searchTerm.toLowerCase())
+
+    // ステータスフィルター
+    const matchesStatus = statusFilter === "all" ||
+      (statusFilter === "active" && company.status === "active") ||
+      (statusFilter === "inactive" && company.status === "inactive")
+
+    return matchesSearch && matchesStatus
+  })
 
   const totalPages = Math.ceil(filteredCompanies.length / itemsPerPage)
   const paginatedCompanies = filteredCompanies.slice(
@@ -164,10 +192,69 @@ export default function CompanyList() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <Button variant="outline" size="sm">
-              <Filter className="w-4 h-4 mr-2" />
-              フィルター
-            </Button>
+            <div className="relative" ref={filterMenuRef}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowFilterMenu(!showFilterMenu)}
+                className={statusFilter !== "all" ? "border-blue-500 text-blue-600" : ""}
+              >
+                <Filter className="w-4 h-4 mr-2" />
+                フィルター
+                {statusFilter !== "all" && (
+                  <span className="ml-2 bg-blue-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
+                    1
+                  </span>
+                )}
+              </Button>
+              {showFilterMenu && (
+                <div className="absolute top-full left-0 mt-2 bg-white border rounded-lg shadow-lg z-50 min-w-[200px]">
+                  <div className="p-2">
+                    <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase">
+                      ステータス
+                    </div>
+                    <button
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 rounded flex items-center justify-between"
+                      onClick={() => {
+                        setStatusFilter("all")
+                        setCurrentPage(1)
+                      }}
+                    >
+                      <span>すべて</span>
+                      {statusFilter === "all" && <Check className="w-4 h-4 text-blue-600" />}
+                    </button>
+                    <button
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 rounded flex items-center justify-between"
+                      onClick={() => {
+                        setStatusFilter("active")
+                        setCurrentPage(1)
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="inline-flex px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">
+                          アクティブ
+                        </span>
+                      </span>
+                      {statusFilter === "active" && <Check className="w-4 h-4 text-blue-600" />}
+                    </button>
+                    <button
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 rounded flex items-center justify-between"
+                      onClick={() => {
+                        setStatusFilter("inactive")
+                        setCurrentPage(1)
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="inline-flex px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800">
+                          非アクティブ
+                        </span>
+                      </span>
+                      {statusFilter === "inactive" && <Check className="w-4 h-4 text-blue-600" />}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <div className="text-sm text-gray-500">
             全{filteredCompanies.length}件

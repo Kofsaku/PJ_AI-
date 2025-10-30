@@ -576,7 +576,7 @@ export function CallStatusModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl w-[90vw] max-h-[90vh]">
+      <DialogContent className="max-w-5xl w-[90vw] max-h-[90vh]" hideCloseButton={true}>
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
