@@ -99,6 +99,8 @@ export default function DashboardPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [selectedCustomers, setSelectedCustomers] = useState<Set<string>>(new Set());
   const [selectAll, setSelectAll] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 30;
   const [isCallDialogOpen, setIsCallDialogOpen] = useState(false);
   const [callProgress, setCallProgress] = useState(0);
   const [callResults, setCallResults] = useState<any[]>([]);
@@ -342,13 +344,20 @@ const getSessionKey = useCallback((session: any, phone: string) => {
     }
   };
 
-  // Handle select all checkbox
+  // Handle select all checkbox (current page only)
   const handleSelectAll = () => {
     if (selectAll) {
-      setSelectedCustomers(new Set());
+      // Deselect all customers on current page
+      const currentPageIds = new Set(getCustomerIds(paginatedCustomers));
+      const newSelected = new Set(
+        Array.from(selectedCustomers).filter(id => !currentPageIds.has(id))
+      );
+      setSelectedCustomers(newSelected);
     } else {
-      const allIds = new Set(getCustomerIds(filteredCustomers));
-      setSelectedCustomers(allIds);
+      // Select all customers on current page
+      const currentPageIds = new Set(getCustomerIds(paginatedCustomers));
+      const newSelected = new Set([...selectedCustomers, ...currentPageIds]);
+      setSelectedCustomers(newSelected);
     }
     setSelectAll(!selectAll);
   };
@@ -362,7 +371,6 @@ const getSessionKey = useCallback((session: any, phone: string) => {
       newSelected.add(customerId);
     }
     setSelectedCustomers(newSelected);
-    setSelectAll(newSelected.size === filteredCustomers.length && filteredCustomers.length > 0);
   };
 
   // Handle status change
@@ -669,12 +677,34 @@ const getSessionKey = useCallback((session: any, phone: string) => {
       !selectedPrefecture || selectedPrefecture === 'all' ||
       (customer.address && customer.address.includes(selectedPrefecture));
     const matchesStatus =
-      !selectedStatus || selectedStatus === 'all' || 
-      customer.callResult === selectedStatus || 
+      !selectedStatus || selectedStatus === 'all' ||
+      customer.callResult === selectedStatus ||
       customer.result === selectedStatus;
 
     return matchesSearch && matchesPrefecture && matchesStatus;
   });
+
+  // Pagination calculation
+  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedCustomers = filteredCustomers.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedPrefecture, selectedStatus]);
+
+  // Update selectAll state based on current page selection
+  useEffect(() => {
+    if (paginatedCustomers.length === 0) {
+      setSelectAll(false);
+      return;
+    }
+    const currentPageIds = getCustomerIds(paginatedCustomers);
+    const allSelected = currentPageIds.every(id => selectedCustomers.has(id));
+    setSelectAll(allSelected);
+  }, [selectedCustomers, currentPage]);
 
   if (isLoading) {
     return (
@@ -900,25 +930,26 @@ const getSessionKey = useCallback((session: any, phone: string) => {
                 </tr>
               </thead>
               <tbody>
-                {filteredCustomers.map((customer, index) => {
+                {paginatedCustomers.map((customer, index) => {
                   const customerId = getCustomerId(customer);
                   const isCallingNow = callingSessions.has(customerId);
+                  const actualIndex = startIndex + index;
                   return (
-                    <tr 
-                      key={customerId} 
+                    <tr
+                      key={customerId}
                       className={`border-b transition-all ${
-                        isCallingNow 
-                          ? 'bg-green-50 border-green-200 hover:bg-green-100' 
+                        isCallingNow
+                          ? 'bg-green-50 border-green-200 hover:bg-green-100'
                           : 'hover:bg-gray-50'
                       }`}
                     >
                       <td className="p-3">
-                        <Checkbox 
+                        <Checkbox
                           checked={selectedCustomers.has(customerId)}
                           onCheckedChange={() => handleSelectCustomer(customerId)}
                         />
                       </td>
-                      <td className="p-3">{index + 1}</td>
+                      <td className="p-3">{actualIndex + 1}</td>
                       <td className="p-3">
                         <div className="flex items-center gap-2">
                           <button
@@ -935,17 +966,17 @@ const getSessionKey = useCallback((session: any, phone: string) => {
                           )}
                         </div>
                       </td>
-                      <td className="p-3">{customer.address || `住所${index + 1}`}</td>
+                      <td className="p-3">{customer.address || `住所${actualIndex + 1}`}</td>
                       <td className="p-3">
                         {customer.company ? (
                           <a href="#" className="text-blue-600 hover:underline">
-                            URL{index + 1}
+                            URL{actualIndex + 1}
                           </a>
                         ) : (
-                          `URL${index + 1}`
+                          `URL${actualIndex + 1}`
                         )}
                       </td>
-                      <td className="p-3">{customer.phone || `電話番号${index + 1}`}</td>
+                      <td className="p-3">{customer.phone || `電話番号${actualIndex + 1}`}</td>
                       <td className="p-3">{customer.date || '2025/03/01'}</td>
                       <td className="p-3">
                         {isCallingNow ? (
@@ -1012,16 +1043,26 @@ const getSessionKey = useCallback((session: any, phone: string) => {
           </div>
 
           <div className="p-4 flex justify-between items-center border-t">
-            <Button variant="outline" size="sm">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+            >
               <ChevronLeft className="h-4 w-4 mr-1" />
               前へ
             </Button>
             <span className="text-sm text-gray-600">
               {filteredCustomers.length > 0
-                ? `1-${filteredCustomers.length}件 (全${filteredCustomers.length}件)`
+                ? `${startIndex + 1}-${Math.min(endIndex, filteredCustomers.length)}件 (全${filteredCustomers.length}件) - ページ ${currentPage}/${totalPages}`
                 : "0件"}
             </span>
-            <Button variant="outline" size="sm">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages || totalPages === 0}
+            >
               次へ
               <ChevronRight className="h-4 w-4 ml-1" />
             </Button>

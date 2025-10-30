@@ -8,8 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Save, RotateCcw } from "lucide-react";
+import { Loader2, Save, RotateCcw, Info } from "lucide-react";
 import { Sidebar } from "@/components/sidebar";
 
 interface SalesPitchSettings {
@@ -188,23 +189,23 @@ export default function SalesPitchSettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Sidebar />
-      <main className="ml-64 p-6">
-        <div className="max-w-4xl mx-auto space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">トークスクリプト設定</h1>
-            <p className="text-muted-foreground mt-2">
-              AI通話で使用するトークスクリプトの変数をカスタマイズできます。
-            </p>
-          </div>
+    <TooltipProvider>
+      <div className="min-h-screen bg-gray-50">
+        <Sidebar />
+        <main className="ml-64 p-6">
+          <div className="max-w-4xl mx-auto space-y-6">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">トークスクリプト設定</h1>
+              <p className="text-muted-foreground mt-2">
+                AI通話で使用するトークスクリプトの変数をカスタマイズできます。
+              </p>
+            </div>
 
           {/* 基本設定セクション */}
           <Card className="shadow-lg">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle>
                 基本設定（必須）
-                <Badge variant="destructive">必須</Badge>
               </CardTitle>
               <CardDescription>
                 AI会話ガイドラインの生成に必要な6つの必須項目です。
@@ -216,9 +217,17 @@ export default function SalesPitchSettingsPage() {
                 {/* 基本情報 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="companyName" className="flex items-center gap-2">
+                    <Label htmlFor="companyName" className="flex items-center gap-2 mb-2">
                       会社名
-                      <Badge variant="outline" className="text-xs">必須</Badge>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-4 w-4 text-blue-500" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>例：「AIコールシステム株式会社」</p>
+                          <p>→ AIが名乗る会社名に反映されます</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </Label>
                     <Input
                       id="companyName"
@@ -230,15 +239,19 @@ export default function SalesPitchSettingsPage() {
                       }))}
                       required
                     />
-                    <p className="text-sm text-muted-foreground mt-1">
-                      💡 例：「AIコールシステム株式会社」<br />
-                      → AIが名乗る際に使用されます
-                    </p>
                   </div>
                   <div>
-                    <Label htmlFor="representativeName" className="flex items-center gap-2">
+                    <Label htmlFor="representativeName" className="flex items-center gap-2 mb-2">
                       担当者名
-                      <Badge variant="outline" className="text-xs">必須</Badge>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-4 w-4 text-blue-500" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>例：「佐藤」「田中」</p>
+                          <p>→ AIが名乗る際に使用します</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </Label>
                     <Input
                       id="representativeName"
@@ -250,15 +263,19 @@ export default function SalesPitchSettingsPage() {
                       }))}
                       required
                     />
-                    <p className="text-sm text-muted-foreground mt-1">
-                      💡 例：「佐藤」「田中」<br />
-                      → AIがあなたとして名乗ります
-                    </p>
                   </div>
                   <div>
-                    <Label htmlFor="targetDepartment" className="flex items-center gap-2">
+                    <Label htmlFor="targetDepartment" className="flex items-center gap-2 mb-2">
                       対象部門
-                      <Badge variant="outline" className="text-xs">必須</Badge>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-4 w-4 text-blue-500" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>例：「営業部」「人事部」「担当部署」</p>
+                          <p>→ 「○○部のご担当者様」として呼び出します</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </Label>
                     <Input
                       id="targetDepartment"
@@ -270,15 +287,19 @@ export default function SalesPitchSettingsPage() {
                       }))}
                       required
                     />
-                    <p className="text-sm text-muted-foreground mt-1">
-                      💡 例：「営業部」「人事部」「総務部」<br />
-                      → 「○○部のご担当者様」として呼び出します
-                    </p>
                   </div>
                   <div>
-                    <Label htmlFor="targetPerson" className="flex items-center gap-2">
+                    <Label htmlFor="targetPerson" className="flex items-center gap-2 mb-2">
                       対象者
-                      <Badge variant="outline" className="text-xs">必須</Badge>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-4 w-4 text-blue-500" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>例：「ご担当者さま」</p>
+                          <p>→ 受付に「○○はいらっしゃいますか？」と尋ねます</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </Label>
                     <Input
                       id="targetPerson"
@@ -290,15 +311,19 @@ export default function SalesPitchSettingsPage() {
                       }))}
                       required
                     />
-                    <p className="text-sm text-muted-foreground mt-1">
-                      💡 例：「営業の担当者さま」「ご担当者さま」<br />
-                      → 受付に「○○はいらっしゃいますか？」と尋ねます
-                    </p>
                   </div>
                   <div>
-                    <Label htmlFor="serviceName" className="flex items-center gap-2">
+                    <Label htmlFor="serviceName" className="flex items-center gap-2 mb-2">
                       サービス名
-                      <Badge variant="outline" className="text-xs">必須</Badge>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-4 w-4 text-blue-500" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>例：「AIアシスタントサービス」「自動音声コールシステム」</p>
+                          <p>→ 「○○のご案内でお電話しました」と伝えます</p>
+                        </TooltipContent>
+                      </Tooltip>
                     </Label>
                     <Input
                       id="serviceName"
@@ -310,18 +335,22 @@ export default function SalesPitchSettingsPage() {
                       }))}
                       required
                     />
-                    <p className="text-sm text-muted-foreground mt-1">
-                      💡 例：「AIアシスタントサービス」「自動音声コールシステム」<br />
-                      → 「○○のご案内でお電話しました」と伝えます
-                    </p>
                   </div>
                 </div>
 
                 {/* サービス説明 */}
                 <div>
-                  <Label htmlFor="serviceDescription" className="flex items-center gap-2">
+                  <Label htmlFor="serviceDescription" className="flex items-center gap-2 mb-2">
                     サービス概要
-                    <Badge variant="outline" className="text-xs">必須</Badge>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-4 w-4 text-blue-500" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>例：「新規テレアポや掘り起こしなどの営業電話を人間に代わって生成AIが電話をかけるというサービスを提供している」</p>
+                        <p>→ 受付から「どんなサービスですか？」と聞かれた際に使用されます</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </Label>
                   <Textarea
                     id="serviceDescription"
@@ -334,19 +363,15 @@ export default function SalesPitchSettingsPage() {
                     className="min-h-[80px]"
                     required
                   />
-                  <p className="text-sm text-muted-foreground mt-1">
-                    💡 例：「新規テレアポや掘り起こしなどの営業電話を人間に代わって生成AIが電話をかけるというサービスを提供している」<br />
-                    → 受付から「どんなサービスですか？」と聞かれた時に使用されます
-                  </p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* AI設定セクション */}
+          {/* トーン設定セクション */}
           <Card className="shadow-lg">
             <CardHeader>
-              <CardTitle>AI設定</CardTitle>
+              <CardTitle>トーン設定</CardTitle>
               <CardDescription>
                 AIの声や話し方を設定できます（会話トーンは「フォーマル」に固定）
               </CardDescription>
@@ -435,5 +460,6 @@ export default function SalesPitchSettingsPage() {
         </div>
       </main>
     </div>
+    </TooltipProvider>
   );
 }
