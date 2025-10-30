@@ -26,12 +26,14 @@ interface Company {
 export default function CompanyList() {
   const router = useRouter()
   const [companies, setCompanies] = useState<Company[]>([])
-  const [searchTerm, setSearchTerm] = useState("")
+  const [searchTerm, setSearchTerm] = useState("") // 入力フィールドの値
+  const [searchQuery, setSearchQuery] = useState("") // 実際の検索に使用する値
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all")
   const [showFilterMenu, setShowFilterMenu] = useState(false)
+  const [showOnlyChecked, setShowOnlyChecked] = useState(false)
   const filterMenuRef = useRef<HTMLDivElement>(null)
   const itemsPerPage = 10
 
@@ -136,11 +138,30 @@ export default function CompanyList() {
     }
   }
 
+  // 検索ボタンのハンドラー
+  const handleSearch = () => {
+    setSearchQuery(searchTerm)
+    setCurrentPage(1) // 検索時は1ページ目に戻る
+  }
+
+  // Enterキーで検索
+  const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch()
+    }
+  }
+
   const filteredCompanies = companies.filter(company => {
-    // 検索フィルター
-    const matchesSearch = company.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      company.companyId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      company.address.toLowerCase().includes(searchTerm.toLowerCase())
+    // チェックのみ表示フィルター
+    if (showOnlyChecked && !selectedCompanies.includes(company._id)) {
+      return false
+    }
+
+    // 検索フィルター（searchQueryを使用）
+    const matchesSearch = searchQuery === "" ||
+      company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      company.companyId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      company.address.toLowerCase().includes(searchQuery.toLowerCase())
 
     // ステータスフィルター
     const matchesStatus = statusFilter === "all" ||
@@ -190,8 +211,35 @@ export default function CompanyList() {
                 className="pl-10 w-64"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyPress={handleSearchKeyPress}
               />
             </div>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleSearch}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              検索
+            </Button>
+            {selectedCompanies.length > 0 && (
+              <Button
+                variant={showOnlyChecked ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  if (showOnlyChecked) {
+                    // すべて表示に戻る際はチェックをすべて外す
+                    setSelectedCompanies([])
+                  }
+                  setShowOnlyChecked(!showOnlyChecked)
+                  setCurrentPage(1)
+                }}
+                className={showOnlyChecked ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}
+              >
+                <Check className="w-4 h-4 mr-2" />
+                {showOnlyChecked ? "すべて表示" : "チェックのみ表示"}
+              </Button>
+            )}
             <div className="relative" ref={filterMenuRef}>
               <Button
                 variant="outline"

@@ -120,7 +120,7 @@ export default function CompanyEdit({ params }: PageProps) {
 
       if (data.success) {
         toast.success('企業情報を更新しました');
-        router.push('/admin/companies');
+        router.push(`/admin/companies/${id}`);
       } else {
         toast.error(data.error || '更新に失敗しました');
       }
